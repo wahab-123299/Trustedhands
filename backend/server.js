@@ -9,6 +9,7 @@ import userRoutes from "./routes/userRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import reviewRoutes from "./routes/review.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import path from "path";
 
 import { paystackWebhook } from "./controllers/paymentController.js";
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
@@ -47,6 +48,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use(express.static(path.join(__dirname, "../frontend/public")))
 
 // ===== Error Handling =====
 app.use(notFound);
