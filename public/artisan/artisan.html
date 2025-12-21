@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Book Artisan - Trusted Hand</title>
+
+  <link rel="stylesheet" href="../../static/css/style.css" />
+  <style>
+    .success { color: green; font-weight: bold; }
+    .error { color: red; font-weight: bold; }
+    #artisanInfo {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      color: #007bff;
+    }
+  </style>
+</head>
+<body>
+
+<header class="hero small-hero">
+  <div class="hero-content">
+    <h1>Book Artisan</h1>
+    <p>Fill the form to confirm your booking</p>
+  </div>
+</header>
+
+<section class="booking-form">
+  <p id="artisanInfo">Loading artisan...</p>
+
+  <form id="bookingForm">
+    <label>Service Location</label>
+    <input type="text" id="location" required />
+
+    <label>Booking Date</label>
+    <input type="date" id="date" required />
+
+    <label>Booking Time</label>
+    <input type="time" id="time" required />
+
+    <label>Job Details</label>
+    <textarea id="details" placeholder="Describe the work..." required></textarea>
+
+    <button type="submit">Confirm Booking</button>
+  </form>
+
+  <p id="message"></p>
+</section>
+
+<script>
+  // =========================
+  // AUTH CHECK
+  // =========================
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("Please login to book an artisan");
+    window.location.href = "../login.html";
+  }
+
+  // =========================
+  // GET ARTISAN ID
+  // =========================
+  const params = new URLSearchParams(window.location.search);
+  const artisanId = params.get("artisanId");
+
+  if (!artisanId) {
+    alert("Invalid booking request");
+    window.location.href = "../search.html";
+  }
+
+  // =========================
+  // DATE RESTRICTION
+  // =========================
+  const dateInput = document.getElementById("date");
+  dateInput.min = new Date().toISOString().split("T")[0];
+
+  // =========================
+  // LOAD ARTISAN DETAILS
+  // =========================
+  async function loadArtisan() {
+    try {
+      const res = await fetch(`/api/artisans/${artisanId}`);
+      const artisan = await res.json();
+
+      if (!res.ok) throw new Error();
+
+      document.getElementById("artisanInfo").textContent =
+        `Booking: ${artisan.name} (${artisan.trade || artisan.service})`;
+
+    } catch {
+      document.getElementById("artisanInfo").textContent =
+        "⚠️ Unable to load artisan details.";
+    }
+  }
+
+  loadArtisan();
+
+  // =========================
+  // SUBMIT BOOKING
+  // =========================
+  const form = document.getElementById("bookingForm");
+  const message = document.getElementById("message");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const date = dateInput.value;
+    const time = document.getElementById("time").value;
+
+    if (!date || !time) {
+      message.textContent = "❌ Date and time are required";
+      message.className = "error";
+      return;
+    }
+
+    const bookingData = {
+      artisan: artisanId,
+      location: document.getElementById("location").value.trim(),
+      bookingDate: new Date(`${date}T${time}`).toISOString(),
+      details: document.getElementById("details").value.trim()
+    };
+
+    try {
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(bookingData)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        message.textContent = data.message || "Booking failed";
+        message.className = "error";
+        return;
+      }
+
+      message.textContent = "✅ Booking successful!";
+      message.className = "success";
+
+      setTimeout(() => {
+        window.location.href = "../my-bookings.html";
+      }, 1500);
+
+    } catch {
+      message.textContent = "⚠️ Server error. Try again.";
+      message.className = "error";
+    }
+  });
+</script>
+
+</body>
+</html>

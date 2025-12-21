@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trusted Hand - Find Trusted Artisans</title>
+
+    <link rel="icon" type="image/png" href="../static/images/logo.png">
+    <link rel="stylesheet" href="../static/css/style.css">
+  </head>
+  <body>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    
+    <div class="logo">
+        <img src="../static/images/logo.png"  class="logo-img">
+        <span>Trusted Hand</span>
+    </div>
+    
+    <button class="menu-toggle" onclick="document.body.classList.toggle('nav-open')">☰</button>
+
+    <ul class="nav-links">
+        <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="artisan/artisan.html">Artisans</a></li>
+        <li><a href="customer/job-listing.html">Job Listings</a></li>
+        <li><a href="my-employers/post-job.html" class="post-job-btn">+ Post Job</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html">Contact</a></li>
+        <li><a href="auth/login.html">Login</a></li>
+        <li><a href="auth/signup.html" class="btn">Sign Up</a></li>
+    </ul>
+
+</nav>
+
+
+
+
+  <!-- Header -->
+  <header class="hero">
+    <div class="hero-content">
+      <h1>Trusted Hand</h1>
+      <p>Connecting you to skilled artisans you can trust</p>
+      <form class="search-bar" onsubmit="return searchArtisans(event)">
+        <input type="text" name="skill" placeholder="What service do you need? e.g. Plumber">
+        <input type="text" name="location" placeholder="Enter your location">
+        <button type="submit">Search</button>
+      </form>
+    </div>
+  </header>
+
+  <!-- Categories -->
+  <section class="categories">
+    <h2>Popular Services</h2>
+    <div class="category-grid">
+      <div class="category-card">🔧 Plumber</div>
+      <div class="category-card">💡 Electrician</div>
+      <div class="category-card">🧹 Cleaner</div>
+      <div class="category-card">🍲 Caterer</div>
+      <div class="category-card">🔨 Carpenter</div>
+      <div class="category-card">🎨 Painter</div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works">
+    <h2>How It Works</h2>
+    <div class="steps">
+      <div class="step">1️⃣ Search</div>
+      <div class="step">2️⃣ Book</div>
+      <div class="step">3️⃣ Get it Done</div>
+      <div class="step">4️⃣ Review</div>
+    </div>
+  </section>
+
+  <!-- Featured Artisans -->
+  <section class="featured">
+    <h2>Featured Artisans</h2>
+    <div class="artisan-grid">
+      <div class="artisan-card">
+        <img src="/static/images/plumber.jpg" alt="Plumber">
+        <h3>John Doe</h3>
+        <p>Plumber • Lagos</p>
+        <p>⭐⭐⭐⭐☆ (12 reviews)</p>
+      </div>
+      <div class="artisan-card">
+        <img src="/static/images/electrician.jpg" alt="Electrician">
+        <h3>Mary Smith</h3>
+        <p>Electrician • Abuja</p>
+        <p>⭐⭐⭐⭐⭐ (20 reviews)</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
+    <div class="socials">
+      <a href="#">Facebook</a> | 
+      <a href="#">Instagram</a> | 
+      <a href="#">Twitter</a>
+    </div>
+  </footer>
+
+  <script>
+    async function loadFeaturedArtisans() {
+      try {
+        const res = await fetch("/api/artisans?limit=4");
+        const artisans = await res.json();
+
+        const container = document.getElementById("featuredArtisans");
+        container.innerHTML = "";
+
+        artisans.forEach(a => {
+          container.innerHTML += `
+            <div class="artisan-card">
+              <img src="/static/images/default-avatar.png">
+              <h3>${a.name}</h3>
+              <p>${a.skill} • ${a.location}</p>
+            </div>
+          `;
+        });
+
+      } catch {
+        document.getElementById("featuredArtisans").innerHTML =
+          "<p>Unable to load artisans.</p>";
+      }
+    }
+
+    loadFeaturedArtisans();
+  </script>
+
+
+</body>
+</html>

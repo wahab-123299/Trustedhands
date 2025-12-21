@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ | Trusted Hand</title>
+  <link rel="icon" type="image/png" href="../static/images/logo.png">
+  <link rel="stylesheet" href="../static/css/style.css">
+</head>
+<body>
+  <!-- Navbar -->
+  <header>
+  <nav class="navbar">
+    <div class="logo">
+      <img src="../static/images/logo.png" class="logo-img" alt="Trusted Hand Logo">
+      <span>Trusted Hand</span>
+    </div>
+
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="service.html">Services</a></li>
+      <li><a href="faq.html" class="active">FAQ</a></li>
+      <li><a href="contact.html">Contact</a></li>
+      <li><a href="auth/login.html" class="btn">Login</a></li>
+    </ul>
+  </nav>
+</header>
+
+
+  <!-- FAQ Hero -->
+  <section class="faq-hero">
+    <h1>Frequently Asked Questions</h1>
+    <p>Find quick answers to the most common questions from our customers and artisans.</p>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="faq-container">
+    <div class="faq-box">
+      <h2>For Customers</h2>
+      <details>
+        <summary>How do I book an artisan?</summary>
+        <p>Search for your desired service, view artisan profiles, and click <strong>“Book Now”</strong> to hire.</p>
+      </details>
+
+      <details>
+        <summary>How do I know if an artisan is skilled?</summary>
+        <p>Check the artisan’s profile for verified badges, reviews, and completed job ratings.</p>
+      </details>
+
+      <details>
+        <summary>Can I cancel a booking?</summary>
+        <p>Yes, you can cancel a booking before the artisan accepts it by visiting your user dashboard.</p>
+      </details>
+    </div>
+
+    <div class="faq-box">
+      <h2>For Artisans</h2>
+      <details>
+        <summary>How do I register as an artisan?</summary>
+        <p>Go to the <strong>Artisan Register</strong> page, fill out your information, and upload verification documents.</p>
+      </details>
+
+      <details>
+        <summary>Do I pay to join Trusted Hand?</summary>
+        <p>Registration is free. A small service fee applies only when you successfully complete a job.</p>
+      </details>
+
+      <details>
+        <summary>How do I get more jobs?</summary>
+        <p>Maintain good ratings, complete your profile, and request customer feedback to build trust.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

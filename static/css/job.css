@@ -1,0 +1,160 @@
+/* Reset and base styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f9fafb;
+  color: #1f2937;
+  line-height: 1.6;
+}
+
+a {
+  text-decoration: none;
+  color: #2563eb;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Header styles */
+.main-header {
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 20px 0;
+}
+
+.main-header h1 {
+  font-size: 2rem;
+  color: #111827;
+}
+
+nav {
+  margin-top: 10px;
+}
+
+nav a {
+  margin-right: 20px;
+  font-weight: 600;
+  color: #374151;
+}
+
+nav a.active {
+  color: #2563eb;
+  border-bottom: 2px solid #2563eb;
+}
+
+/* Section titles */
+section h2 {
+  font-size: 1.5rem;
+  margin-bottom: 16px;
+  color: #111827;
+}
+
+/* Post Job Form */
+.post-job {
+  background-color: #ffffff;
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+#postJobForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#postJobForm input,
+#postJobForm textarea {
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+#postJobForm button {
+  padding: 10px;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+#postJobForm button:hover {
+  background-color: #1e40af;
+}
+
+#status {
+  margin-top: 10px;
+  font-weight: 600;
+  color: #10b981;
+}
+
+/* Job Listings */
+.job-listings {
+  margin: 20px 0;
+}
+
+.job-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.job-card {
+  background-color: #ffffff;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.job-card h3 {
+  font-size: 1.2rem;
+  margin-bottom: 8px;
+  color: #111827;
+}
+
+.job-card p {
+  margin-bottom: 6px;
+  color: #374151;
+}
+
+.job-card button {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background-color: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.job-card button:hover {
+  background-color: #059669;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  nav a {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .job-list {
+    grid-template-columns: 1fr;
+  }
+}

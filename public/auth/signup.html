@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up - Trusted Hand</title>
+  <link rel="stylesheet" href="../static/css/style.css" />
+</head>
+<body>
+
+<div class="signup-container">
+  <h2>Create an Account</h2>
+
+  <form id="signupForm">
+    <label>Full Name</label>
+    <input type="text" id="fullname" required>
+
+    <label>Email</label>
+    <input type="email" id="email" required>
+
+    <label>Password</label>
+    <input type="password" id="password" required>
+
+    <label>Register As</label>
+    <select id="role" required>
+      <option value="">Select Role</option>
+      <option value="customer">Customer</option>
+      <option value="artisan">Artisan</option>
+    </select>
+
+    <button type="submit">Sign Up</button>
+  </form>
+
+  <p id="statusMessage"></p>
+
+  <p class="note">
+    Already have an account? <a href="login.html">Login here</a>
+  </p>
+</div>
+
+<script>
+  const form = document.getElementById("signupForm");
+  const status = document.getElementById("statusMessage");
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+
+    const fullname = fullnameInput = document.getElementById("fullname").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const role = document.getElementById("role").value;
+
+    if (!fullname || !email || !password || !role) {
+      status.textContent = "Please fill all fields";
+      status.style.color = "red";
+      return;
+    }
+
+    status.textContent = "Creating account...";
+    status.style.color = "black";
+
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullname, email, password, role })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        status.textContent = data.message || "Signup failed";
+        status.style.color = "red";
+        return;
+      }
+
+      // ✅ STORE AUTH DATA (SAME FORMAT AS LOGIN)
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("userId", data._id);
+
+      status.textContent = "Account created successfully";
+      status.style.color = "green";
+
+      // ✅ REDIRECT BASED ON BACKEND ROLE
+      setTimeout(() => {
+        if (data.role === "customer") {
+          window.location.href = "dashboard.html";
+        } else if (data.role === "artisan") {
+          window.location.href = "profile-setup.html";
+        } else {
+          window.location.href = "/";
+        }
+      }, 1000);
+
+    } catch {
+      status.textContent = "Server error. Try again later.";
+      status.style.color = "red";
+    }
+  });
+</script>
+
+</body>
+</html>

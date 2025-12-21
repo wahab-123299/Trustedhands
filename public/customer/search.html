@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Search Results | Trusted Hand</title>
+    <link rel="stylesheet" href="../../static/css/search.css" />
+  </head>
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>Trusted Hand</h1>
+        <nav>
+          <a href="../../index.html">Home</a>
+          <a href="artisan.html">Find Artisans</a>
+          <a href="dashboard.html">Dashboard</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="search-section">
+      <div class="container">
+        <h2>Search Artisans</h2>
+
+        <div class="search-bar">
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Search by skill or location..."
+          />
+          <button id="searchBtn">Search</button>
+        </div>
+
+        <div id="results" class="results-grid"></div>
+      </div>
+    </section>
+
+    <script>
+      const resultsContainer = document.getElementById("results");
+      const searchInput = document.getElementById("searchInput");
+      const searchBtn = document.getElementById("searchBtn");
+
+      // Read URL params (optional)
+      const params = new URLSearchParams(window.location.search);
+      const initialSkill = params.get("skill") || "";
+      const initialLocation = params.get("location") || "";
+
+      if (initialSkill || initialLocation) {
+        searchInput.value = `${initialSkill} ${initialLocation}`.trim();
+        performSearch(initialSkill, initialLocation);
+      }
+
+      searchBtn.addEventListener("click", () => {
+        const query = searchInput.value.trim();
+        if (!query) {
+          resultsContainer.innerHTML = "<p>Please enter a search term.</p>";
+          return;
+        }
+
+        // Split input intelligently
+        performSearch(query);
+      });
+
+      async function performSearch(query = "", location = "") {
+        resultsContainer.innerHTML = "<p>Searching...</p>";
+
+        try {
+          const res = await fetch(
+            `/api/artisans/search?query=${encodeURIComponent(query)}`
+          );
+
+          if (!res.ok) throw new Error("Search failed");
+
+          const artisans = await res.json();
+          resultsContainer.innerHTML = "";
+
+          if (!artisans.length) {
+            resultsContainer.innerHTML = "<p>No artisans found.</p>";
+            return;
+          }
+
+          artisans.forEach(a => {
+            resultsContainer.insertAdjacentHTML(
+              "beforeend",
+              `
+              <div class="result-card artisan">
+                <h3>${a.name}</h3>
+                <p><strong>Skill:</strong> ${a.profession}</p>
+                <p><strong>Location:</strong> ${a.location || "Not specified"}</p>
+                <p><strong>Rating:</strong> ${a.rating ? a.rating + " ⭐" : "No rating yet"}</p>
+                <button onclick="bookArtisan('${a._id}')">Book Now</button>
+              </div>
+              `
+            );
+          });
+        } catch (err) {
+          console.error(err);
+          resultsContainer.innerHTML = "<p>❌ Error fetching search results.</p>";
+        }
+      }
+
+      function bookArtisan(id) {
+        window.location.href =
+          "/public/customer/booking.html?artisanId=" + id;
+      }
+    </script>
+
+  </body>
+</html>

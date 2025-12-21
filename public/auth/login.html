@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Trusted Hand</title>
+  <link rel="stylesheet" href="../static/css/style.css">
+</head>
+<body>
+
+<div class="login-container">
+  <h2>Login to Trusted Hand</h2>
+
+  <form id="loginForm">
+    <label>Email</label>
+    <input type="email" id="loginEmail" required>
+
+    <label>Password</label>
+    <input type="password" id="loginPassword" required>
+
+    <button type="submit">Login</button>
+  </form>
+
+  <p id="statusMessage"></p>
+
+  <div class="links">
+    <a href="forgot-password.html">Forgot Password?</a> |
+    <a href="signup.html">Create an Account</a>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById("loginForm");
+  const status = document.getElementById("statusMessage");
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+
+    const email = loginEmail.value.trim();
+    const password = loginPassword.value.trim();
+
+    if (!email || !password) {
+      status.textContent = "Please fill all fields";
+      status.style.color = "red";
+      return;
+    }
+
+    status.textContent = "Logging in...";
+    status.style.color = "black";
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        status.textContent = data.message || "Invalid credentials";
+        status.style.color = "red";
+        return;
+      }
+
+      // ✅ STORE AUTH DATA (CONSISTENT WITH ALL PAGES)
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("userId", data._id);
+
+      status.textContent = "Login successful";
+      status.style.color = "green";
+
+      // ✅ REDIRECT BASED ON BACKEND ROLE
+      setTimeout(() => {
+        if (data.role === "customer") {
+          window.location.href = "dashboard.html";
+        } else if (data.role === "artisan") {
+          window.location.href = "artisan-dashboard.html";
+        } else if (data.role === "admin") {
+          window.location.href = "admin-dashboard.html";
+        } else {
+          window.location.href = "/";
+        }
+      }, 1000);
+
+    } catch {
+      status.textContent = "Server error. Try again.";
+      status.style.color = "red";
+    }
+  });
+</script>
+
+</body>
+</html>

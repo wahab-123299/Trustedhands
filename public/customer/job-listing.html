@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Listings | Trusted Hand</title>
+
+  <link rel="icon" href="../../static/images/logo.png">
+  <link rel="stylesheet" href="../../static/css/job-listing.css" />
+</head>
+  <body>
+
+    <script>
+      // 🔐 AUTH + ROLE CHECK (ARTISANS ONLY)
+      const token = localStorage.getItem("token");
+      const role = localStorage.getItem("role");
+
+      if (!token || role !== "artisan") {
+        window.location.href = "../auth/login.html";
+      }
+    </script>
+
+    <!-- ===== HEADER ===== -->
+    <header>
+      <div class="container">
+        <img src="../../static/images/logo.png" class="logo-img">
+        <h1>Trusted Hand</h1>
+        <nav>
+          <a href="../index.html">Home</a>
+          <a href="job-listing.html" class="active">Jobs</a>
+          <a href="artisan-dashboard.html">Dashboard</a>
+          <a href="my-jobs.html">My Jobs</a>
+          <a href="#" id="logoutBtn">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- ===== JOB LISTINGS ===== -->
+    <section class="job-section">
+      <div class="container">
+        <h2>Available Jobs</h2>
+        <p class="subtitle">Jobs posted by customers that match your skill.</p>
+
+        <div class="search-bar">
+          <input type="text" id="searchInput" placeholder="Search by title or location..." />
+          <button id="searchBtn">Search</button>
+        </div>
+
+        <div class="job-list" id="jobList">
+          <p>Loading jobs...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer>
+      <p>&copy; 2025 Trusted Hand</p>
+    </footer>
+
+    <!-- ===== JAVASCRIPT ===== -->
+    <script>
+      const jobList = document.getElementById("jobList");
+      const headers = {
+        Authorization: `Bearer ${token}`
+      };
+
+      // 🔄 LOAD JOBS
+      async function loadJobs(search = "") {
+        jobList.innerHTML = "<p>Loading jobs...</p>";
+
+        try {
+          const res = await fetch(`/api/jobs?search=${encodeURIComponent(search)}`, {
+            headers
+          });
+
+          if (!res.ok) throw new Error("Failed to fetch jobs");
+
+          const jobs = await res.json();
+          jobList.innerHTML = "";
+
+          if (!jobs.length) {
+            jobList.innerHTML = "<p class='no-jobs'>No jobs available.</p>";
+            return;
+          }
+
+          jobs.forEach(job => {
+            jobList.insertAdjacentHTML("beforeend", `
+              <div class="job-card">
+                <h3>${job.title}</h3>
+                <p class="desc">${job.description}</p>
+                <p><strong>📍 Location:</strong> ${job.location}</p>
+                <p><strong>💰 Budget:</strong> ₦${Number(job.budget).toLocaleString()}</p>
+                <p><strong>👤 Posted By:</strong> ${job.customer.name}</p>
+                <button class="apply-btn" onclick="applyJob('${job._id}')">
+                  Apply
+                </button>
+              </div>
+            `);
+          });
+
+        } catch (err) {
+          console.error(err);
+          jobList.innerHTML = "<p>Error loading jobs.</p>";
+        }
+      }
+
+      // 🔍 SEARCH
+      document.getElementById("searchBtn").onclick = () => {
+        const term = document.getElementById("searchInput").value.trim();
+        loadJobs(term);
+      };
+
+      // 📩 APPLY TO JOB (REAL)
+      async function applyJob(jobId) {
+        if (!confirm("Apply for this job?")) return;
+
+        try {
+          const res = await fetch(`/api/jobs/${jobId}/apply`, {
+            method: "POST",
+            headers
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            alert(data.message || "Application failed");
+            return;
+          }
+
+          alert("✅ Application sent successfully!");
+          loadJobs();
+
+        } catch (err) {
+          alert("Server error. Try again.");
+        }
+      }
+
+      // 🚪 LOGOUT
+      document.getElementById("logoutBtn").onclick = () => {
+        localStorage.clear();
+        window.location.href = "../auth/login.html";
+      };
+
+      // INIT
+      loadJobs();
+    </script>
+
+  </body>
+</html>

@@ -1,0 +1,393 @@
+/* ================================
+   GLOBAL STYLES
+   ================================ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+  background: #f4f6f9;
+  color: #333;
+  min-height: 100vh;
+}
+
+/* (font-family moved to body above) */
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #007bff;
+  border-radius: 6px;
+}
+
+/* ================================
+   DASHBOARD LAYOUT
+  display: flex;
+  min-height: 100vh;
+  overflow: hidden;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 250px;
+  background: #007bff;
+  color: white;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.sidebar h2 {
+  text-align: center;
+  font-size: 1.4rem;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+}
+
+.sidebar ul {
+  list-style: none;
+}
+
+.sidebar ul li {
+  margin: 1rem 0;
+}
+
+.sidebar ul li a {
+  color: #fff;
+  text-decoration: none;
+  padding: 0.8rem 1rem;
+  display: block;
+  border-radius: 6px;
+  transition: background 0.3s;
+}
+
+.sidebar ul li a:hover,
+.sidebar ul li a.active {
+  background: #0056b3;
+}
+
+/* Logout Button */
+.sidebar .logout {
+  text-align: center;
+  margin-top: 2rem;
+}
+
+.sidebar .logout a {
+  color: #fff;
+  background: #dc3545;
+  padding: 0.7rem 1rem;
+  border-radius: 6px;
+  text-decoration: none;
+  display: inline-block;
+  transition: 0.3s;
+}
+
+.sidebar .logout a:hover {
+  background: #b02a37;
+}
+
+/* ================================
+   MAIN SECTION
+================================ */
+.main-content {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+header h1 {
+  font-size: 1.8rem;
+  color: #222;
+}
+
+header p {
+  color: #666;
+  font-size: 0.95rem;
+}
+
+/* ================================
+   TABLE STYLES
+================================ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+thead {
+  background: #007bff;
+  color: white;
+}
+
+thead th {
+  text-align: left;
+  padding: 1rem;
+  font-weight: 500;
+}
+
+tbody td {
+  padding: 1rem;
+  border-bottom: 1px solid #f1f1f1;
+  color: #333;
+}
+
+tbody tr:hover {
+  background: #f8f9fa;
+}
+
+/* Status Badges */
+.status {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status.active {
+  background: #28a745;
+  color: white;
+}
+
+.status.blocked {
+  background: #dc3545;
+  color: white;
+}
+
+.status.pending {
+  background: #ffc107;
+  color: #333;
+}
+
+/* ================================
+   ACTION BUTTONS
+================================ */
+.action-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: 0.3s;
+}
+
+.btn-edit {
+  background: #17a2b8;
+  color: white;
+}
+.btn-edit:hover {
+  background: #138496;
+}
+
+.btn-save {
+  background: #007bff;
+  color: white;
+  border: none;
+  width: 100%;
+  padding: 10px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.btn-save:hover {
+  background: #0056b3;
+}
+
+
+.btn-delete {
+  background: #dc3545;
+  color: white;
+}
+.btn-delete:hover {
+  background: #b02a37;
+}
+
+/* ================================
+   MODAL (EDIT USER)
+================================ */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 10;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+
+.modal-content {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  width: 420px; /* slightly wider */
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+
+.modal-content h2 {
+  margin-bottom: 1rem;
+  color: #007bff;
+  text-align: center;
+}
+
+.modal-content label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.modal-content input,
+.modal-content select {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  outline: none;
+  transition: 0.3s ease;
+}
+
+.modal-content input:focus,
+.modal-content select:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 4px rgba(0, 123, 255, 0.3);
+}
+
+
+.modal-content button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+  font-weight: 500;
+  transition: 0.3s;
+}
+
+.modal-content button:hover {
+  background: #0056b3;
+}
+
+.close {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  color: #333;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+/* ================================
+   SETTINGS PAGE FORM
+================================ */
+.settings-form {
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  max-width: 600px;
+}
+
+.settings-form h3 {
+  color: #007bff;
+  margin-bottom: 1rem;
+}
+
+.settings-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.settings-form input {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.settings-form button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.settings-form button:hover {
+  background: #0056b3;
+}
+
+/* ================================
+    RESPONSIVE DESIGN
+================================ */
+@media (max-width: 768px) {
+  .dashboard-container {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-around;
+    overflow-x: auto;
+    align-items: flex-start;
+  }
+
+  .sidebar ul {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    padding: 0;
+    margin: 0;
+  }
+
+  .sidebar ul li {
+    margin: 0;
+  }
+
+  .sidebar .logout {
+    margin-top: 0;
+    align-self: center;
+  }
+
+  .main-content {
+    padding: 1rem;
+  }
+
+  table th,
+  table td {
+    font-size: 0.85rem;
+    padding: 0.6rem;
+  }
+}

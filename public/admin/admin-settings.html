@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin - Settings | Trusted Hand</title>
+  <link rel="stylesheet" href="../../static/css/admin.css" />
+</head>
+<body>
+  <div class="admin-container">
+    
+    <!-- ===== Sidebar ===== -->
+    <aside class="sidebar">
+      <h2>Trusted Hand</h2>
+      <ul>
+        <li><a href="admin-dashboard.html">Dashboard</a></li>
+        <li><a href="admin-users.html">Users</a></li>
+        <li><a href="admin-artisans.html">Artisans</a></li>
+        <li><a href="admin-jobs.html">Jobs</a></li>
+        <li><a href="admin-payments.html">Payments</a></li>
+        <li><a href="admin-settings.html" class="active">Settings</a></li>
+        <li><a href="#" onclick="logout()">Logout</a></li>
+      </ul>
+    </aside>
+
+    <!-- ===== Main Content ===== -->
+    <main class="main-content">
+      <header>
+        <h1>Admin Settings</h1>
+        <p>Manage your profile, system fees, notifications, and security settings.</p>
+      </header>
+
+      <!-- ===== Profile Settings ===== -->
+      <section class="admin-section">
+        <h2>Profile Information</h2>
+        <form id="adminProfileForm" class="settings-form">
+          <label for="adminName">Full Name</label>
+          <input type="text" id="adminName" required />
+
+          <label for="adminEmail">Email Address</label>
+          <input type="email" id="adminEmail" required />
+
+          <button type="submit" class="btn-save">Save Changes</button>
+        </form>
+      </section>
+
+      <!-- ===== Service Fee Settings ===== -->
+      <section class="admin-section">
+        <h2>Service Fee Settings</h2>
+        <form id="feeForm" class="settings-form">
+          <label for="serviceFee">Platform Service Fee (%)</label>
+          <input type="number" id="serviceFee" required min="0" />
+          <button type="submit" class="btn-save">Update Fee</button>
+        </form>
+      </section>
+
+      <!-- ===== Notification Preferences ===== -->
+      <section class="admin-section">
+        <h2>Notification Preferences</h2>
+        <form id="notificationForm" class="settings-form">
+          <label><input type="checkbox" id="emailNotif" /> Email Notifications</label>
+          <label><input type="checkbox" id="smsNotif" /> SMS Notifications</label>
+          <button type="submit" class="btn-save">Save Preferences</button>
+        </form>
+      </section>
+
+      <!-- ===== Change Password ===== -->
+      <section class="admin-section">
+        <h2>Change Password</h2>
+        <form id="passwordForm" class="settings-form">
+          <label for="oldPassword">Current Password</label>
+          <input type="password" id="oldPassword" required />
+
+          <label for="newPassword">New Password</label>
+          <input type="password" id="newPassword" required minlength="6" />
+
+          <label for="confirmPassword">Confirm New Password</label>
+          <input type="password" id="confirmPassword" required minlength="6" />
+
+          <button type="submit" class="btn-save">Change Password</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login as admin");
+      window.location.href = "login.html";
+    }
+
+    // Load current admin settings
+    async function loadAdminProfile() {
+      try {
+        const res = await fetch("/api/admin/profile", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          document.getElementById("adminName").value = data.name || "";
+          document.getElementById("adminEmail").value = data.email || "";
+          document.getElementById("serviceFee").value = data.serviceFee || 0;
+          document.getElementById("emailNotif").checked = data.notifications?.email || false;
+          document.getElementById("smsNotif").checked = data.notifications?.sms || false;
+        } else {
+          alert("❌ " + (data.message || "Failed to load profile."));
+        }
+      } catch {
+        alert("⚠️ Server error.");
+      }
+    }
+
+    // Save profile changes
+    document.getElementById("adminProfileForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("adminName").value;
+      const email = document.getElementById("adminEmail").value;
+
+      try {
+        const res = await fetch("/api/admin/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ name, email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert("✅ Profile updated successfully!");
+        } else {
+          alert("❌ " + (data.message || "Update failed."));
+        }
+      } catch {
+        alert("⚠️ Server error.");
+      }
+    });
+
+    // Update service fee
+    document.getElementById("feeForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fee = document.getElementById("serviceFee").value;
+
+      try {
+        const res = await fetch("/api/admin/settings/fee", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ serviceFee: fee })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert("✅ Service fee updated!");
+        } else {
+          alert("❌ " + (data.message || "Update failed."));
+        }
+      } catch {
+        alert("⚠️ Server error.");
+      }
+    });
+
+    // Save notification preferences
+    document.getElementById("notificationForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const emailNotif = document.getElementById("emailNotif").checked;
+      const smsNotif = document.getElementById("smsNotif").checked;
+
+      try {
+        const res = await fetch("/api/admin/settings/notifications", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ email: emailNotif, sms: smsNotif })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert("✅ Preferences saved!");
+        } else {
+          alert("❌ " + (data.message || "Update failed."));
+        }
+      } catch {
+        alert("⚠️ Server error.");
+      }
+    });
+
+    // Change password
+    document.getElementById("passwordForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const oldPassword = document.getElementById("oldPassword").value;
+      const newPassword = document.getElementById("newPassword").value;
+      const confirmPassword = document.getElementById("confirmPassword").value;
+
+      if (newPassword !== confirmPassword) {
+        alert("❌ New passwords do not match.");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/admin/change-password", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ oldPassword, newPassword })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert("✅ Password changed successfully!");
+          document.getElementById("passwordForm").reset();
+        } else {
+          alert("❌ " + (data.message || "Password change failed."));
+        }
+      } catch {
+        alert("⚠️ Server error.");
+      }
+    });
+
+    // Logout
+    function logout() {
+      localStorage.removeItem("token");
+      alert("Logging out...");
+      window.location.href = "login.html";
+    }
+
+    // Init
+    window.onload = loadAdminProfile;
+  </script>
+</body>
+</html>

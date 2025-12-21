@@ -1,0 +1,18 @@
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reference = params.get("reference");
+
+  const token = JSON.parse(localStorage.getItem("userInfo")).token;
+
+  fetch(`/api/payments/verify/${reference}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+    .then(res => res.json())
+    .then(() => {
+      alert("✅ Payment successful!");
+      window.location.href = "/customer/my-bookings.html";
+    })
+    .catch(() => alert("Verification failed"));
+</script>

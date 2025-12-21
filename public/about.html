@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About Us | Trusted Hand</title>
+  <link rel="icon" type="image/png" href="../static/images/logo.png">
+  <link rel="stylesheet" href="../static/css/style.css">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <header>
+  <nav class="navbar">
+    <div class="logo">
+      <img src="../static/images/logo.png" class="logo-img" alt="Trusted Hand Logo">
+      <span>Trusted Hand</span>
+    </div>
+
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html" class="active">About</a></li>
+      <li><a href="service.html">Services</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+      <li><a href="contact.html">Contact</a></li>
+      <li><a href="login.html" class="btn">Login</a></li>
+    </ul>
+  </nav>
+</header>
+
+
+  <!-- About Hero -->
+  <section class="about-hero">
+    <h1>About Trusted Hand</h1>
+    <p>Your reliable partner in finding skilled artisans across Nigeria.</p>
+  </section>
+
+  <!-- About Content -->
+  <section class="about-content">
+    <div class="about-box">
+      <h2>Our Mission</h2>
+      <p>
+        To connect Nigerians with trusted, skilled artisans—making everyday services
+        like plumbing, catering, electrical repairs, and cleaning simple, reliable,
+        and affordable.
+      </p>
+    </div>
+
+    <div class="about-box">
+      <h2>Our Vision</h2>
+      <p>
+        To become the number one platform in Africa where artisans and customers meet,
+        build trust, and grow together.
+      </p>
+    </div>
+
+    <div class="about-box">
+      <h2>Our Values</h2>
+      <ul>
+        <li>Trust and Transparency</li>
+        <li>Quality Service</li>
+        <li>Empowering Local Artisans</li>
+        <li>Customer Satisfaction</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Team Section -->
+  <section class="team">
+    <h2>Meet the Team</h2>
+    <div class="team-grid">
+      <div class="team-member">
+        <img src="../static/images/avatar1.png" alt="Team Member">
+        <h3>Wahab</h3>
+        <p>Founder & Visionary</p>
+      </div>
+      <div class="team-member">
+        <img src="../static/images/avatar2.png" alt="Team Member">
+        <h3>Trusted Hand Team</h3>
+        <p>Developers & Designers</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
+  </footer>
+
+  <!-- JS -->
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+
+</body>
+</html>

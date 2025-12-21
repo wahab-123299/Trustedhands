@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User Dashboard - Trusted Hand</title>
+    <link rel="stylesheet" href="../../static/css/style.css" />
+  </head>
+  <body>
+
+    <script>
+      // 🔐 AUTH + ROLE GUARD
+      const token = localStorage.getItem("token");
+      const role = localStorage.getItem("role");
+
+      if (!token || role !== "customer") {
+        window.location.href = "../auth/login.html";
+      }
+    </script>
+
+    <header>
+      <div class="container">
+        <h1>User Dashboard</h1>
+        <nav>
+          <a href="../index.html">Home</a>
+          <a href="../search.html">Find Artisans</a>
+          <a href="my-bookings.html">My Bookings</a>
+          <a href="dashboard.html" class="active">Dashboard</a>
+          <a href="#" id="logoutBtn">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <h2 id="welcomeMessage">Welcome</h2>
+
+      <!-- Overview -->
+      <section class="user-section">
+        <h3>Overview</h3>
+        <div class="stats">
+          <div class="stat-card">
+            <h4>Total Bookings</h4>
+            <p id="totalBookings">0</p>
+          </div>
+          <div class="stat-card">
+            <h4>Completed Jobs</h4>
+            <p id="completedJobs">0</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- My Bookings -->
+      <section class="user-section">
+        <h3>My Bookings</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Artisan</th>
+              <th>Service</th>
+              <th>Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="bookingsTable">
+            <tr><td colspan="4">Loading...</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Profile -->
+      <section class="user-section">
+        <h3>Profile</h3>
+        <form id="profileForm">
+          <label>Full Name</label>
+          <input type="text" id="name" required>
+
+          <label>Email</label>
+          <input type="email" id="email" disabled>
+
+          <label>Phone</label>
+          <input type="text" id="phone">
+
+          <button type="submit">Update Profile</button>
+        </form>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>&copy; 2025 Trusted Hand</p>
+      </div>
+    </footer>
+
+    <script>
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      };
+
+      // 🔄 LOAD DASHBOARD
+      async function loadDashboard() {
+        try {
+          // PROFILE
+          const profileRes = await fetch("/api/users/profile", { headers });
+          const profile = await profileRes.json();
+
+          document.getElementById("welcomeMessage").textContent =
+            `Welcome, ${profile.name}`;
+          document.getElementById("name").value = profile.name;
+          document.getElementById("email").value = profile.email;
+          document.getElementById("phone").value = profile.phone || "";
+
+          // BOOKINGS
+          const bookingsRes = await fetch("/api/bookings/my", { headers });
+          const bookings = await bookingsRes.json();
+
+          document.getElementById("totalBookings").textContent = bookings.length;
+          document.getElementById("completedJobs").textContent =
+            bookings.filter(b => b.status === "completed").length;
+
+          const table = document.getElementById("bookingsTable");
+          table.innerHTML = "";
+
+          if (!bookings.length) {
+            table.innerHTML = "<tr><td colspan='4'>No bookings yet</td></tr>";
+          } else {
+            bookings.forEach(b => {
+              table.innerHTML += `
+                <tr>
+                  <td>${b.artisan.name}</td>
+                  <td>${b.artisan.profession}</td>
+                  <td>${new Date(b.bookingDate).toLocaleDateString()}</td>
+                  <td>${b.status}</td>
+                </tr>
+              `;
+            });
+          }
+
+        } catch (err) {
+          alert("Session expired. Please login again.");
+          localStorage.clear();
+          window.location.href = "../auth/login.html";
+        }
+      }
+
+      // ✏️ UPDATE PROFILE
+      document.getElementById("profileForm").addEventListener("submit", async e => {
+        e.preventDefault();
+
+        const name = document.getElementById("name").value;
+        const phone = document.getElementById("phone").value;
+
+        const res = await fetch("/api/users/profile", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ name, phone })
+        });
+
+        if (res.ok) {
+          alert("Profile updated successfully");
+        } else {
+          alert("Failed to update profile");
+        }
+      });
+
+      // 🚪 LOGOUT
+      document.getElementById("logoutBtn").onclick = () => {
+        localStorage.clear();
+        window.location.href = "../auth/login.html";
+      };
+
+      loadDashboard();
+    </script>
+
+  </body>
+</html>

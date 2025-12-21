@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Bookings | Trusted Hand</title>
+  <link rel="stylesheet" href="../../static/css/style.css" />
+</head>
+<body>
+
+<script>
+  const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+  if (!userInfo || !userInfo.token || userInfo.role !== "customer") {
+    window.location.href = "../auth/login.html";
+  }
+  const token = userInfo.token;
+</script>
+
+<header>
+  <div class="container">
+    <h1>Trusted Hand</h1>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="search.html">Find Artisans</a>
+      <a href="my-bookings.html" class="active">My Bookings</a>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="#" id="logoutBtn">Logout</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <h2>My Bookings</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Artisan</th>
+        <th>Details</th>
+        <th>Location</th>
+        <th>Date</th>
+        <th>Payment</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="bookingsTable">
+      <tr><td colspan="6">Loading bookings...</td></tr>
+    </tbody>
+  </table>
+</main>
+
+<footer>
+  <p>&copy; 2025 Trusted Hand</p>
+</footer>
+
+<script>
+  const table = document.getElementById("bookingsTable");
+
+  async function loadBookings() {
+    try {
+      const res = await fetch("/api/bookings/my", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const bookings = await res.json();
+
+      if (!res.ok) {
+        table.innerHTML = `<tr><td colspan="6">${bookings.message}</td></tr>`;
+        return;
+      }
+
+      if (!bookings.length) {
+        table.innerHTML = `<tr><td colspan="6">No bookings found.</td></tr>`;
+        return;
+      }
+
+      table.innerHTML = "";
+
+      bookings.forEach(b => {
+        const paymentClass = b.isPaid ? "paid" : "unpaid";
+        const paymentText = b.isPaid ? "PAID" : "UNPAID";
+
+        table.insertAdjacentHTML("beforeend", `
+          <tr>
+            <td>${b.artisan.name}</td>
+            <td>${b.details || "-"}</td>
+            <td>${b.location}</td>
+            <td>${new Date(b.bookingDate).toLocaleString()}</td>
+            <td class="${paymentClass}">${paymentText}</td>
+            <td class="status-${b.status}">${b.status.toUpperCase()}</td>
+          </tr>
+        `);
+      });
+
+    } catch {
+      table.innerHTML = `<tr><td colspan="6">Server error</td></tr>`;
+    }
+  }
+
+  document.getElementById("logoutBtn").onclick = () => {
+    localStorage.clear();
+    window.location.href = "../auth/login.html";
+  };
+
+  loadBookings();
+</script>
+
+<style>
+  .paid { color: green; font-weight: bold; }
+  .unpaid { color: red; font-weight: bold; }
+
+  .status-pending { color: orange; font-weight: bold; }
+  .status-completed { color: green; font-weight: bold; }
+  .status-cancelled { color: red; font-weight: bold; }
+</style>
+
+</body>
+</html>

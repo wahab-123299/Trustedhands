@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin - Manage Users | Trusted Hand</title>
+    <link rel="stylesheet" href="../../static/css/admin.css" />
+
+    <style>
+      .main-content { padding: 2rem; background: #f8f9fa; }
+      .search-container { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:1rem; }
+      input, select { padding:0.6rem; border-radius:6px; border:1px solid #ccc; }
+      table { width:100%; border-collapse:collapse; background:#fff; border-radius:8px; }
+      th, td { padding:0.9rem; border-bottom:1px solid #eee; }
+      th { background:#007bff; color:#fff; }
+      tr:hover { background:#f1f1f1; }
+      .action-btn { padding:0.4rem 0.8rem; border:none; border-radius:4px; color:#fff; cursor:pointer; }
+      .edit { background:#007bff; }
+      .block { background:#dc3545; }
+
+      .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); }
+      .modal-content {
+        background:#fff; padding:2rem; width:400px;
+        margin:10% auto; border-radius:8px; position:relative;
+      }
+      .close { position:absolute; right:15px; top:10px; cursor:pointer; font-size:1.5rem; }
+    </style>
+  </head>
+
+  <body>
+    <div class="dashboard-container">
+
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <h2>Trusted Hand</h2>
+        <ul>
+          <li><a href="admin-dashboard.html">Dashboard</a></li>
+          <li><a href="admin-users.html" class="active">Users</a></li>
+          <li><a href="admin-artisans.html">Artisans</a></li>
+          <li><a href="admin-jobs.html">Jobs</a></li>
+          <li><a href="admin-payments.html">Payments</a></li>
+        </ul>
+      </aside>
+
+      <!-- Main -->
+      <main class="main-content">
+        <h1>Manage Users</h1>
+
+        <div class="search-container">
+          <input type="text" id="searchInput" placeholder="Search name/email">
+          <select id="statusFilter">
+            <option value="All">All</option>
+            <option value="Active">Active</option>
+            <option value="Blocked">Blocked</option>
+          </select>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="userList">
+            <tr><td colspan="6">Loading users...</td></tr>
+          </tbody>
+        </table>
+      </main>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal" id="userModal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Edit User</h3>
+
+        <input id="userName" placeholder="Name">
+        <input id="userEmail" placeholder="Email">
+        <input id="userLocation" placeholder="Location">
+
+        <select id="userStatus">
+          <option value="Active">Active</option>
+          <option value="Blocked">Blocked</option>
+        </select>
+
+        <button onclick="saveUser()" class="action-btn edit" style="width:100%;margin-top:1rem">
+          Save Changes
+        </button>
+      </div>
+    </div>
+
+    <script>
+      const token = localStorage.getItem("token");
+      if (!token) location.href = "../login.html";
+
+      const userList = document.getElementById("userList");
+      const modal = document.getElementById("userModal");
+      let users = [];
+      let currentUserId = null;
+
+      async function loadUsers() {
+        const res = await fetch("/api/admin/users", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        const data = await res.json();
+        users = data;
+        renderUsers();
+      }
+
+      function renderUsers() {
+        const search = searchInput.value.toLowerCase();
+        const filter = statusFilter.value;
+
+        userList.innerHTML = "";
+
+        const filtered = users.filter(u =>
+          (filter === "All" || u.status === filter) &&
+          (u.name.toLowerCase().includes(search) || u.email.toLowerCase().includes(search))
+        );
+
+        if (!filtered.length) {
+          userList.innerHTML = "<tr><td colspan='6'>No users found</td></tr>";
+          return;
+        }
+
+        filtered.forEach(user => {
+          userList.innerHTML += `
+            <tr>
+              <td>${user.name}</td>
+              <td>${user.email}</td>
+              <td>${user.role}</td>
+              <td>${user.location || "-"}</td>
+              <td>${user.status}</td>
+              <td>
+                <button class="action-btn edit" onclick="openModal('${user._id}')">Edit</button>
+                <button class="action-btn block" onclick="toggleStatus('${user._id}')">
+                  ${user.status === "Active" ? "Block" : "Unblock"}
+                </button>
+              </td>
+            </tr>`;
+        });
+      }
+
+      function openModal(id) {
+        const user = users.find(u => u._id === id);
+        currentUserId = id;
+
+        userName.value = user.name;
+        userEmail.value = user.email;
+        userLocation.value = user.location || "";
+        userStatus.value = user.status;
+
+        modal.style.display = "block";
+      }
+
+      async function saveUser() {
+        const res = await fetch(`/api/admin/users/${currentUserId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            name: userName.value,
+            email: userEmail.value,
+            location: userLocation.value,
+            status: userStatus.value
+          })
+        });
+
+        if (res.ok) {
+          modal.style.display = "none";
+          loadUsers();
+        }
+      }
+
+      async function toggleStatus(id) {
+        await fetch(`/api/admin/users/${id}/toggle-status`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        loadUsers();
+      }
+
+      document.querySelector(".close").onclick = () => modal.style.display = "none";
+      window.onclick = e => { if (e.target === modal) modal.style.display = "none"; };
+
+      searchInput.onkeyup = renderUsers;
+      statusFilter.onchange = renderUsers;
+
+      loadUsers();
+    </script>
+  </body>
+</html>

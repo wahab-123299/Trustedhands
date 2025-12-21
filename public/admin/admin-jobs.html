@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin - Jobs | Trusted Hand</title>
+  <link rel="stylesheet" href="../../static/css/admin.css" />
+  <style>
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 8px;
+      width: 400px;
+      max-width: 95%;
+    }
+    .modal-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1rem;
+    }
+    .btn { cursor: pointer; }
+    .search-bar {
+      padding: 0.6rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+      width: 300px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.9rem;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background: #007bff;
+      color: #fff;
+    }
+    tr:hover {
+      background: #f1f1f1;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="admin-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <h2>Trusted Hand</h2>
+      <ul>
+        <li><a href="admin-dashboard.html">Dashboard</a></li>
+        <li><a href="admin-users.html">Users</a></li>
+        <li><a href="admin-artisans.html">Artisans</a></li>
+        <li><a href="admin-jobs.html" class="active">Jobs</a></li>
+        <li><a href="admin-payments.html">Payments</a></li>
+        <li><a href="#" id="logoutBtn">Logout</a></li>
+      </ul>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header>
+        <h1>Manage Job Listings</h1>
+        <input type="text" id="searchInput" placeholder="Search jobs..." class="search-bar" />
+      </header>
+
+      <!-- Job Table -->
+      <section class="table-section">
+        <table class="data-table" id="jobsTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Job Title</th>
+              <th>Customer</th>
+              <th>Artisan</th>
+              <th>Date</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7">Loading jobs...</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <!-- Job Detail Modal -->
+  <div class="modal" id="jobModal">
+    <div class="modal-content">
+      <h3>Job Details</h3>
+      <p><strong>Title:</strong> <span id="modalJobTitle"></span></p>
+      <p><strong>Customer:</strong> <span id="modalCustomer"></span></p>
+      <p><strong>Artisan:</strong> <span id="modalArtisan"></span></p>
+      <p><strong>Date:</strong> <span id="modalDate"></span></p>
+      <p><strong>Status:</strong> <span id="modalStatus"></span></p>
+      <div class="modal-buttons">
+        <button class="btn btn-close" onclick="closeModal()">Close</button>
+        <button class="btn btn-complete" onclick="updateStatus(currentJobId,'Completed')">Mark Complete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const jobModal = document.getElementById("jobModal");
+    let jobs = [];
+    let currentJobId = null;
+
+    async function loadJobs() {
+      const tbody = document.querySelector("#jobsTable tbody");
+      tbody.innerHTML = "<tr><td colspan='7'>Loading jobs...</td></tr>";
+
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return window.location.href = "login.html";
+
+        const res = await fetch("/api/admin/jobs", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          jobs = data;
+          renderJobs();
+        } else {
+          tbody.innerHTML = `<tr><td colspan='7'>❌ ${data.message || "Failed to load jobs."}</td></tr>`;
+        }
+      } catch {
+        tbody.innerHTML = "<tr><td colspan='7'>⚠️ Server error.</td></tr>";
+      }
+    }
+
+    function renderJobs(search = "") {
+      const tbody = document.querySelector("#jobsTable tbody");
+      tbody.innerHTML = "";
+
+      const filtered = jobs.filter(j => {
+        const customer = j.customer?.name || "";
+        const artisan = j.artisan?.name || "";
+        return (
+          j.title.toLowerCase().includes(search.toLowerCase()) ||
+          customer.toLowerCase().includes(search.toLowerCase()) ||
+          artisan.toLowerCase().includes(search.toLowerCase()) ||
+          j.status.toLowerCase().includes(search.toLowerCase())
+        );
+      });
+
+      if (!filtered.length) {
+        tbody.innerHTML = "<tr><td colspan='7'>No jobs found.</td></tr>";
+        return;
+      }
+
+      filtered.forEach((job, index) => {
+        tbody.innerHTML += `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${job.title}</td>
+            <td>${job.customer?.name || "N/A"}</td>
+            <td>${job.artisan?.name || "Unassigned"}</td>
+            <td>${new Date(job.createdAt).toLocaleDateString()}</td>
+            <td><span class="status ${job.status.toLowerCase()}">${job.status}</span></td>
+            <td>
+              <button class="btn btn-view" onclick="openModal('${job._id}')">View</button>
+              ${job.status === "Pending" ? `<button class="btn btn-approve" onclick="updateStatus('${job._id}','Approved')">Approve</button>` : ""}
+              ${job.status === "Ongoing" ? `<button class="btn btn-complete" onclick="updateStatus('${job._id}','Completed')">Complete</button>` : ""}
+              <button class="btn btn-delete" onclick="deleteJob('${job._id}')">Delete</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    function openModal(id) {
+      const job = jobs.find(j => j._id === id);
+      if (!job) return;
+
+      currentJobId = id;
+      document.getElementById("modalJobTitle").textContent = job.title;
+      document.getElementById("modalCustomer").textContent = job.customer?.name || "N/A";
+      document.getElementById("modalArtisan").textContent = job.artisan?.name || "Unassigned";
+      document.getElementById("modalDate").textContent = new Date(job.createdAt).toLocaleDateString();
+      document.getElementById("modalStatus").textContent = job.status;
+
+      jobModal.style.display = "flex";
+    }
+
+    function closeModal() {
+      jobModal.style.display = "none";
+    }
+
+    async function updateStatus(id, status) {
+      try {
+        const res = await fetch(`/api/admin/jobs/${id}/status`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`
+          },
+          body: JSON.stringify({ status })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          alert("✅ Job status updated");
+          closeModal();
+          loadJobs();
+        } else {
+          alert("❌ " + (data.message || "Update failed"));
+        }
+      } catch {
+        alert("⚠️ Server error");
+      }
+    }
+
+    async function deleteJob(id) {
+      if (!confirm("Delete this job?")) return;
+
+      try {
+        const res = await fetch(`/api/admin/jobs/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          alert("✅ Job deleted");
+          loadJobs();
+        } else {
+          alert("❌ " + (data.message || "Delete failed"));
+        }
+      } catch {
+        alert("⚠️ Server error");
+      }
+    }
+
+    document.getElementById("searchInput").addEventListener("keyup", e => {
+      renderJobs(e.target.value);
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      window.location.href = "login.html";
+    });
+
+    window.onclick = e => {
+      if (e.target === jobModal) closeModal();
+    };
+
+    loadJobs();
+  </script>
+
+</body>
+</html>
+

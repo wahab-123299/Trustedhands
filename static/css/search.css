@@ -1,0 +1,193 @@
+/* ======================================
+   GLOBAL STYLES
+====================================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  background: #f4f6f9;
+  color: #333;
+}
+
+/* ======================================
+   HEADER
+====================================== */
+header {
+  background: #00224f;
+  padding: 18px 0;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+header .container {
+  width: 90%;
+  margin: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h1 {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+nav a {
+  color: #fff;
+  text-decoration: none;
+  margin-left: 20px;
+  font-size: 15px;
+  transition: 0.3s;
+}
+
+nav a:hover {
+  color: #ffd24c;
+}
+
+/* ======================================
+   SEARCH SECTION
+====================================== */
+.search-section {
+  padding: 40px 0;
+}
+
+.search-section .container {
+  width: 90%;
+  margin: auto;
+}
+
+.search-section h2 {
+  font-size: 28px;
+  margin-bottom: 20px;
+}
+
+/* ======================================
+   SEARCH BAR
+====================================== */
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 25px;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  outline: none;
+}
+
+.search-bar input:focus {
+  border-color: #0055ff;
+}
+
+.search-bar button {
+  padding: 12px 25px;
+  background: #0055ff;
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.search-bar button:hover {
+  background: #003ecb;
+}
+
+/* ======================================
+   RESULTS GRID
+====================================== */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 22px;
+}
+
+/* ======================================
+   RESULT CARD
+====================================== */
+.result-card {
+  background: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-top: 4px solid #0055ff;
+  transition: 0.3s;
+}
+
+.result-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.result-card h3 {
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+
+.result-card p {
+  margin-bottom: 6px;
+  color: #555;
+  font-size: 15px;
+}
+
+.result-card button {
+  margin-top: 12px;
+  padding: 10px 15px;
+  background: #00224f;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  transition: 0.3s;
+}
+
+.result-card button:hover {
+  background: #00142f;
+}
+
+/* ======================================
+   COLORS FOR ARTISANS & JOBS
+====================================== */
+.result-card.artisan {
+  border-top-color: #28a745;
+}
+
+.result-card.job {
+  border-top-color: #ff8800;
+}
+
+/* ======================================
+   RESPONSIVE DESIGN
+====================================== */
+@media (max-width: 768px) {
+  header .container {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  nav {
+    margin-top: 10px;
+  }
+
+  nav a {
+    margin: 0 10px;
+  }
+
+  .search-bar {
+    flex-direction: column;
+  }
+
+  .search-bar button {
+    width: 100%;
+  }
+}
