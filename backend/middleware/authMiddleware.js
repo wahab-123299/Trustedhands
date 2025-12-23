@@ -9,7 +9,6 @@ import Artisan from "../models/artisan.js";
 export const protect = asyncHandler(async (req, res, next) => {
   let token;
 
-  // Check for Bearer token
   if (req.headers.authorization?.startsWith("Bearer")) {
     try {
       token = req.headers.authorization.split(" ")[1];
@@ -25,7 +24,6 @@ export const protect = asyncHandler(async (req, res, next) => {
         user = await Artisan.findById(decoded.id).select("-password");
       }
 
-      // If still not found
       if (!user) {
         res.status(401);
         throw new Error("User or Artisan not found");
@@ -33,7 +31,6 @@ export const protect = asyncHandler(async (req, res, next) => {
 
       // Attach user data to request object
       req.user = user;
-
       next();
     } catch (error) {
       console.error("Token verification failed:", error.message);
@@ -45,3 +42,15 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw new Error("Not authorized, token missing");
   }
 });
+
+/**
+ * @desc    Restrict access to admin users only
+ */
+export const adminOnly = (req, res, next) => {
+  if (req.user && req.user.role === "admin") {
+    next();
+  } else {
+    res.status(403);
+    throw new Error("Access denied: Admins only");
+  }
+};

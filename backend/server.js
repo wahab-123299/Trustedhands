@@ -7,12 +7,16 @@ import artisanRoutes from "./routes/artisanRoutes.js";
 import jobRoutes from "./routes/jobRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
-import reviewRoutes from "./routes/review.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import { paystackWebhook } from "./controllers/paymentController.js";
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 
 // Load env variables
 dotenv.config();
@@ -46,7 +50,6 @@ app.use("/api/artisans", artisanRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use(express.static(path.join(__dirname, "../frontend/public")))
 
