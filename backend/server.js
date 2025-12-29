@@ -38,7 +38,9 @@ app.post(
 );
 
 // ===== Middleware =====
-app.use(cors());
+app.use(cors({
+  origin: "*",// or your Netlify URL for stricter security
+}));
 app.use(express.json());
 
 // ===== Routes =====
