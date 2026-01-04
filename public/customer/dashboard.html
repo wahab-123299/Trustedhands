@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>User Dashboard - Trusted Hand</title>
-    <link rel="stylesheet" href="../../static/css/style.css" />
+    <link rel="stylesheet" href="./css/style.css" />
   </head>
   <body>
 
@@ -101,7 +101,7 @@
       async function loadDashboard() {
         try {
           // PROFILE
-          const profileRes = await fetch("/api/users/profile", { headers });
+          const profileRes = await fetch("https://trustedhands-backend.onrender.com/api/users/profile", { headers });
           const profile = await profileRes.json();
 
           document.getElementById("welcomeMessage").textContent =
@@ -111,7 +111,7 @@
           document.getElementById("phone").value = profile.phone || "";
 
           // BOOKINGS
-          const bookingsRes = await fetch("/api/bookings/my", { headers });
+          const bookingsRes = await fetch("https://trustedhands-backend.onrender.com/api/bookings/my", { headers });
           const bookings = await bookingsRes.json();
 
           document.getElementById("totalBookings").textContent = bookings.length;
@@ -150,7 +150,7 @@
         const name = document.getElementById("name").value;
         const phone = document.getElementById("phone").value;
 
-        const res = await fetch("/api/users/profile", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/users/profile", {
           method: "PUT",
           headers,
           body: JSON.stringify({ name, phone })

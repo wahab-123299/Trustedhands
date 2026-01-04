@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin - Settings | Trusted Hand</title>
-  <link rel="stylesheet" href="../../static/css/admin.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
 </head>
 <body>
   <div class="admin-container">
@@ -93,7 +93,7 @@
     // Load current admin settings
     async function loadAdminProfile() {
       try {
-        const res = await fetch("/api/admin/profile", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/profile", {
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
@@ -119,7 +119,7 @@
       const email = document.getElementById("adminEmail").value;
 
       try {
-        const res = await fetch("/api/admin/profile", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/profile", {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -144,7 +144,7 @@
       const fee = document.getElementById("serviceFee").value;
 
       try {
-        const res = await fetch("/api/admin/settings/fee", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/settings/fee", {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -170,7 +170,7 @@
       const smsNotif = document.getElementById("smsNotif").checked;
 
       try {
-        const res = await fetch("/api/admin/settings/notifications", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/settings/notifications", {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -202,7 +202,7 @@
       }
 
       try {
-        const res = await fetch("/api/admin/change-password", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/change-password", {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",

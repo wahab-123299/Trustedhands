@@ -4,7 +4,7 @@
 
   const token = JSON.parse(localStorage.getItem("userInfo")).token;
 
-  fetch(`/api/payments/verify/${reference}`, {
+  fetch("https://trustedhands-backend.onrender.com/api/payments/verify/${reference}", {
     headers: {
       Authorization: `Bearer ${token}`,
     },

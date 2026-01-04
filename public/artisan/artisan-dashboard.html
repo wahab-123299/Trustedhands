@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Artisan Dashboard - Trusted Hand</title>
-  <link rel="stylesheet" href="../../static/css/dashboard.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
 </head>
 <body>
 
@@ -107,7 +107,7 @@
     // ======================
     async function loadProfile() {
       try {
-        const res = await fetch("/api/artisans/profile", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -144,7 +144,7 @@
       tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
 
       try {
-        const res = await fetch("/api/artisans/jobs/active", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/jobs/active", {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -187,7 +187,7 @@
       tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
 
       try {
-        const res = await fetch("/api/artisans/jobs/history", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/jobs/history", {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -227,7 +227,7 @@
     // ======================
     async function markComplete(jobId) {
       try {
-        const res = await fetch(`/api/artisans/jobs/${jobId}/complete`, {
+        const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/jobs/${jobId}/complete`, {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -259,7 +259,7 @@
       };
 
       try {
-        const res = await fetch("/api/artisans/profile", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",

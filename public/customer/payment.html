@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Payments - Trusted Hand</title>
 
-  <link rel="stylesheet" href="../static/css/style.css" />
+  <link rel="stylesheet" href="../css/style.css" />
 
   <style>
     body {
@@ -213,7 +213,7 @@
       tbody.innerHTML = "<tr><td colspan='5'>Loading...</td></tr>";
 
       try {
-        const res = await fetch("/api/payments/customer");
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/payments/customer");
         const payments = await res.json();
 
         if (!payments.length) {
@@ -243,7 +243,7 @@
       tbody.innerHTML = "<tr><td colspan='5'>Loading...</td></tr>";
 
       try {
-        const res = await fetch("/api/payments/artisan");
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/payments/artisan");
         const payouts = await res.json();
 
         if (!payouts.length) {

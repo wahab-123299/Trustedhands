@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Artisan Profile Setup - Trusted Hand</title>
-  <link rel="stylesheet" href="../static/css/style.css">
+  <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
 
@@ -79,7 +79,7 @@
   // =============================
   async function loadProfile() {
     try {
-      const res = await fetch("/api/artisans/profile", {
+      const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -116,7 +116,7 @@
     status.textContent = "Saving...";
 
     try {
-      const res = await fetch("/api/artisans/profile", {
+      const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
         body: formData

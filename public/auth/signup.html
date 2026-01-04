@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Up - Trusted Hand</title>
-  <link rel="stylesheet" href="../static/css/style.css" />
+  <link rel="stylesheet" href="../css/style.css" />
 </head>
 <body>
 
@@ -26,6 +26,7 @@
       <option value="">Select Role</option>
       <option value="customer">Customer</option>
       <option value="artisan">Artisan</option>
+      <option value="admin">Admin</option>
     </select>
 
     <button type="submit">Sign Up</button>
@@ -60,7 +61,7 @@
     status.style.color = "black";
 
     try {
-      const res = await fetch("/api/auth/signup", {
+      const res = await fetch("https://trustedhands-backend.onrender.com/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullname, email, password, role })

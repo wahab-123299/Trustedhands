@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin - Manage Artisans | Trusted Hand</title>
-  <link rel="stylesheet" href="../../static/css/admin.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
   <style>
     .search-bar { padding: 0.6rem; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem; width: 320px; }
     table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
@@ -103,7 +103,7 @@
   async function loadArtisans() {
     artisanList.innerHTML = `<tr><td colspan="7">Loading...</td></tr>`;
     try {
-      const res = await fetch("/api/admin/artisans", {
+      const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/artisans", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -168,7 +168,7 @@
       status: artisanStatus.value
     };
     try {
-      const res = await fetch(`/api/admin/artisans/${currentId}`, {
+      const res = await fetch(`https://trustedhands-backend.onrender.com/api/admin/artisans/${currentId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -187,7 +187,7 @@
 
   async function updateStatus(id, status) {
     try {
-      const res = await fetch(`/api/admin/artisans/${id}/status`, {
+      const res = await fetch(`https://trustedhands-backend.onrender.com/api/admin/artisans/${id}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

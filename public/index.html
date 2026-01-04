@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trusted Hand - Find Trusted Artisans</title>
 
-    <link rel="icon" type="image/png" href="../static/images/logo.png">
-    <link rel="stylesheet" href="../static/css/style.css">
+    <link rel="icon" type="image/png" href="./images/logo.png">
+    <link rel="stylesheet" href="./css/style.css">
   </head>
   <body>
 
@@ -14,7 +14,7 @@
   <nav class="navbar">
     
     <div class="logo">
-        <img src="../static/images/logo.png"  class="logo-img">
+        <img src="./images/logo.png"  class="logo-img">
         <span>Trusted Hand</span>
     </div>
     
@@ -41,24 +41,27 @@
     <div class="hero-content">
       <h1>Trusted Hand</h1>
       <p>Connecting you to skilled artisans you can trust</p>
+
       <form class="search-bar" onsubmit="return searchArtisans(event)">
-        <input type="text" name="skill" placeholder="What service do you need? e.g. Plumber">
-        <input type="text" name="location" placeholder="Enter your location">
+        <input type="text" name="skill" placeholder="What service do you need? e.g. Plumber" required>
+        <input type="text" name="location" placeholder="Enter your location" required>
         <button type="submit">Search</button>
       </form>
+
     </div>
   </header>
+
 
   <!-- Categories -->
   <section class="categories">
     <h2>Popular Services</h2>
     <div class="category-grid">
-      <div class="category-card">🔧 Plumber</div>
-      <div class="category-card">💡 Electrician</div>
-      <div class="category-card">🧹 Cleaner</div>
-      <div class="category-card">🍲 Caterer</div>
-      <div class="category-card">🔨 Carpenter</div>
-      <div class="category-card">🎨 Painter</div>
+      <div class="category-card">🔧 Plumbing</div>
+      <div class="category-card">💡 Electrical</div>
+      <div class="category-card">🧹 Cleaning</div>
+      <div class="category-card">🍲 Catering</div>
+      <div class="category-card">🔨 Carpentry</div>
+      <div class="category-card">🎨 Painting</div>
     </div>
   </section>
 
@@ -78,13 +81,13 @@
     <h2>Featured Artisans</h2>
     <div class="artisan-grid">
       <div class="artisan-card">
-        <img src="/static/images/plumber.jpg" alt="Plumber">
+        <img src="./images/plumber.jpg" alt="Plumber">
         <h3>John Doe</h3>
         <p>Plumber • Lagos</p>
         <p>⭐⭐⭐⭐☆ (12 reviews)</p>
       </div>
       <div class="artisan-card">
-        <img src="/static/images/electrician.jpg" alt="Electrician">
+        <img src="./images/electrician.jpg" alt="Electrician">
         <h3>Mary Smith</h3>
         <p>Electrician • Abuja</p>
         <p>⭐⭐⭐⭐⭐ (20 reviews)</p>
@@ -103,32 +106,46 @@
   </footer>
 
   <script>
-    async function loadFeaturedArtisans() {
-      try {
-        const res = await fetch("/api/artisans?limit=4");
-        const artisans = await res.json();
+async function loadFeaturedArtisans() {
+  try {
+    const res = await fetch(
+      "https://trustedhands-backend.onrender.com/api/artisans?limit=4"
+    );
 
-        const container = document.getElementById("featuredArtisans");
-        container.innerHTML = "";
-
-        artisans.forEach(a => {
-          container.innerHTML += `
-            <div class="artisan-card">
-              <img src="/static/images/default-avatar.png">
-              <h3>${a.name}</h3>
-              <p>${a.skill} • ${a.location}</p>
-            </div>
-          `;
-        });
-
-      } catch {
-        document.getElementById("featuredArtisans").innerHTML =
-          "<p>Unable to load artisans.</p>";
-      }
+    if (!res.ok) {
+      throw new Error("Failed to fetch artisans");
     }
 
-    loadFeaturedArtisans();
-  </script>
+    const artisans = await res.json();
+
+    const container = document.getElementById("featuredArtisans");
+    container.innerHTML = "";
+
+    if (artisans.length === 0) {
+      container.innerHTML = "<p>No artisans found.</p>";
+      return;
+    }
+
+    artisans.forEach(a => {
+      container.innerHTML += `
+        <div class="artisan-card">
+          <img src="https://via.placeholder.com/150" alt="Artisan">
+          <h3>${a.name}</h3>
+          <p>${a.skill} • ${a.location}</p>
+        </div>
+      `;
+    });
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById("featuredArtisans").innerHTML =
+      "<p>Unable to load artisans.</p>";
+  }
+}
+
+loadFeaturedArtisans();
+</script>
+
 
 
 </body>

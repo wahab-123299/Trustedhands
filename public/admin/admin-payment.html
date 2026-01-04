@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin - Payments | Trusted Hand</title>
-  <link rel="stylesheet" href="../../static/css/admin.css">
+  <link rel="stylesheet" href="../css/admin.css">
   <style>
     .search-bar {
       padding: 0.6rem;
@@ -159,7 +159,7 @@
         const token = localStorage.getItem("token");
         if (!token) return window.location.href = "login.html";
 
-        const res = await fetch("/api/admin/payments", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/payments", {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -229,7 +229,7 @@
       const newStatus = document.getElementById("paymentStatus").value;
 
       try {
-        const res = await fetch(`/api/admin/payments/${currentPaymentId}`, {
+        const res = await fetch(`https://trustedhands-backend.onrender.com/api/admin/payments/${currentPaymentId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Artisan Profile - Trusted Hand</title>
-    <link rel="stylesheet" href="../static/css/style.css" />
+    <link rel="stylesheet" href="../css/style.css" />
 
     <style>
       body { font-family: Arial, sans-serif; background: #f7f8fa; margin: 0; padding: 0; color: #333; }
@@ -97,7 +97,7 @@
       // Load artisan details
       async function loadArtisan() {
         try {
-          const res = await fetch(`/api/artisans/${artisanId}`);
+          const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}`);
           if (!res.ok) throw new Error("Failed to load artisan");
           const artisan = await res.json();
 
@@ -114,7 +114,7 @@
       // Load reviews
       async function loadReviews() {
         try {
-          const res = await fetch(`/api/artisans/${artisanId}/reviews`);
+          const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}/reviews`);
           if (!res.ok) throw new Error("Failed to load reviews");
           const reviews = await res.json();
 
@@ -159,7 +159,7 @@
         }
 
         try {
-          const res = await fetch(`/api/artisans/${artisanId}/reviews`, {
+          const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}/reviews`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

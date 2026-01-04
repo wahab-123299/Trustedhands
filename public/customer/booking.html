@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Book Artisan | Trusted Hand</title>
-  <link rel="stylesheet" href="../../static/css/style.css" />
+  <link rel="stylesheet" href="./css/style.css" />
 </head>
 <body>
 
@@ -90,7 +90,7 @@
     };
 
     try {
-      const res = await fetch("/api/bookings", {
+      const res = await fetch("https://trustedhands-backend.onrender.com/api/bookings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -124,7 +124,7 @@
   // 💳 PAYSTACK PAYMENT (REAL)
   document.getElementById("payBtn").onclick = async () => {
     try {
-      const res = await fetch("/api/payments/initialize", {
+      const res = await fetch("https://trustedhands-backend.onrender.com/api/payments/initialize", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

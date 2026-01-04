@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin - Manage Users | Trusted Hand</title>
-    <link rel="stylesheet" href="../../static/css/admin.css" />
+    <link rel="stylesheet" href="../css/admin.css" />
 
     <style>
       .main-content { padding: 2rem; background: #f8f9fa; }
@@ -104,7 +104,7 @@
       let currentUserId = null;
 
       async function loadUsers() {
-        const res = await fetch("/api/admin/users", {
+        const res = await ("/api/admin/users", {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -160,7 +160,7 @@
       }
 
       async function saveUser() {
-        const res = await fetch(`/api/admin/users/${currentUserId}`, {
+        const res = await fetch(`https://trustedhands-backend.onrender.com/api/admin/users/${currentUserId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -181,7 +181,7 @@
       }
 
       async function toggleStatus(id) {
-        await fetch(`/api/admin/users/${id}/toggle-status`, {
+        await fetch(`https://trustedhands-backend.onrender.com/api/admin/users/${id}/toggle-status`, {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` }
         });
