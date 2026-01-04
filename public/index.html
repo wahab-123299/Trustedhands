@@ -77,23 +77,16 @@
   </section>
 
   <!-- Featured Artisans -->
+  <!-- Featured Artisans -->
   <section class="featured">
     <h2>Featured Artisans</h2>
-    <div class="artisan-grid">
-      <div class="artisan-card">
-        <img src="./images/plumber.jpg" alt="Plumber">
-        <h3>John Doe</h3>
-        <p>Plumber • Lagos</p>
-        <p>⭐⭐⭐⭐☆ (12 reviews)</p>
-      </div>
-      <div class="artisan-card">
-        <img src="./images/electrician.jpg" alt="Electrician">
-        <h3>Mary Smith</h3>
-        <p>Electrician • Abuja</p>
-        <p>⭐⭐⭐⭐⭐ (20 reviews)</p>
-      </div>
+
+    <!-- 🔴 THIS ID IS REQUIRED -->
+    <div id="featuredArtisans" class="artisan-grid">
+      <!-- Dynamic artisans will load here -->
     </div>
   </section>
+
 
   <!-- Footer -->
   <footer>
@@ -106,45 +99,55 @@
   </footer>
 
   <script>
-async function loadFeaturedArtisans() {
-  try {
-    const res = await fetch(
-      "https://trustedhands-backend.onrender.com/api/artisans?limit=4"
-    );
-
-    if (!res.ok) {
-      throw new Error("Failed to fetch artisans");
-    }
-
-    const artisans = await res.json();
-
-    const container = document.getElementById("featuredArtisans");
-    container.innerHTML = "";
-
-    if (artisans.length === 0) {
-      container.innerHTML = "<p>No artisans found.</p>";
-      return;
-    }
-
-    artisans.forEach(a => {
-      container.innerHTML += `
-        <div class="artisan-card">
-          <img src="https://via.placeholder.com/150" alt="Artisan">
-          <h3>${a.name}</h3>
-          <p>${a.skill} • ${a.location}</p>
-        </div>
-      `;
+    document.addEventListener("DOMContentLoaded", () => {
+      loadFeaturedArtisans();
     });
 
-  } catch (err) {
-    console.error(err);
-    document.getElementById("featuredArtisans").innerHTML =
-      "<p>Unable to load artisans.</p>";
-  }
-}
+    async function loadFeaturedArtisans() {
+      const container = document.getElementById("featuredArtisans");
 
-loadFeaturedArtisans();
-</script>
+      if (!container) {
+        console.error("featuredArtisans container not found");
+        return;
+      }
+
+      container.innerHTML = "<p>Loading artisans...</p>";
+
+      try {
+        const res = await fetch(
+          "https://trustedhands-backend.onrender.com/api/artisans?limit=4"
+        );
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch artisans");
+        }
+
+        const artisans = await res.json();
+
+        if (!artisans || artisans.length === 0) {
+          container.innerHTML = "<p>No artisans found.</p>";
+          return;
+        }
+
+        container.innerHTML = "";
+
+        artisans.forEach(a => {
+          container.innerHTML += `
+            <div class="artisan-card">
+              <img src="https://via.placeholder.com/150" alt="Artisan">
+              <h3>${a.name || "Unnamed Artisan"}</h3>
+              <p>${a.skill || "Skill"} • ${a.location || "Location"}</p>
+            </div>
+          `;
+        });
+
+      } catch (err) {
+        console.error("Artisan load error:", err);
+        container.innerHTML = "<p>Unable to load artisans.</p>";
+      }
+    }
+  </script>
+
 
 
 
