@@ -104,6 +104,7 @@
     });
 
     async function loadFeaturedArtisans() {
+
       const container = document.getElementById("featuredArtisans");
 
       if (!container) {
@@ -144,6 +145,10 @@
       } catch (err) {
         console.error("Artisan load error:", err);
         container.innerHTML = "<p>Unable to load artisans.</p>";
+      }    
+
+      function viewArtisan(id) {
+        window.location.href = `artisan/artisan.html?id=${id}`;
       }
     }
   </script>

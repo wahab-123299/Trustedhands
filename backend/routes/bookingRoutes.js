@@ -1,6 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const Booking = require("../models/booking");
+const BookingController = require("../controllers/bookingController");
+const protect = require("../middleware/authMiddleware");
+
+// Apply authentication middleware to all routes
+router.use(protect);
 
 // POST - Create a new booking
 router.post("/", async (req, res) => {

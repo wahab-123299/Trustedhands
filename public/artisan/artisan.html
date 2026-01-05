@@ -55,17 +55,21 @@
   const token = localStorage.getItem("token");
   if (!token) {
     alert("Please login to book an artisan");
-    window.location.href = "../login.html";
+    window.location.href = "../auth/login.html";
   }
 
   // =========================
   // GET ARTISAN ID
   // =========================
-  const params = new URLSearchParams(window.location.search);
-  const artisanId = params.get("artisanId");
+  function bookArtisan() {
+    const params = new URLSearchParams(window.location.search);
+    const artisanId = params.get("artisanId");
 
-  if (!artisanId) {
-    alert("Invalid booking request");
+    if (!artisanId) {
+      alert("Invalid artisan");
+      return;
+    }
+  
     window.location.href = "../search.html";
   }
 
@@ -86,7 +90,7 @@
       if (!res.ok) throw new Error();
 
       document.getElementById("artisanInfo").textContent =
-        `Booking: ${artisan.name} (${artisan.trade || artisan.service})`;
+        `Booking: ${artisan.name} (${artisan.skill || artisan.service})`;
 
     } catch {
       document.getElementById("artisanInfo").textContent =
