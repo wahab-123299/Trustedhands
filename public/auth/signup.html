@@ -46,12 +46,12 @@
   form.addEventListener("submit", async e => {
     e.preventDefault();
 
-    const fullname = fullnameInput = document.getElementById("fullname").value.trim();
+    const name = document.getElementById("fullname").value.trim();
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
     const role = document.getElementById("role").value;
 
-    if (!fullname || !email || !password || !role) {
+    if (!name || !email || !password || !role) {
       status.textContent = "Please fill all fields";
       status.style.color = "red";
       return;
@@ -61,11 +61,14 @@
     status.style.color = "black";
 
     try {
-      const res = await fetch("https://trustedhands-backend.onrender.com/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullname, email, password, role })
-      });
+      const res = await fetch(
+        "https://trustedhands-backend.onrender.com/api/users/register",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password, role })
+        }
+      );
 
       const data = await res.json();
 
@@ -75,15 +78,14 @@
         return;
       }
 
-      // ✅ STORE AUTH DATA (SAME FORMAT AS LOGIN)
+      // ✅ SAVE AUTH DATA
       localStorage.setItem("token", data.token);
       localStorage.setItem("role", data.role);
       localStorage.setItem("userId", data._id);
 
-      status.textContent = "Account created successfully";
+      status.textContent = "Account created successfully!";
       status.style.color = "green";
 
-      // ✅ REDIRECT BASED ON BACKEND ROLE
       setTimeout(() => {
         if (data.role === "customer") {
           window.location.href = "dashboard.html";
@@ -94,12 +96,14 @@
         }
       }, 1000);
 
-    } catch {
+    } catch (err) {
+      console.error(err);
       status.textContent = "Server error. Try again later.";
       status.style.color = "red";
     }
   });
 </script>
+
 
 </body>
 </html>
