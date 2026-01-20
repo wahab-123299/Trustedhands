@@ -104,7 +104,7 @@
       let currentUserId = null;
 
       async function loadUsers() {
-        const res = await ("/api/admin/users", {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/admin-users", {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -160,7 +160,7 @@
       }
 
       async function saveUser() {
-        const res = await fetch(`https://trustedhands-backend.onrender.com/api/admin/users/${currentUserId}`, {
+        const res = await fetch(`https://trustedhands-backend.onrender.com/api/admin/admin-users/${currentUserId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",

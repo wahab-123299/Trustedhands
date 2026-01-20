@@ -1,260 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trusted Hand | Price Regulation</title>
-  <link rel="stylesheet" href="./css/style/admin.css" />
-  <style>
-    /* --- Extra layout & visual polish --- */
-    body {
-      margin: 0;
-      font-family: "Poppins", sans-serif;
-      background: #f4f6f9;
-      color: #333;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trusted Hand | Price Regulation</title>
 
-    .admin-container {
-      display: flex;
-      height: 100vh;
-    }
+    <link rel="stylesheet" href="./css/style/admin.css" />
 
-    .sidebar {
-      width: 230px;
-      background: #007bff;
-      color: #fff;
-      padding: 20px;
-    }
+    <style>
+      body {
+        margin: 0;
+        font-family: "Poppins", sans-serif;
+        background: #f4f6f9;
+      }
 
-    .sidebar h2 {
-      margin-top: 0;
-      text-align: center;
-      margin-bottom: 25px;
-    }
-
-    .sidebar nav a {
-      display: block;
-      color: #fff;
-      padding: 10px 15px;
-      border-radius: 5px;
-      text-decoration: none;
-      margin-bottom: 8px;
-      transition: background 0.3s ease;
-    }
-
-    .sidebar nav a:hover {
-      background: rgba(255, 255, 255, 0.2);
-    }
-
-    .sidebar nav a.active {
-      background: #0056b3;
-      font-weight: bold;
-    }
-
-    .main-content {
-      flex: 1;
-      padding: 25px;
-      background: #fff;
-      overflow-y: auto;
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 25px;
-    }
-
-    header h1 {
-      font-size: 22px;
-      color: #007bff;
-    }
-
-    header input {
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      width: 280px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #fff;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-
-    th, td {
-      padding: 14px 10px;
-      text-align: left;
-      border-bottom: 1px solid #eee;
-    }
-
-    th {
-      background: #f0f2f5;
-      font-weight: bold;
-    }
-
-    .status {
-      padding: 5px 10px;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 500;
-    }
-
-    .status.pending {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .status.approved {
-      background: #d4edda;
-      color: #155724;
-    }
-
-    .status.unpaid {
-      background: #f8d7da;
-      color: #721c24;
-    }
-
-    .status.paid {
-      background: #cce5ff;
-      color: #004085;
-    }
-
-    .btn-approve,
-    .btn-edit {
-      padding: 8px 15px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      color: #fff;
-      font-weight: 500;
-    }
-
-    .btn-approve {
-      background: #28a745;
-    }
-
-    .btn-edit {
-      background: #007bff;
-    }
-
-    .btn-approve:hover {
-      background: #218838;
-    }
-
-    .btn-edit:hover {
-      background: #0069d9;
-    }
-
-    @media (max-width: 768px) {
       .admin-container {
-        flex-direction: column;
+        display: flex;
+        height: 100vh;
       }
 
       .sidebar {
-        width: 100%;
+        width: 230px;
+        background: #007bff;
+        color: #fff;
+        padding: 20px;
+      }
+
+      .sidebar h2 {
+        text-align: center;
+        margin-bottom: 25px;
+      }
+
+      .sidebar nav a {
+        display: block;
+        color: #fff;
+        padding: 10px 15px;
+        border-radius: 5px;
+        text-decoration: none;
+        margin-bottom: 8px;
+      }
+
+      .sidebar nav a.active,
+      .sidebar nav a:hover {
+        background: #0056b3;
+      }
+
+      .main-content {
+        flex: 1;
+        padding: 25px;
+        background: #fff;
+        overflow-y: auto;
       }
 
       header {
-        flex-direction: column;
-        gap: 10px;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
       }
 
-      header input {
+      table {
         width: 100%;
+        border-collapse: collapse;
+        border-radius: 10px;
+        overflow: hidden;
       }
 
-      table, th, td {
+      th, td {
+        padding: 14px;
+        border-bottom: 1px solid #eee;
+      }
+
+      th {
+        background: #f0f2f5;
+      }
+
+      .status {
+        padding: 5px 10px;
+        border-radius: 6px;
         font-size: 14px;
+        font-weight: 500;
       }
-    }
-  </style>
-</head>
 
-<body>
-  <div class="admin-container">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <h2>Trusted Hand</h2>
-      <nav>
-        <a href="./admin-dashboard.html">Dashboard</a>
-        <a href="./admin-artisans.html">Artisans</a>
-        <a href="./admin-jobs.html">Jobs</a>
-        <a href="./price-dashboard.html" class="active">Price Regulation</a>
-        <a href="./admin-payments.html">Payments</a>
-        <a href="./admin-users.html">Users</a>
-      </nav>
-    </aside>
+      .pending { background: #fff3cd; color: #856404; }
+      .approved { background: #d4edda; color: #155724; }
+      .paid { background: #cce5ff; color: #004085; }
+      .unpaid { background: #f8d7da; color: #721c24; }
 
-    <!-- Main Content -->
-    <main class="main-content">
-      <header>
-        <h1>Price Regulation Dashboard</h1>
-        <input type="text" id="searchJob" placeholder="Search job by title or artisan name..." />
-      </header>
+      button {
+        padding: 8px 14px;
+        border-radius: 5px;
+        border: none;
+        color: #fff;
+        cursor: pointer;
+      }
 
-      <section class="table-section">
+      .btn-approve { background: #28a745; }
+      .btn-edit { background: #007bff; }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <div class="admin-container">
+
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <h2>Trusted Hand</h2>
+        <nav>
+          <a href="./admin-dashboard.html">Dashboard</a>
+          <a href="./admin-artisans.html">Artisans</a>
+          <a href="./admin-jobs.html">Jobs</a>
+          <a href="./price-dashboard.html" class="active">Price Regulation</a>
+          <a href="./admin-payments.html">Payments</a>
+          <a href="./admin-users.html">Users</a>
+        </nav>
+      </aside>
+
+      <!-- Main -->
+      <main class="main-content">
+        <header>
+          <h1>Price Regulation Dashboard</h1>
+          <input id="searchInput" placeholder="Search job, artisan or customer..." />
+        </header>
+
         <table>
           <thead>
             <tr>
-              <th>Job Title</th>
+              <th>Job</th>
               <th>Customer</th>
               <th>Artisan</th>
-              <th>Proposed Budget</th>
-              <th>Approved Price</th>
-              <th>Price Status</th>
+              <th>Proposed</th>
+              <th>Approved</th>
+              <th>Status</th>
               <th>Payment</th>
               <th>Action</th>
             </tr>
           </thead>
-          <tbody id="priceTableBody">
-            <tr>
-              <td>Plumbing Pipe Fix</td>
-              <td>John Doe</td>
-              <td>Mark Smith</td>
-              <td>₦20,000</td>
-              <td>₦18,000</td>
-              <td><span class="status pending">Pending</span></td>
-              <td><span class="status unpaid">Unpaid</span></td>
-              <td><button class="btn-approve">Approve</button></td>
-            </tr>
-            <tr>
-              <td>House Painting</td>
-              <td>Grace U.</td>
-              <td>Victor A.</td>
-              <td>₦50,000</td>
-              <td>₦50,000</td>
-              <td><span class="status approved">Approved</span></td>
-              <td><span class="status paid">Paid</span></td>
-              <td><button class="btn-edit">Edit</button></td>
-            </tr>
-          </tbody>
+          <tbody id="priceTableBody"></tbody>
         </table>
-      </section>
-    </main>
-  </div>
+      </main>
+    </div>
 
-  <script>
-    // Approve Price Button Action
-    const approveButtons = document.querySelectorAll(".btn-approve");
-    approveButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const row = btn.closest("tr");
-        const statusCell = row.querySelector(".status.pending");
-        if (statusCell) {
-          statusCell.textContent = "Approved";
-          statusCell.classList.remove("pending");
-          statusCell.classList.add("approved");
-        }
-        btn.textContent = "Approved";
-        btn.disabled = true;
-        btn.style.opacity = "0.7";
-        alert("✅ Price Approved Successfully!");
+    <script>
+      const API = "https://trustedhands-backend.onrender.com/api";
+      const tableBody = document.getElementById("priceTableBody");
+      const searchInput = document.getElementById("searchInput");
+
+      const adminInfo = JSON.parse(localStorage.getItem("userInfo"));
+
+      // 🔐 Admin auth check
+      if (!adminInfo || !adminInfo.token || adminInfo.role !== "admin") {
+        window.location.href = "/public/auth/login.html";
+      }
+
+      // 📥 Fetch price jobs
+      async function loadPrices() {
+        const res = await fetch(`${API}/admin/prices`, {
+          headers: { Authorization: `Bearer ${adminInfo.token}` }
+        });
+        const data = await res.json();
+        renderTable(data);
+      }
+
+      function renderTable(jobs) {
+        tableBody.innerHTML = "";
+
+        jobs.forEach(job => {
+          const tr = document.createElement("tr");
+
+          tr.innerHTML = `
+            <td>${job.title}</td>
+            <td>${job.customer.name}</td>
+            <td>${job.artisan.name}</td>
+            <td>₦${job.proposedPrice.toLocaleString()}</td>
+            <td>₦${job.approvedPrice?.toLocaleString() || "-"}</td>
+            <td><span class="status ${job.priceStatus}">${job.priceStatus}</span></td>
+            <td><span class="status ${job.paymentStatus}">${job.paymentStatus}</span></td>
+            <td>
+              ${
+                job.priceStatus === "pending"
+                  ? `<button class="btn-approve" onclick="approvePrice('${job._id}')">Approve</button>`
+                  : `<button class="btn-edit">Edit</button>`
+              }
+            </td>
+          `;
+
+          tableBody.appendChild(tr);
+        });
+      }
+
+      // ✅ Approve price
+      async function approvePrice(jobId) {
+        if (!confirm("Approve this price?")) return;
+
+        await fetch(`${API}/admin/prices/${jobId}/approve`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${adminInfo.token}`,
+            "Content-Type": "application/json"
+          }
+        });
+
+        alert("✅ Price approved");
+        loadPrices();
+      }
+
+      // 🔍 Search filter
+      searchInput.addEventListener("input", () => {
+        const term = searchInput.value.toLowerCase();
+        [...tableBody.rows].forEach(row => {
+          row.style.display = row.innerText.toLowerCase().includes(term)
+            ? ""
+            : "none";
+        });
       });
-    });
-  </script>
-</body>
+
+      loadPrices();
+    </script>
+
+  </body>
 </html>

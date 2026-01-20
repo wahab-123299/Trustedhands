@@ -1,18 +1,114 @@
-<script>
-  const params = new URLSearchParams(window.location.search);
-  const reference = params.get("reference");
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment Verification | Trusted Hand</title>
 
-  const token = JSON.parse(localStorage.getItem("userInfo")).token;
+    <link rel="icon" type="image/png" href="../images/logo.png" />
+    <link rel="stylesheet" href="../css/style.css" />
 
-  fetch("https://trustedhands-backend.onrender.com/api/payments/verify/${reference}", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  })
-    .then(res => res.json())
-    .then(() => {
-      alert("✅ Payment successful!");
-      window.location.href = "/customer/my-bookings.html";
-    })
-    .catch(() => alert("Verification failed"));
-</script>
+    <style>
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: #f5f7fa;
+        font-family: Arial, sans-serif;
+      }
+
+      .payment-box {
+        background: #fff;
+        padding: 40px;
+        border-radius: 10px;
+        text-align: center;
+        max-width: 400px;
+        width: 100%;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      }
+
+      .payment-box h2 {
+        margin-bottom: 15px;
+      }
+
+      .status {
+        font-size: 16px;
+        margin-top: 10px;
+      }
+
+      .loader {
+        margin: 20px auto;
+        width: 40px;
+        height: 40px;
+        border: 4px solid #ddd;
+        border-top: 4px solid #28a745;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+
+    <div class="payment-box">
+      <h2>Verifying Payment</h2>
+      <p>Please wait while we confirm your transaction...</p>
+      <div class="loader"></div>
+      <p id="statusText" class="status"></p>
+    </div>
+
+    <script>
+      const statusText = document.getElementById("statusText");
+
+      // Get payment reference
+      const params = new URLSearchParams(window.location.search);
+      const reference = params.get("reference");
+
+      // Get logged-in user
+      const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+
+      // 🔒 Safety checks
+      if (!reference) {
+        statusText.textContent = "❌ Invalid payment reference.";
+        throw new Error("Missing payment reference");
+      }
+
+      if (!userInfo || !userInfo.token) {
+        window.location.href = "/public/auth/login.html";
+        throw new Error("User not authenticated");
+      }
+
+      // ✅ Verify payment
+      fetch(`https://trustedhands-backend.onrender.com/api/payments/verify/${reference}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${userInfo.token}`,
+        },
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (!data || data.status !== "success") {
+            throw new Error("Payment verification failed");
+          }
+
+          statusText.style.color = "green";
+          statusText.textContent = "✅ Payment successful! Redirecting...";
+
+          setTimeout(() => {
+            window.location.href = "/customer/my-bookings.html";
+          }, 1500);
+        })
+        .catch(err => {
+          console.error(err);
+          statusText.style.color = "red";
+          statusText.textContent =
+            "❌ Payment verification failed. Please contact support.";
+        });
+    </script>
+
+  </body>
+</html>

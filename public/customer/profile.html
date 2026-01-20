@@ -1,187 +1,152 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Artisan Profile - Trusted Hand</title>
-    <link rel="stylesheet" href="../css/style.css" />
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Artisan Profile | Trusted Hand</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
 
-    <style>
-      body { font-family: Arial, sans-serif; background: #f7f8fa; margin: 0; padding: 0; color: #333; }
-      header { background: #007bff; color: #fff; padding: 15px 0; }
-      header .container { width: 90%; margin: auto; display: flex; justify-content: space-between; align-items: center; }
-      header nav a { color: #fff; text-decoration: none; margin: 0 10px; font-weight: 500; }
-      header nav a:hover { text-decoration: underline; }
-      main.container { width: 90%; margin: 30px auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
-      .artisan-details { text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 20px; }
-      .artisan-details h2 { margin: 0; font-size: 26px; color: #222; }
-      .artisan-details p { margin: 5px 0; color: #555; }
-      .book-btn { background: #007bff; color: #fff; border: none; border-radius: 5px; padding: 10px 20px; cursor: pointer; margin-top: 15px; }
-      .book-btn:hover { background: #0056b3; }
-      .reviews { margin-top: 30px; }
-      .reviews h3 { margin-bottom: 15px; color: #333; }
-      .review { background: #f2f4f7; border-radius: 8px; padding: 10px 15px; margin-bottom: 10px; }
-      .review strong { color: #007bff; }
-      .review-form { margin-top: 25px; background: #eef2f7; padding: 15px; border-radius: 8px; }
-      .review-form h4 { margin-bottom: 10px; color: #222; }
-      .review-form label { display: block; margin-top: 10px; font-weight: bold; }
-      .review-form select, .review-form textarea { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; }
-      .review-form button { background: #007bff; color: #fff; border: none; padding: 10px 15px; margin-top: 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-      .review-form button:hover { background: #0056b3; }
-      footer { text-align: center; background: #222; color: #fff; padding: 15px 0; margin-top: 40px; }
-    </style>
-  </head>
-  <body>
+<header>
+  <div class="container">
+    <h1>Trusted Hand</h1>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../service.html">Services</a>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="#" id="logoutBtn">Logout</a>
+    </nav>
+  </div>
+</header>
 
-    <header>
-      <div class="container">
-        <h1>Trusted Hand</h1>
-        <nav>
-          <a href="../index.html">Home</a>
-          <a href="../service.html">Services</a>
-          <a href="dashboard.html">Customer Dashboard</a>
-          <a href="../admin/admin-dashboard.html">Admin</a>
-        </nav>
-      </div>
-    </header>
+<main class="container artisan-profile">
 
-    <main class="container">
-      <!-- Artisan Details -->
-      <section class="artisan-details">
-        <h2 id="artisanName"></h2>
-        <p><strong>Skill:</strong> <span id="artisanSkill"></span></p>
-        <p><strong>Experience:</strong> <span id="artisanExp"></span></p>
-        <p><strong>Rating:</strong> <span id="artisanRating"></span></p>
-        <button class="book-btn" id="bookBtn">Book Now</button>
-      </section>
+  <!-- ARTISAN INFO -->
+  <section class="artisan-details">
+    <h2 id="artisanName">Loading...</h2>
+    <p><strong>Skill:</strong> <span id="artisanSkill"></span></p>
+    <p><strong>Experience:</strong> <span id="artisanExp"></span></p>
+    <p><strong>Rating:</strong> <span id="artisanRating"></span></p>
 
-      <!-- Reviews -->
-      <section class="reviews">
-        <h3>Customer Reviews</h3>
-        <div id="reviewsContainer"></div>
+    <button class="btn-primary" id="bookBtn" style="display:none;">
+      Book Now
+    </button>
+  </section>
 
-        <!-- Review Form -->
-        <form class="review-form" id="reviewForm">
-          <h4>Leave a Review</h4>
+  <!-- REVIEWS -->
+  <section class="reviews">
+    <h3>Customer Reviews</h3>
+    <div id="reviewsContainer"></div>
 
-          <label for="rating">Rating:</label>
-          <select id="rating" name="rating" required>
-            <option value="5">⭐⭐⭐⭐⭐ (5)</option>
-            <option value="4">⭐⭐⭐⭐ (4)</option>
-            <option value="3">⭐⭐⭐ (3)</option>
-            <option value="2">⭐⭐ (2)</option>
-            <option value="1">⭐ (1)</option>
-          </select>
+    <!-- REVIEW FORM -->
+    <form class="review-form" id="reviewForm" style="display:none;">
+      <h4>Leave a Review</h4>
 
-          <label for="comment">Your Review:</label>
-          <textarea id="comment" name="comment" placeholder="Write your review here..." required></textarea>
+      <label>Rating</label>
+      <select id="rating" required>
+        <option value="5">⭐⭐⭐⭐⭐</option>
+        <option value="4">⭐⭐⭐⭐</option>
+        <option value="3">⭐⭐⭐</option>
+        <option value="2">⭐⭐</option>
+        <option value="1">⭐</option>
+      </select>
 
-          <button type="submit">Submit Review</button>
-        </form>
-      </section>
-    </main>
+      <label>Comment</label>
+      <textarea id="comment" required></textarea>
 
-    <footer>
-      <p>&copy; 2025 Trusted Hand. All rights reserved.</p>
-    </footer>
+      <button type="submit" class="btn-primary">Submit Review</button>
+    </form>
+  </section>
 
-    <script>
-      // Get artisan ID from URL
-      const params = new URLSearchParams(window.location.search);
-      const artisanId = params.get("id");
+</main>
 
-      if (!artisanId) {
-        document.querySelector("main.container").innerHTML = "<p>Artisan ID missing.</p>";
+<footer>
+  <p>&copy; 2025 Trusted Hand</p>
+</footer>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const artisanId = params.get("id");
+  const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+
+  if (!artisanId) {
+    document.querySelector("main").innerHTML = "<p>Invalid artisan.</p>";
+  }
+
+  // AUTH UI CONTROL
+  if (userInfo && userInfo.role === "customer") {
+    document.getElementById("bookBtn").style.display = "inline-block";
+    document.getElementById("reviewForm").style.display = "block";
+  }
+
+  // LOGOUT
+  document.getElementById("logoutBtn").onclick = () => {
+    localStorage.clear();
+    window.location.href = "../auth/login.html";
+  };
+
+  async function loadArtisan() {
+    const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}`);
+    const artisan = await res.json();
+
+    document.getElementById("artisanName").textContent = artisan.name;
+    document.getElementById("artisanSkill").textContent = artisan.profession;
+    document.getElementById("artisanExp").textContent = `${artisan.experience} years`;
+
+    const rating = Math.min(5, Math.max(0, artisan.rating || 0));
+    document.getElementById("artisanRating").textContent =
+      "⭐".repeat(Math.round(rating)) + ` (${rating.toFixed(1)})`;
+  }
+
+  async function loadReviews() {
+    const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}/reviews`);
+    const reviews = await res.json();
+
+    const container = document.getElementById("reviewsContainer");
+    container.innerHTML = reviews.length
+      ? reviews.map(r => `
+          <div class="review">
+            <strong>${r.customerName}</strong>
+            <span>${"⭐".repeat(r.rating)}</span>
+            <p>${r.comment}</p>
+          </div>
+        `).join("")
+      : "<p>No reviews yet.</p>";
+  }
+
+  document.getElementById("bookBtn").onclick = () => {
+    window.location.href = `booking.html?artisanId=${artisanId}`;
+  };
+
+  document.getElementById("reviewForm").onsubmit = async (e) => {
+    e.preventDefault();
+
+    const rating = document.getElementById("rating").value;
+    const comment = document.getElementById("comment").value;
+
+    const res = await fetch(
+      `https://trustedhands-backend.onrender.com/api/artisans/${artisanId}/reviews`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userInfo.token}`
+        },
+        body: JSON.stringify({ rating, comment })
       }
+    );
 
-      // Load artisan details
-      async function loadArtisan() {
-        try {
-          const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}`);
-          if (!res.ok) throw new Error("Failed to load artisan");
-          const artisan = await res.json();
-
-          document.getElementById("artisanName").textContent = artisan.name;
-          document.getElementById("artisanSkill").textContent = artisan.profession;
-          document.getElementById("artisanExp").textContent = artisan.experience + " years";
-          document.getElementById("artisanRating").textContent = `${"⭐".repeat(Math.round(artisan.rating))} (${artisan.rating})`;
-        } catch (err) {
-          console.error(err);
-          document.querySelector(".artisan-details").innerHTML = "<p>Error loading artisan profile.</p>";
-        }
-      }
-
-      // Load reviews
-      async function loadReviews() {
-        try {
-          const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}/reviews`);
-          if (!res.ok) throw new Error("Failed to load reviews");
-          const reviews = await res.json();
-
-          const container = document.getElementById("reviewsContainer");
-          container.innerHTML = "";
-
-          if (!reviews.length) {
-            container.innerHTML = "<p>No reviews yet.</p>";
-            return;
-          }
-
-          reviews.forEach(r => {
-            container.innerHTML += `
-              <div class="review">
-                <p><strong>${r.customerName}</strong> ${"⭐".repeat(r.rating)}</p>
-                <p>${r.comment}</p>
-              </div>
-            `;
-          });
-        } catch (err) {
-          console.error(err);
-        }
-      }
-
-      // Booking button
-      document.getElementById("bookBtn").addEventListener("click", () => {
-        window.location.href = `booking.html?artisanId=${artisanId}`;
-      });
-
-      // Submit review
-      document.getElementById("reviewForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
-
-        const rating = document.getElementById("rating").value;
-        const comment = document.getElementById("comment").value;
-        const userInfo = JSON.parse(localStorage.getItem("userInfo"));
-
-        if (!userInfo || !userInfo.token) {
-          alert("Please login to submit a review.");
-          window.location.href = "../auth/login.html";
-          return;
-        }
-
-        try {
-          const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}/reviews`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${userInfo.token}`
-            },
-            body: JSON.stringify({ rating, comment })
-          });
-
-          if (!res.ok) throw new Error("Failed to submit review");
-
-          alert("✅ Review submitted!");
-          e.target.reset();
-          loadReviews();
-        } catch (err) {
-          alert("Server error. Could not submit review.");
-          console.error(err);
-        }
-      });
-
-      loadArtisan();
+    if (res.ok) {
+      e.target.reset();
       loadReviews();
-    </script>
+      alert("Review submitted");
+    }
+  };
 
-  </body>
+  loadArtisan();
+  loadReviews();
+</script>
+
+</body>
 </html>

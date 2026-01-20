@@ -1,3 +1,7 @@
+// =======================================
+// SEARCH.JS — Trusted Hand
+// =======================================
+
 // ===== Sample data (replace later with backend API) =====
 const artisans = [
   { name: "John Doe", skill: "Electrician", location: "Lagos" },
@@ -12,15 +16,25 @@ const jobs = [
   { title: "Pipe Fixing", category: "Plumbing", location: "Abuja", price: 7000 },
 ];
 
-// ===== Elements =====
+// ===== DOM Elements =====
 const resultsContainer = document.getElementById("results");
 const searchInput = document.getElementById("searchInput");
 const searchBtn = document.getElementById("searchBtn");
 
-// ===== Perform search based on query =====
+// ===== Safety check =====
+if (!resultsContainer || !searchInput || !searchBtn) {
+  console.error("❌ Search page elements missing");
+}
+
+// ===== Perform Search =====
 function performSearch(query) {
   query = query.toLowerCase().trim();
   resultsContainer.innerHTML = "";
+
+  if (!query) {
+    resultsContainer.innerHTML = "<p>Please enter a search term.</p>";
+    return;
+  }
 
   const artisanResults = artisans.filter(
     (a) =>
@@ -41,17 +55,22 @@ function performSearch(query) {
     return;
   }
 
+  // ===== Artisan Results =====
   artisanResults.forEach((a) => {
     const card = `
       <div class="result-card artisan">
         <h3>${a.name}</h3>
         <p><strong>Skill:</strong> ${a.skill}</p>
         <p><strong>Location:</strong> ${a.location}</p>
-        <button onclick="window.location.href='find-artisan.html'">View Profile</button>
-      </div>`;
+        <button onclick="window.location.href='find-artisan.html'">
+          View Profile
+        </button>
+      </div>
+    `;
     resultsContainer.insertAdjacentHTML("beforeend", card);
   });
 
+  // ===== Job Results =====
   jobResults.forEach((j) => {
     const card = `
       <div class="result-card job">
@@ -59,22 +78,32 @@ function performSearch(query) {
         <p><strong>Category:</strong> ${j.category}</p>
         <p><strong>Location:</strong> ${j.location}</p>
         <p><strong>Budget:</strong> ₦${j.price.toLocaleString()}</p>
-        <button onclick="window.location.href='job-listings.html'">View Job</button>
-      </div>`;
+        <button onclick="window.location.href='job-listings.html'">
+          View Job
+        </button>
+      </div>
+    `;
     resultsContainer.insertAdjacentHTML("beforeend", card);
   });
 }
 
-// ===== Detect query from URL =====
+// ===== Detect Query from URL =====
 const params = new URLSearchParams(window.location.search);
 const queryParam = params.get("q");
+
 if (queryParam) {
   searchInput.value = queryParam;
   performSearch(queryParam);
 }
 
-// ===== Manual search click =====
+// ===== Search Button Click =====
 searchBtn.addEventListener("click", () => {
   performSearch(searchInput.value);
 });
-// ===== Search on Enter key =====
+
+// ===== Search on Enter Key =====
+searchInput.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") {
+    performSearch(searchInput.value);
+  }
+});

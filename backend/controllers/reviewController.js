@@ -1,29 +1,69 @@
 import Review from "../models/review.js";
-import Booking from "../models/booking.js";
+import Artisan from "../models/artisan.js";
 
-export const addReview = async (req, res) => {
-  const { bookingId, rating, comment } = req.body;
+/* ===============================
+   GET REVIEWS BY ARTISAN
+   GET /api/reviews/:artisanId
+=============================== */
+export const getArtisanReviews = async (req, res) => {
+  try {
+    const reviews = await Review.find({
+      artisan: req.params.artisanId,
+    }).populate("customer", "name");
 
-  const booking = await Booking.findById(bookingId);
-
-  if (!booking || booking.status !== "completed") {
-    return res.status(400).json({ message: "Booking not completed" });
+    res.json(reviews);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch reviews" });
   }
-
-  const review = await Review.create({
-    booking: bookingId,
-    artisan: booking.artisan,
-    customer: req.user._id,
-    rating,
-    comment,
-  });
-
-  res.status(201).json(review);
 };
 
-export const getArtisanReviews = async (req, res) => {
-  const reviews = await Review.find({ artisan: req.params.id })
-    .populate("customer", "name");
+/* ===============================
+   CREATE REVIEW
+   POST /api/reviews/:artisanId
+=============================== */
+export const createReview = async (req, res) => {
+  const { rating, comment } = req.body;
 
-  res.json(reviews);
+  if (!rating || !comment) {
+    return res.status(400).json({ message: "All fields required" });
+  }
+
+  try {
+    // ❌ Prevent duplicate reviews
+    const existingReview = await Review.findOne({
+      artisan: req.params.artisanId,
+      customer: req.user._id,
+    });
+
+    if (existingReview) {
+      return res
+        .status(400)
+        .json({ message: "You already reviewed this artisan" });
+    }
+
+    // ✅ Create review
+    const review = await Review.create({
+      artisan: req.params.artisanId,
+      customer: req.user._id,
+      rating,
+      comment,
+    });
+
+    // 🔄 Recalculate artisan rating
+    const reviews = await Review.find({
+      artisan: req.params.artisanId,
+    });
+
+    const avgRating =
+      reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length;
+
+    await Artisan.findByIdAndUpdate(req.params.artisanId, {
+      rating: avgRating.toFixed(1),
+      numReviews: reviews.length,
+    });
+
+    res.status(201).json(review);
+  } catch (error) {
+    res.status(500).json({ message: "Review creation failed" });
+  }
 };

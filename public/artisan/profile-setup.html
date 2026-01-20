@@ -1,148 +1,165 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Artisan Profile Setup - Trusted Hand</title>
   <link rel="stylesheet" href="../css/style.css">
-</head>
-<body>
+  </head>
+  <body>
 
-<div class="profile-container">
-  <h2>Set Up Your Artisan Profile</h2>
+    <div class="profile-container">
+      <h2>Set Up Your Artisan Profile</h2>
 
-  <form id="profileForm" enctype="multipart/form-data">
-    <label>Full Name</label>
-    <input type="text" id="name" required>
+      <form id="profileForm" enctype="multipart/form-data">
+        <label>Full Name</label>
+        <input type="text" id="name" required>
 
-    <label>Your Trade</label>
-    <select id="trade" required>
-      <option value="">-- Select trade --</option>
-      <option value="Plumber">Plumber</option>
-      <option value="Electrician">Electrician</option>
-      <option value="Cleaner">Cleaner</option>
-      <option value="Carpenter">Carpenter</option>
-      <option value="Mechanic">Mechanic</option>
-      <option value="Caterer">Caterer</option>
-    </select>
+        <label>Your Trade</label>
+        <select id="trade" required>
+          <option value="">-- Select trade --</option>
+          <option value="Plumber">Plumber</option>
+          <option value="Electrician">Electrician</option>
+          <option value="Cleaner">Cleaner</option>
+          <option value="Carpenter">Carpenter</option>
+          <option value="Mechanic">Mechanic</option>
+          <option value="Caterer">Caterer</option>
+        </select>
 
-    <label>Location</label>
-    <input type="text" id="location" required>
+        <label>Location</label>
+        <input type="text" id="location" required>
 
-    <label>Experience Level</label>
-    <select id="experience" required>
-      <option value="Beginner">Beginner (0–1 year)</option>
-      <option value="Intermediate">Intermediate (2–4 years)</option>
-      <option value="Expert">Expert (5+ years)</option>
-    </select>
+        <label>Experience Level</label>
+        <select id="experience" required>
+          <option value="Beginner">Beginner (0–1 year)</option>
+          <option value="Intermediate">Intermediate (2–4 years)</option>
+          <option value="Expert">Expert (5+ years)</option>
+        </select>
 
-    <label>Rate (₦)</label>
-    <input type="number" id="price" min="1000" required>
+        <label>Profile Photo</label>
+        <input type="file" id="photo" accept="image/*">
 
-    <label>Profile Photo</label>
-    <input type="file" id="photo" accept="image/*">
+        <div class="preview-container">
+          <img id="previewImage" src="../static/images/default-avatar.png">
+        </div>
 
-    <div class="preview-container">
-      <img id="previewImage" src="../static/images/default-avatar.png">
+        <button type="submit">Save Profile</button>
+        <p id="statusMsg"></p>
+      </form>
     </div>
 
-    <button type="submit">Save Profile</button>
-    <p id="statusMsg"></p>
-  </form>
-</div>
+    <script>
+      /* =============================
+        AUTH & ROLE CHECK
+      ============================= */
+      const token = localStorage.getItem("token");
+      const role  = localStorage.getItem("role");
 
-<script>
-  // =============================
-  // AUTH & ROLE CHECK
-  // =============================
-  const token = localStorage.getItem("token");
-  const role  = localStorage.getItem("role");
-
-  if (!token || role !== "artisan") {
-    alert("Unauthorized access");
-    window.location.href = "/public/auth/login.html";
-  }
-
-  // =============================
-  // IMAGE PREVIEW
-  // =============================
-  document.getElementById("photo").addEventListener("change", e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => document.getElementById("previewImage").src = reader.result;
-    reader.readAsDataURL(file);
-  });
-
-  // =============================
-  // LOAD EXISTING PROFILE
-  // =============================
-  async function loadProfile() {
-    try {
-      const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (!res.ok) return;
-
-      const p = await res.json();
-      document.getElementById("name").value = p.name || "";
-      document.getElementById("trade").value = p.trade || "";
-      document.getElementById("location").value = p.location || "";
-      document.getElementById("experience").value = p.experience || "";
-      document.getElementById("price").value = p.price || "";
-      if (p.photo) document.getElementById("previewImage").src = p.photo;
-    } catch {}
-  }
-
-  loadProfile();
-
-  // =============================
-  // SUBMIT PROFILE
-  // =============================
-  document.getElementById("profileForm").addEventListener("submit", async e => {
-    e.preventDefault();
-
-    const formData = new FormData();
-    formData.append("name", name.value.trim());
-    formData.append("trade", trade.value);
-    formData.append("location", location.value.trim());
-    formData.append("experience", experience.value);
-    formData.append("price", price.value);
-
-    if (photo.files[0]) formData.append("photo", photo.files[0]);
-
-    const status = document.getElementById("statusMsg");
-    status.textContent = "Saving...";
-
-    try {
-      const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        status.textContent = data.message || "Failed to save profile";
-        status.style.color = "red";
-        return;
+      if (!token || role !== "artisan") {
+        alert("Unauthorized access");
+        window.location.href = "/public/auth/login.html";
       }
 
-      status.textContent = "✅ Profile saved successfully";
-      status.style.color = "green";
+      /* =============================
+        IMAGE PREVIEW
+      ============================= */
+      const photoInput = document.getElementById("photo");
+      photoInput.addEventListener("change", e => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-      setTimeout(() => {
-        window.location.href = "artisan-dashboard.html";
-      }, 1200);
+        const reader = new FileReader();
+        reader.onload = () => {
+          document.getElementById("previewImage").src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
 
-    } catch {
-      status.textContent = "Server error";
-      status.style.color = "red";
-    }
-  });
-</script>
+      /* =============================
+        LOAD EXISTING PROFILE
+      ============================= */
+      async function loadProfile() {
+        try {
+          const res = await fetch(
+            "https://trustedhands-backend.onrender.com/api/artisans/profile",
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            }
+          );
 
-</body>
+          if (!res.ok) return;
+
+          const p = await res.json();
+
+          document.getElementById("name").value = p.name || "";
+          document.getElementById("trade").value = p.profession || "";
+          document.getElementById("location").value = p.address || "";
+          document.getElementById("experience").value = p.experience || "";
+
+          if (p.photo) {
+            document.getElementById("previewImage").src = p.photo;
+          }
+
+        } catch (err) {
+          console.error("Load profile error:", err);
+        }
+      }
+
+      loadProfile();
+
+      /* =============================
+        SUBMIT PROFILE
+      ============================= */
+      document.getElementById("profileForm").addEventListener("submit", async e => {
+        e.preventDefault();
+
+        const status = document.getElementById("statusMsg");
+        status.textContent = "Saving...";
+        status.style.color = "#555";
+
+        const formData = new FormData();
+        formData.append("name", document.getElementById("name").value.trim());
+        formData.append("profession", document.getElementById("trade").value);
+        formData.append("address", document.getElementById("location").value.trim());
+        formData.append("experience", document.getElementById("experience").value);
+
+        if (photoInput.files[0]) {
+          formData.append("photo", photoInput.files[0]);
+        }
+
+        try {
+          const res = await fetch(
+            "https://trustedhands-backend.onrender.com/api/artisans/profile",
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`
+              },
+              body: formData
+            }
+          );
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            status.textContent = data.message || "Failed to save profile";
+            status.style.color = "red";
+            return;
+          }
+
+          status.textContent = "✅ Profile saved successfully";
+          status.style.color = "green";
+
+          setTimeout(() => {
+            window.location.href = "artisan-dashboard.html";
+          }, 1200);
+
+        } catch (err) {
+          status.textContent = "Server error";
+          status.style.color = "red";
+        }
+      });
+    </script>
+
+  </body>
 </html>

@@ -10,17 +10,19 @@
   </head>
   <body>
 
-  <!-- Navigation -->
-  <nav class="navbar">
-    
-    <div class="logo">
-        <img src="./images/logo.png"  class="logo-img">
-        <span>Trusted Hand</span>
-    </div>
-    
-    <button class="menu-toggle" onclick="document.body.classList.toggle('nav-open')">☰</button>
+    <!-- Navigation -->
+    <nav class="navbar">
 
-    <ul class="nav-links">
+      <div class="logo">
+        <img src="./images/logo.png" class="logo-img" alt="Trusted Hand Logo">
+        <span>Trusted Hand</span>
+      </div>
+
+      <!-- Mobile menu toggle -->
+      <button class="menu-toggle" onclick="document.body.classList.toggle('nav-open')">☰</button>
+
+      <!-- ✅ NO nav-links -->
+      <ul>
         <li><a href="index.html" class="active">Home</a></li>
         <li><a href="artisan/artisan.html">Artisans</a></li>
         <li><a href="customer/job-listing.html">Job Listings</a></li>
@@ -29,132 +31,131 @@
         <li><a href="contact.html">Contact</a></li>
         <li><a href="auth/login.html">Login</a></li>
         <li><a href="auth/signup.html" class="btn">Sign Up</a></li>
-    </ul>
+      </ul>
 
-</nav>
-
-
+    </nav>
 
 
-  <!-- Header -->
-  <header class="hero">
-    <div class="hero-content">
-      <h1>Trusted Hand</h1>
-      <p>Connecting you to skilled artisans you can trust</p>
-
-      <form class="search-bar" onsubmit="return searchArtisans(event)">
-        <input type="text" name="skill" placeholder="What service do you need? e.g. Plumber" required>
-        <input type="text" name="location" placeholder="Enter your location" required>
-        <button type="submit">Search</button>
-      </form>
-
-    </div>
-  </header>
 
 
-  <!-- Categories -->
-  <section class="categories">
-    <h2>Popular Services</h2>
-    <div class="category-grid">
-      <div class="category-card">🔧 Plumbing</div>
-      <div class="category-card">💡 Electrical</div>
-      <div class="category-card">🧹 Cleaning</div>
-      <div class="category-card">🍲 Catering</div>
-      <div class="category-card">🔨 Carpentry</div>
-      <div class="category-card">🎨 Painting</div>
-    </div>
-  </section>
+    <!-- Header -->
+    <header class="hero">
+      <div class="hero-content">
+        <h1>Trusted Hand</h1>
+        <p>Connecting you to skilled artisans you can trust</p>
 
-  <!-- How It Works -->
-  <section class="how-it-works">
-    <h2>How It Works</h2>
-    <div class="steps">
-      <div class="step">1️⃣ Search</div>
-      <div class="step">2️⃣ Book</div>
-      <div class="step">3️⃣ Get it Done</div>
-      <div class="step">4️⃣ Review</div>
-    </div>
-  </section>
+        <form class="search-bar" onsubmit="return searchArtisans(event)">
+          <input type="text" name="skill" placeholder="What service do you need? e.g. Plumber" required>
+          <input type="text" name="location" placeholder="Enter your location" required>
+          <button type="submit">Search</button>
+        </form>
 
-  <!-- Featured Artisans -->
-  <!-- Featured Artisans -->
-  <section class="featured">
-    <h2>Featured Artisans</h2>
-
-    <!-- 🔴 THIS ID IS REQUIRED -->
-    <div id="featuredArtisans" class="artisan-grid">
-      <!-- Dynamic artisans will load here -->
-    </div>
-  </section>
+      </div>
+    </header>
 
 
-  <!-- Footer -->
-  <footer>
-    <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
-    <div class="socials">
-      <a href="#">Facebook</a> | 
-      <a href="#">Instagram</a> | 
-      <a href="#">Twitter</a>
-    </div>
-  </footer>
+    <!-- Categories -->
+    <section class="categories">
+      <h2>Popular Services</h2>
+      <div class="category-grid">
+        <div class="category-card">🔧 Plumbing</div>
+        <div class="category-card">💡 Electrical</div>
+        <div class="category-card">🧹 Cleaning</div>
+        <div class="category-card">🍲 Catering</div>
+        <div class="category-card">🔨 Carpentry</div>
+        <div class="category-card">🎨 Painting</div>
+      </div>
+    </section>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      loadFeaturedArtisans();
-    });
+    <!-- How It Works -->
+    <section class="how-it-works">
+      <h2>How It Works</h2>
+      <div class="steps">
+        <div class="step">1️⃣ Search</div>
+        <div class="step">2️⃣ Book</div>
+        <div class="step">3️⃣ Get it Done</div>
+        <div class="step">4️⃣ Review</div>
+      </div>
+    </section>
 
-    async function loadFeaturedArtisans() {
+    <!-- Featured Artisans -->
+    <section class="featured">
+      <h2>Featured Artisans</h2>
 
-      const container = document.getElementById("featuredArtisans");
+      <!-- 🔴 THIS ID IS REQUIRED -->
+      <div id="featuredArtisans" class="artisan-grid">
+        <!-- Dynamic artisans will load here -->
+      </div>
+    </section>
 
-      if (!container) {
-        console.error("featuredArtisans container not found");
-        return;
-      }
 
-      container.innerHTML = "<p>Loading artisans...</p>";
+    <!-- Footer -->
+    <footer>
+      <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
+      <div class="socials">
+        <a href="#">Facebook</a> | 
+        <a href="#">Instagram</a> | 
+        <a href="#">Twitter</a>
+      </div>
+    </footer>
 
-      try {
-        const res = await fetch(
-          "https://trustedhands-backend.onrender.com/api/artisans?limit=4"
-        );
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        loadFeaturedArtisans();
+      });
 
-        if (!res.ok) {
-          throw new Error("Failed to fetch artisans");
-        }
+      async function loadFeaturedArtisans() {
 
-        const artisans = await res.json();
+        const container = document.getElementById("featuredArtisans");
 
-        if (!artisans || artisans.length === 0) {
-          container.innerHTML = "<p>No artisans found.</p>";
+        if (!container) {
+          console.error("featuredArtisans container not found");
           return;
         }
 
-        container.innerHTML = "";
+        container.innerHTML = "<p>Loading artisans...</p>";
 
-        artisans.forEach(a => {
-          container.innerHTML += `
-            <div class="artisan-card">
-              <img src="https://via.placeholder.com/150" alt="Artisan">
-              <h3>${a.name || "Unnamed Artisan"}</h3>
-              <p>${a.skill || "Skill"} • ${a.location || "Location"}</p>
-            </div>
-          `;
-        });
+        try {
+          const res = await fetch(
+            "https://trustedhands-backend.onrender.com/api/artisans?limit=4"
+          );
 
-      } catch (err) {
-        console.error("Artisan load error:", err);
-        container.innerHTML = "<p>Unable to load artisans.</p>";
-      }    
+          if (!res.ok) {
+            throw new Error("Failed to fetch artisans");
+          }
 
-      function viewArtisan(id) {
-        window.location.href = `artisan/artisan.html?id=${id}`;
+          const artisans = await res.json();
+
+          if (!artisans || artisans.length === 0) {
+            container.innerHTML = "<p>No artisans found.</p>";
+            return;
+          }
+
+          container.innerHTML = "";
+
+          artisans.forEach(a => {
+            container.innerHTML += `
+              <div class="artisan-card">
+                <img src="https://via.placeholder.com/150" alt="Artisan">
+                <h3>${a.name || "Unnamed Artisan"}</h3>
+                <p>${a.skill || "Skill"} • ${a.location || "Location"}</p>
+              </div>
+            `;
+          });
+
+        } catch (err) {
+          console.error("Artisan load error:", err);
+          container.innerHTML = "<p>Unable to load artisans.</p>";
+        }    
+
+        function viewArtisan(id) {
+          window.location.href = `artisan/artisan.html?id=${id}`;
+        }
       }
-    }
-  </script>
+    </script>
 
 
 
 
-</body>
+  </body>
 </html>

@@ -3,160 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Payments - Trusted Hand</title>
+  <title>Payments | Trusted Hand</title>
 
   <link rel="stylesheet" href="../css/style.css" />
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f7f9fc;
-      margin: 0;
-      padding: 0;
-      color: #333;
-    }
-
-    header {
-      background: #007bff;
-      color: #fff;
-      padding: 15px 0;
-    }
-
-    header .container {
-      width: 90%;
-      margin: auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    header nav a {
-      color: #fff;
-      text-decoration: none;
-      margin: 0 10px;
-      font-weight: 500;
-    }
-
-    header nav a:hover {
-      text-decoration: underline;
-    }
-
-    main.container {
-      width: 90%;
-      margin: 30px auto;
-      background: #fff;
-      padding: 25px;
-      border-radius: 10px;
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-    }
-
-    h2 {
-      color: #222;
-      margin-bottom: 25px;
-      border-bottom: 2px solid #007bff;
-      padding-bottom: 10px;
-    }
-
-    .admin-section {
-      margin-bottom: 40px;
-    }
-
-    .admin-section h3 {
-      color: #007bff;
-      margin-bottom: 15px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #fdfdfd;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    th, td {
-      text-align: left;
-      padding: 12px 15px;
-      border-bottom: 1px solid #ddd;
-    }
-
-    th {
-      background: #007bff;
-      color: #fff;
-    }
-
-    tr:nth-child(even) {
-      background: #f2f6fc;
-    }
-
-    tr:hover {
-      background: #e6f0ff;
-    }
-
-    .status-paid {
-      color: green;
-      font-weight: bold;
-    }
-
-    .status-transferred {
-      color: #007bff;
-      font-weight: bold;
-    }
-
-    footer {
-      text-align: center;
-      background: #222;
-      color: #fff;
-      padding: 15px 0;
-      margin-top: 40px;
-    }
-
-    @media (max-width: 768px) {
-      main.container {
-        padding: 15px;
-      }
-
-      table, th, td {
-        font-size: 14px;
-      }
-
-      header .container {
-        flex-direction: column;
-      }
-
-      header nav {
-        margin-top: 10px;
-      }
-    }
-  </style>
 </head>
-
 <body>
 
-  <!-- HEADER -->
-  <header>
-    <div class="container">
-      <h1>Trusted Hand - Payments</h1>
-      <nav>
-        <a href="../index.html">Home</a>
-        <a href="../customer/profile.html">Artisans</a>
-        <a href="../customer/booking.html">Bookings</a>
-        <a href="../customer/dashboard.html">User Dashboard</a>
-        <a href="../admin/admin-dashboard.html">Admin Dashboard</a>
-      </nav>
-    </div>
-  </header>
+<!-- 🔐 AUTH CHECK -->
+<script>
+  const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+  if (!userInfo || !userInfo.token) {
+    window.location.href = "../auth/login.html";
+  }
+  const token = userInfo.token;
+</script>
 
-  <!-- MAIN -->
-  <main class="container">
-    <h2>Payments Overview</h2>
+<!-- HEADER -->
+<header>
+  <div class="container">
+    <h1>Trusted Hand</h1>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../customer/search.html">Find Artisans</a>
+      <a href="../customer/my-bookings.html">Bookings</a>
+      <a href="../customer/dashboard.html">Dashboard</a>
+      <a href="#" id="logoutBtn">Logout</a>
+    </nav>
+  </div>
+</header>
 
-    <!-- PAY BUTTON -->
-    <button id="payBtn">Pay Now</button>
+<!-- MAIN -->
+<main class="container">
+  <h2>Payments Overview</h2>
 
-    <!-- CUSTOMER PAYMENTS -->
-    <section class="admin-section">
-      <h3>Customer Payment History</h3>
+  <!-- PAY BUTTON -->
+  <div class="actions">
+    <button id="payBtn" class="primary-btn">Pay Now</button>
+  </div>
+
+  <!-- CUSTOMER PAYMENTS -->
+  <section class="admin-section">
+    <h3>Customer Payment History</h3>
+
+    <div class="table-wrapper">
       <table>
         <thead>
           <tr>
@@ -171,11 +60,14 @@
           <tr><td colspan="5">Loading...</td></tr>
         </tbody>
       </table>
-    </section>
+    </div>
+  </section>
 
-    <!-- ARTISAN PAYOUTS -->
-    <section class="admin-section">
-      <h3>Artisan Payout History</h3>
+  <!-- ARTISAN PAYOUTS -->
+  <section class="admin-section">
+    <h3>Artisan Payout History</h3>
+
+    <div class="table-wrapper">
       <table>
         <thead>
           <tr>
@@ -190,87 +82,97 @@
           <tr><td colspan="5">Loading...</td></tr>
         </tbody>
       </table>
-    </section>
-  </main>
-
-  <!-- FOOTER -->
-  <footer>
-    <div class="container">
-      <p>&copy; 2025 Trusted Hand. All rights reserved.</p>
     </div>
-  </footer>
+  </section>
+</main>
 
-  <!-- ✅ PAYSTACK SCRIPT (MUST COME FIRST) -->
-  <script src="https://js.paystack.co/v1/inline.js"></script>
+<!-- FOOTER -->
+<footer>
+  <p>&copy; 2025 Trusted Hand. All rights reserved.</p>
+</footer>
 
-  <!-- ✅ YOUR PAYMENT LOGIC -->
-  <script src="../js/payment.js"></script>
+<!-- PAYSTACK -->
+<script src="https://js.paystack.co/v1/inline.js"></script>
 
-  <!-- PAGE DATA LOGIC -->
-  <script>
-    async function loadCustomerPayments() {
-      const tbody = document.getElementById("customerPayments");
-      tbody.innerHTML = "<tr><td colspan='5'>Loading...</td></tr>";
+<!-- PAYMENT LOGIC -->
+<script src="../js/payment.js"></script>
 
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/payments/customer");
-        const payments = await res.json();
+<!-- PAGE DATA -->
+<script>
+  async function loadCustomerPayments() {
+    const tbody = document.getElementById("customerPayments");
 
-        if (!payments.length) {
-          tbody.innerHTML = "<tr><td colspan='5'>No customer payments found.</td></tr>";
-          return;
-        }
+    try {
+      const res = await fetch(
+        "https://trustedhands-backend.onrender.com/api/payments/customer",
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-        tbody.innerHTML = "";
-        payments.forEach(p => {
-          tbody.innerHTML += `
-            <tr>
-              <td>${p.jobTitle}</td>
-              <td>${p.artisanName}</td>
-              <td>₦${Number(p.amount).toLocaleString()}</td>
-              <td>${p.date}</td>
-              <td class="status-paid">${p.status}</td>
-            </tr>
-          `;
-        });
-      } catch {
-        tbody.innerHTML = "<tr><td colspan='5'>Error loading customer payments.</td></tr>";
+      const payments = await res.json();
+
+      if (!res.ok || !payments.length) {
+        tbody.innerHTML = "<tr><td colspan='5'>No payments found.</td></tr>";
+        return;
       }
+
+      tbody.innerHTML = "";
+      payments.forEach(p => {
+        tbody.insertAdjacentHTML("beforeend", `
+          <tr>
+            <td>${p.jobTitle}</td>
+            <td>${p.artisanName}</td>
+            <td>₦${Number(p.amount).toLocaleString()}</td>
+            <td>${new Date(p.date).toLocaleDateString()}</td>
+            <td class="status paid">${p.status}</td>
+          </tr>
+        `);
+      });
+    } catch {
+      tbody.innerHTML = "<tr><td colspan='5'>Error loading payments.</td></tr>";
     }
+  }
 
-    async function loadArtisanPayouts() {
-      const tbody = document.getElementById("artisanPayouts");
-      tbody.innerHTML = "<tr><td colspan='5'>Loading...</td></tr>";
+  async function loadArtisanPayouts() {
+    const tbody = document.getElementById("artisanPayouts");
 
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/payments/artisan");
-        const payouts = await res.json();
+    try {
+      const res = await fetch(
+        "https://trustedhands-backend.onrender.com/api/payments/artisan",
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-        if (!payouts.length) {
-          tbody.innerHTML = "<tr><td colspan='5'>No artisan payouts found.</td></tr>";
-          return;
-        }
+      const payouts = await res.json();
 
-        tbody.innerHTML = "";
-        payouts.forEach(p => {
-          tbody.innerHTML += `
-            <tr>
-              <td>${p.artisanName}</td>
-              <td>${p.jobTitle}</td>
-              <td>₦${Number(p.earnings).toLocaleString()}</td>
-              <td>${p.date}</td>
-              <td class="status-transferred">${p.status}</td>
-            </tr>
-          `;
-        });
-      } catch {
-        tbody.innerHTML = "<tr><td colspan='5'>Error loading artisan payouts.</td></tr>";
+      if (!res.ok || !payouts.length) {
+        tbody.innerHTML = "<tr><td colspan='5'>No payouts found.</td></tr>";
+        return;
       }
-    }
 
-    loadCustomerPayments();
-    loadArtisanPayouts();
-  </script>
+      tbody.innerHTML = "";
+      payouts.forEach(p => {
+        tbody.insertAdjacentHTML("beforeend", `
+          <tr>
+            <td>${p.artisanName}</td>
+            <td>${p.jobTitle}</td>
+            <td>₦${Number(p.earnings).toLocaleString()}</td>
+            <td>${new Date(p.date).toLocaleDateString()}</td>
+            <td class="status transferred">${p.status}</td>
+          </tr>
+        `);
+      });
+    } catch {
+      tbody.innerHTML = "<tr><td colspan='5'>Error loading payouts.</td></tr>";
+    }
+  }
+
+  document.getElementById("logoutBtn").onclick = () => {
+    localStorage.clear();
+    window.location.href = "../auth/login.html";
+  };
+
+  loadCustomerPayments();
+  loadArtisanPayouts();
+</script>
 
 </body>
 </html>

@@ -1,90 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Services | Trusted Hand</title>
-  <link rel="icon" type="image/png" href="./images/logo.png">
-  <link rel="stylesheet" href="./css/style.css">
+
+  <link rel="icon" type="image/png" href="./images/logo.png" />
+  <link rel="stylesheet" href="./css/style.css" />
 </head>
 <body>
-  <header>
+
+<!-- ================= NAVBAR ================= -->
+<header>
   <nav class="navbar">
+
     <div class="logo">
       <img src="./images/logo.png" class="logo-img" alt="Trusted Hand Logo">
       <span>Trusted Hand</span>
     </div>
 
-    <ul class="nav-links">
+    <ul>
       <li><a href="index.html">Home</a></li>
       <li><a href="about.html">About</a></li>
       <li><a href="service.html" class="active">Services</a></li>
       <li><a href="faq.html">FAQ</a></li>
       <li><a href="contact.html">Contact</a></li>
-      <li><a href="login.html" class="btn">Login</a></li>
+      <li><a href="auth/login.html" class="btn">Login</a></li>
     </ul>
   </nav>
 </header>
 
+<!-- ================= HERO ================= -->
+<section class="services-hero">
+  <h1>Our Services</h1>
+  <p>Choose from a wide range of trusted artisans ready to serve you.</p>
+</section>
 
-  <!-- Hero Section -->
-  <section class="services-hero">
-    <h1>Our Services</h1>
-    <p>Choose from a wide range of trusted artisans ready to serve you.</p>
-  </section>
+<!-- ================= SERVICES GRID ================= -->
+<section class="services-grid">
 
-  <!-- Services Grid -->
-  <section class="services-grid">
-    <div class="service-card">
-      <img src="./images/plumber.jpg" alt="Plumber">
-      <h3>Plumbing</h3>
-      <p>Fix leaks, install pipes, and handle water systems efficiently.</p>
-      <a href="listing.html" class="btn-primary">Find Plumbers</a>
-    </div>
+  <div class="service-card">
+    <img src="./images/plumber.jpg" alt="Plumber">
+    <h3>Plumbing</h3>
+    <p>Fix leaks, install pipes, and handle water systems efficiently.</p>
+    <a href="artisan/artisan.html?skill=plumber" class="btn-primary">
+      Find Plumbers
+    </a>
+  </div>
 
-    <div class="service-card">
-      <img src="./images/electrician.jpg" alt="Electrician">
-      <h3>Electrical</h3>
-      <p>Reliable electricians for installation, wiring, and repairs.</p>
-      <a href="listing.html" class="btn-primary">Find Electricians</a>
-    </div>
+  <div class="service-card">
+    <img src="./images/electrician.jpg" alt="Electrician">
+    <h3>Electrical</h3>
+    <p>Reliable electricians for installation, wiring, and repairs.</p>
+    <a href="artisan/artisan.html?skill=electrician" class="btn-primary">
+      Find Electricians
+    </a>
+  </div>
 
-    <div class="service-card">
-      <img src="./images/caterer.jpg" alt="Caterer">
-      <h3>Catering</h3>
-      <p>Hire professional caterers for events and special occasions.</p>
-      <a href="listing.html" class="btn-primary">Find Caterers</a>
-    </div>
+  <div class="service-card">
+    <img src="./images/caterer.jpg" alt="Caterer">
+    <h3>Catering</h3>
+    <p>Hire professional caterers for events and special occasions.</p>
+    <a href="artisan/artisan.html?skill=caterer" class="btn-primary">
+      Find Caterers
+    </a>
+  </div>
 
-    <div class="service-card">
-      <img src="./images/cleaner.jpg" alt="Cleaner">
-      <h3>Cleaning</h3>
-      <p>Book experienced cleaners for your home, office, or business.</p>
-      <a href="listing.html" class="btn-primary">Find Cleaners</a>
-    </div>
+  <div class="service-card">
+    <img src="./images/cleaner.jpg" alt="Cleaner">
+    <h3>Cleaning</h3>
+    <p>Book experienced cleaners for your home or office.</p>
+    <a href="artisan/artisan.html?skill=cleaner" class="btn-primary">
+      Find Cleaners
+    </a>
+  </div>
 
-    <div class="service-card">
-      <img src="./images/mason.jpg" alt="Mason">
-      <h3>Masonry</h3>
-      <p>Skilled builders for construction, renovation, and design work.</p>
-      <a href="listing.html" class="btn-primary">Find Masons</a>
-    </div>
+  <div class="service-card">
+    <img src="./images/mason.jpg" alt="Mason">
+    <h3>Masonry</h3>
+    <p>Skilled builders for construction and renovation.</p>
+    <a href="artisan/artisan.html?skill=mason" class="btn-primary">
+      Find Masons
+    </a>
+  </div>
 
-    <div class="service-card">
-      <img src="./images/mechanic.jpg" alt="Mechanic">
-      <h3>Mechanics</h3>
-      <p>Certified auto mechanics for car repair and maintenance.</p>
-      <a href="listing.html" class="btn-primary">Find Mechanics</a>
-    </div>
-  </section>
+  <div class="service-card">
+    <img src="./images/mechanic.jpg" alt="Mechanic">
+    <h3>Mechanics</h3>
+    <p>Certified auto mechanics for car repair.</p>
+    <a href="artisan/artisan.html?skill=mechanic" class="btn-primary">
+      Find Mechanics
+    </a>
+  </div>
 
-  <!-- Footer -->
-  <footer>
-    <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
-  </footer>
+</section>
 
-  <script>
-    document.getElementById('year').textContent = new Date().getFullYear();
-  </script>
+<!-- ================= FOOTER ================= -->
+<footer>
+  <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
+</footer>
+
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+
 </body>
 </html>

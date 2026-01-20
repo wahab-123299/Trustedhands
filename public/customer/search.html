@@ -1,110 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Search Results | Trusted Hand</title>
-    <link rel="stylesheet" href="../css/search.css" />
-  </head>
-  <body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search Artisans | Trusted Hand</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
 
-    <header>
-      <div class="container">
-        <h1>Trusted Hand</h1>
-        <nav>
-          <a href="../index.html">Home</a>
-          <a href="artisan.html">Find Artisans</a>
-          <a href="dashboard.html">Dashboard</a>
-        </nav>
-      </div>
-    </header>
+<header>
+  <div class="container">
+    <h1>Trusted Hand</h1>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="search.html" class="active">Find Artisans</a>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="#" id="logoutBtn">Logout</a>
+    </nav>
+  </div>
+</header>
 
-    <section class="search-section">
-      <div class="container">
-        <h2>Search Artisans</h2>
+<section class="search-section">
+  <div class="container">
+    <h2>Search Artisans</h2>
 
-        <div class="search-bar">
-          <input
-            type="text"
-            id="searchInput"
-            placeholder="Search by skill or location..."
-          />
-          <button id="searchBtn">Search</button>
-        </div>
+    <div class="search-bar">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search by skill or location..."
+      />
+      <button id="searchBtn" class="btn-primary">Search</button>
+    </div>
 
-        <div id="results" class="results-grid"></div>
-      </div>
-    </section>
+    <div id="results" class="results-grid">
+      <p class="muted">Enter a search term to begin.</p>
+    </div>
+  </div>
+</section>
 
-    <script>
-      const resultsContainer = document.getElementById("results");
-      const searchInput = document.getElementById("searchInput");
-      const searchBtn = document.getElementById("searchBtn");
+<footer>
+  <p>&copy; 2025 Trusted Hand</p>
+</footer>
 
-      // Read URL params (optional)
-      const params = new URLSearchParams(window.location.search);
-      const initialSkill = params.get("skill") || "";
-      const initialLocation = params.get("location") || "";
+<script>
+  const resultsContainer = document.getElementById("results");
+  const searchInput = document.getElementById("searchInput");
+  const searchBtn = document.getElementById("searchBtn");
+  const userInfo = JSON.parse(localStorage.getItem("userInfo"));
 
-      if (initialSkill || initialLocation) {
-        searchInput.value = `${initialSkill} ${initialLocation}`.trim();
-        performSearch(initialSkill, initialLocation);
+  // LOGOUT
+  document.getElementById("logoutBtn").onclick = () => {
+    localStorage.clear();
+    window.location.href = "../auth/login.html";
+  };
+
+  // URL PARAM SUPPORT
+  const params = new URLSearchParams(window.location.search);
+  const initialQuery = params.get("query");
+
+  if (initialQuery) {
+    searchInput.value = initialQuery;
+    performSearch(initialQuery);
+  }
+
+  searchBtn.onclick = () => {
+    const query = searchInput.value.trim();
+    if (!query) {
+      resultsContainer.innerHTML = "<p class='muted'>Please enter a search term.</p>";
+      return;
+    }
+    performSearch(query);
+  };
+
+  async function performSearch(query) {
+    resultsContainer.innerHTML = "<p class='muted'>Searching...</p>";
+
+    try {
+      const res = await fetch(
+        `https://trustedhands-backend.onrender.com/api/artisans/search?query=${encodeURIComponent(query)}`
+      );
+
+      if (!res.ok) throw new Error("Search failed");
+
+      const artisans = await res.json();
+      resultsContainer.innerHTML = "";
+
+      if (!artisans.length) {
+        resultsContainer.innerHTML = "<p class='muted'>No artisans found.</p>";
+        return;
       }
 
-      searchBtn.addEventListener("click", () => {
-        const query = searchInput.value.trim();
-        if (!query) {
-          resultsContainer.innerHTML = "<p>Please enter a search term.</p>";
-          return;
-        }
+      artisans.forEach(a => {
+        const canBook =
+          userInfo && userInfo.role === "customer";
 
-        // Split input intelligently
-        performSearch(query);
+        resultsContainer.insertAdjacentHTML(
+          "beforeend",
+          `
+          <div class="result-card">
+            <h3>${a.name}</h3>
+            <p><strong>Skill:</strong> ${a.profession}</p>
+            <p><strong>Location:</strong> ${a.location || "Not specified"}</p>
+            <p><strong>Rating:</strong>
+              ${a.rating ? "⭐".repeat(Math.round(a.rating)) + ` (${a.rating})` : "No rating yet"}
+            </p>
+
+            ${
+              canBook
+                ? `<button class="btn-primary" onclick="bookArtisan('${a._id}')">Book Now</button>`
+                : `<p class="muted">Login as customer to book</p>`
+            }
+          </div>
+          `
+        );
       });
 
-      async function performSearch(query = "", location = "") {
-        resultsContainer.innerHTML = "<p>Searching...</p>";
+    } catch (err) {
+      console.error(err);
+      resultsContainer.innerHTML =
+        "<p class='error'>Error fetching search results.</p>";
+    }
+  }
 
-        try {
-          const res = await fetch(
-            `https://trustedhands-backend.onrender.com/api/artisans/search?query=${encodeURIComponent(query)}`
-          );
+  function bookArtisan(id) {
+    window.location.href = `booking.html?artisanId=${id}`;
+  }
+</script>
 
-          if (!res.ok) throw new Error("Search failed");
-
-          const artisans = await res.json();
-          resultsContainer.innerHTML = "";
-
-          if (!artisans.length) {
-            resultsContainer.innerHTML = "<p>No artisans found.</p>";
-            return;
-          }
-
-          artisans.forEach(a => {
-            resultsContainer.insertAdjacentHTML(
-              "beforeend",
-              `
-              <div class="result-card artisan">
-                <h3>${a.name}</h3>
-                <p><strong>Skill:</strong> ${a.profession}</p>
-                <p><strong>Location:</strong> ${a.location || "Not specified"}</p>
-                <p><strong>Rating:</strong> ${a.rating ? a.rating + " ⭐" : "No rating yet"}</p>
-                <button onclick="bookArtisan('${a._id}')">Book Now</button>
-              </div>
-              `
-            );
-          });
-        } catch (err) {
-          console.error(err);
-          resultsContainer.innerHTML = "<p>❌ Error fetching search results.</p>";
-        }
-      }
-
-      function bookArtisan(id) {
-        window.location.href =
-          "/public/customer/booking.html?artisanId=" + id;
-      }
-    </script>
-
-  </body>
+</body>
 </html>

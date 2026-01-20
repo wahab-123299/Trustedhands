@@ -1,302 +1,292 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Artisan Dashboard - Trusted Hand</title>
   <link rel="stylesheet" href="../css/dashboard.css">
-</head>
-<body>
+  </head>
+  <body>
 
-  <!-- ===== Sidebar ===== -->
-  <aside class="sidebar">
-    <h2>Trusted Hand</h2>
-    <ul>
-      <li><a href="#current-jobs">Active Jobs</a></li>
-      <li><a href="#job-history">Job History</a></li>
-      <li><a href="#profile-update">Profile</a></li>
-      <li><a href="#" onclick="logout()">Logout</a></li>
-    </ul>
-  </aside>
+  <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+  <h2>Trusted Hand</h2>
+  <ul>
+    <li><a href="#current-jobs">Active Jobs</a></li>
+    <li><a href="#job-history">Job History</a></li>
+    <li><a href="#profile-update">Profile</a></li>
+    <li><a href="#" onclick="logout()">Logout</a></li>
+  </ul>
+    </aside>
 
-  <!-- ===== Main Content ===== -->
-  <main class="main-content">
-    <header>
-      <h2>Welcome, <span id="artisanName">Loading...</span></h2>
-      <p>Trade: <span id="artisanTrade">Loading...</span></p>
-    </header>
+    <!-- ===== MAIN ===== -->
+    <main class="main-content">
 
-    <!-- Active Jobs Section -->
-    <section id="current-jobs" class="current-jobs">
-      <h3>Active Jobs</h3>
-      <table id="jobsTable">
-        <thead>
-          <tr>
-            <th>Job Title</th>
-            <th>Location</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="4">Loading jobs...</td></tr>
-        </tbody>
-      </table>
-    </section>
+  <header>
+    <h2>Welcome, <span id="artisanName">Loading...</span></h2>
+    <p>Profession: <span id="artisanProfession">Loading...</span></p>
+  </header>
 
-    <!-- Job History & Earnings Section -->
-    <section id="job-history" class="job-history">
-      <h3>Job History & Earnings</h3>
+  <!-- ===== ACTIVE JOBS ===== -->
+  <section id="current-jobs">
+    <h3>Active Jobs</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="jobsTable">
+        <tr><td colspan="4">Loading...</td></tr>
+      </tbody>
+    </table>
+  </section>
 
-      <div class="earnings-summary">
-        <div class="card">
-          <h4>Total Jobs Completed</h4>
-          <p id="totalJobs">0</p>
-        </div>
-        <div class="card">
-          <h4>Total Earnings</h4>
-          <p id="totalEarnings">₦0</p>
-        </div>
+  <!-- ===== JOB HISTORY ===== -->
+  <section id="job-history">
+    <h3>Job History & Earnings</h3>
+
+    <div class="earnings-summary">
+      <div class="card">
+        <h4>Total Jobs</h4>
+        <p id="totalJobs">0</p>
       </div>
+      <div class="card">
+        <h4>Total Earnings</h4>
+        <p id="totalEarnings">₦0</p>
+      </div>
+    </div>
 
-      <table id="historyTable">
-        <thead>
-          <tr>
-            <th>Job Title</th>
-            <th>Location</th>
-            <th>Date Completed</th>
-            <th>Earnings (₦)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="4">Loading history...</td></tr>
-        </tbody>
-      </table>
-    </section>
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Location</th>
+          <th>Date</th>
+          <th>Earnings</th>
+        </tr>
+      </thead>
+      <tbody id="historyTable">
+        <tr><td colspan="4">Loading...</td></tr>
+      </tbody>
+    </table>
+  </section>
 
-    <!-- Profile Update Section -->
-    <section id="profile-update" class="profile-update">
-      <h3>Update Profile</h3>
-      <form id="profileForm">
-        <label for="name">Full Name</label>
-        <input type="text" id="name" required>
+  <!-- ===== PROFILE UPDATE ===== -->
+  <section id="profile-update">
+    <h3>Update Profile</h3>
 
-        <label for="trade">Trade</label>
-        <input type="text" id="trade" required>
+    <form id="profileForm">
+      <label>Full Name</label>
+      <input type="text" id="name" required>
 
-        <label for="phone">Phone Number</label>
-        <input type="text" id="phone" required>
+      <label>Profession</label>
+      <input type="text" id="profession" required>
 
-        <label for="location">Location</label>
-        <input type="text" id="location" required>
+      <label>Phone</label>
+      <input type="text" id="phone" required>
 
-        <button type="submit">Save Changes</button>
-      </form>
-    </section>
-  </main>
+      <label>Location</label>
+      <input type="text" id="location" required>
 
-  <!-- ===== JavaScript ===== -->
-  <script>
-    const token = localStorage.getItem("token");
-    if (!token) {
-      window.location.href = "../login.html";
+      <button type="submit">Save Changes</button>
+    </form>
+  </section>
+
+    </main> 
+
+    <script>
+/* ======================
+   AUTH CHECK
+====================== */
+const token = localStorage.getItem("token");
+if (!token) {
+  window.location.href = "../login.html";
+}
+
+const API = "https://trustedhands-backend.onrender.com/api/artisans";
+
+/* ======================
+   LOAD PROFILE
+====================== */
+async function loadProfile() {
+  try {
+    const res = await fetch(`${API}/profile`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+
+    artisanName.textContent = data.name;
+    artisanProfession.textContent = data.profession || "-";
+
+    name.value = data.name;
+    profession.value = data.profession || "";
+    phone.value = data.phone || "";
+    location.value = data.address || "";
+
+  } catch (err) {
+    alert("Session expired. Please login again.");
+    logout();
+  }
+}
+
+/* ======================
+   ACTIVE JOBS
+====================== */
+async function loadJobs() {
+  const table = document.getElementById("jobsTable");
+  table.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
+
+  try {
+    const res = await fetch(`${API}/jobs/active`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const jobs = await res.json();
+    table.innerHTML = "";
+
+    if (!jobs.length) {
+      table.innerHTML = `<tr><td colspan="4">No active jobs</td></tr>`;
+      return;
     }
 
-    // ======================
-    // LOAD ARTISAN PROFILE
-    // ======================
-    async function loadProfile() {
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+    jobs.forEach(job => {
+      table.innerHTML += `
+        <tr>
+          <td>${job.title}</td>
+          <td>${job.location}</td>
+          <td>${job.status}</td>
+          <td>
+            <button onclick="completeJob('${job._id}')">
+              Mark Complete
+            </button>
+          </td>
+        </tr>`;
+    });
 
-        const profile = await res.json();
+  } catch {
+    table.innerHTML = `<tr><td colspan="4">Error loading jobs</td></tr>`;
+  }
+}
 
-        if (!res.ok) throw new Error(profile.message);
+/* ======================
+   JOB HISTORY
+====================== */
+async function loadHistory() {
+  const table = document.getElementById("historyTable");
+  table.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
 
-        // ✅ ROLE PROTECTION
-        if (profile.role !== "artisan") {
-          alert("Unauthorized access");
-          logout();
-          return;
-        }
+  try {
+    const res = await fetch(`${API}/jobs/history`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
 
-        document.getElementById("artisanName").textContent = profile.name;
-        document.getElementById("artisanTrade").textContent = profile.trade || "-";
+    const history = await res.json();
+    table.innerHTML = "";
 
-        name.value = profile.name;
-        trade.value = profile.trade || "";
-        phone.value = profile.phone || "";
-        location.value = profile.location || "";
+    let total = 0;
 
-      } catch (err) {
-        alert("❌ Failed to load profile");
-        logout();
-      }
+    if (!history.length) {
+      table.innerHTML = `<tr><td colspan="4">No completed jobs</td></tr>`;
     }
 
-    // ======================
-    // LOAD ACTIVE JOBS
-    // ======================
-    async function loadJobs() {
-      const tbody = document.querySelector("#jobsTable tbody");
-      tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
+    history.forEach(job => {
+      total += job.earnings || 0;
+      table.innerHTML += `
+        <tr>
+          <td>${job.title}</td>
+          <td>${job.location}</td>
+          <td>${new Date(job.completedAt).toLocaleDateString()}</td>
+          <td>₦${(job.earnings || 0).toLocaleString()}</td>
+        </tr>`;
+    });
 
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/jobs/active", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+    totalJobs.textContent = history.length;
+    totalEarnings.textContent = "₦" + total.toLocaleString();
 
-        const jobs = await res.json();
-        tbody.innerHTML = "";
+  } catch {
+    table.innerHTML = `<tr><td colspan="4">Error loading history</td></tr>`;
+  }
+}
 
-        if (!jobs.length) {
-          tbody.innerHTML = `<tr><td colspan="4">No active jobs.</td></tr>`;
-          return;
-        }
+/* ======================
+   COMPLETE JOB
+====================== */
+async function completeJob(id) {
+  try {
+    const res = await fetch(`${API}/jobs/${id}/complete`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` }
+    });
 
-        jobs.forEach(job => {
-          const canComplete = job.status === "ongoing";
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
 
-          tbody.insertAdjacentHTML("beforeend", `
-            <tr>
-              <td>${job.title}</td>
-              <td>${job.location}</td>
-              <td>${job.status}</td>
-              <td>
-                <button ${!canComplete ? "disabled" : ""} 
-                  onclick="markComplete('${job._id}')">
-                  Mark Complete
-                </button>
-              </td>
-            </tr>
-          `);
-        });
+    alert("Job completed");
+    loadJobs();
+    loadHistory();
 
-      } catch {
-        tbody.innerHTML = `<tr><td colspan="4">⚠️ Error loading jobs</td></tr>`;
-      }
-    }
+  } catch (err) {
+    alert(err.message);
+  }
+}
 
-    // ======================
-    // LOAD JOB HISTORY
-    // ======================
-    async function loadJobHistory() {
-      const tbody = document.querySelector("#historyTable tbody");
-      tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
+/* ======================
+   UPDATE PROFILE
+====================== */
+profileForm.addEventListener("submit", async e => {
+  e.preventDefault();
 
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/jobs/history", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        const history = await res.json();
-        tbody.innerHTML = "";
-
-        let total = 0;
-
-        if (!history.length) {
-          tbody.innerHTML = `<tr><td colspan="4">No completed jobs.</td></tr>`;
-        }
-
-        history.forEach(job => {
-          const earnings = job.earnings || 0;
-          total += earnings;
-
-          tbody.insertAdjacentHTML("beforeend", `
-            <tr>
-              <td>${job.title}</td>
-              <td>${job.location}</td>
-              <td>${new Date(job.completedAt).toLocaleDateString()}</td>
-              <td>₦${earnings.toLocaleString()}</td>
-            </tr>
-          `);
-        });
-
-        totalJobs.textContent = history.length;
-        totalEarnings.textContent = "₦" + total.toLocaleString();
-
-      } catch {
-        tbody.innerHTML = `<tr><td colspan="4">⚠️ Error loading history</td></tr>`;
-      }
-    }
-
-    // ======================
-    // MARK JOB COMPLETE
-    // ======================
-    async function markComplete(jobId) {
-      try {
-        const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/jobs/${jobId}/complete`, {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) throw new Error(data.message);
-
-        alert("✅ Job completed");
-        loadJobs();
-        loadJobHistory();
-
-      } catch (err) {
-        alert("❌ " + err.message);
-      }
-    }
-
-    // ======================
-    // UPDATE PROFILE
-    // ======================
-    async function updateProfile(e) {
-      e.preventDefault();
-
-      const payload = {
+  try {
+    const res = await fetch(`${API}/profile`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
         name: name.value,
-        trade: trade.value,
+        profession: profession.value,
         phone: phone.value,
-        location: location.value
-      };
+        address: location.value
+      })
+    });
 
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/artisans/profile", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify(payload)
-        });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
 
-        const data = await res.json();
+    artisanName.textContent = name.value;
+    artisanProfession.textContent = profession.value;
 
-        if (!res.ok) throw new Error(data.message);
+    alert("Profile updated");
 
-        artisanName.textContent = payload.name;
-        artisanTrade.textContent = payload.trade;
-        alert("✅ Profile updated");
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
-      } catch (err) {
-        alert("❌ " + err.message);
-      }
-    }
+/* ======================
+   LOGOUT
+====================== */
+function logout() {
+  localStorage.removeItem("token");
+  window.location.href = "../login.html";
+}
 
-    // ======================
-    // LOGOUT
-    // ======================
-    function logout() {
-      localStorage.removeItem("token");
-      window.location.href = "../login.html";
-    }
+/* ======================
+   INIT
+====================== */
+window.onload = () => {
+  loadProfile();
+  loadJobs();
+  loadHistory();
+};
+    </script>
 
-    // INIT
-    window.onload = () => {
-      loadProfile();
-      loadJobs();
-      loadJobHistory();
-      profileForm.addEventListener("submit", updateProfile);
-    };
-  </script>
-
-</body>
+  </body>
 </html>

@@ -3,19 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>User Dashboard - Trusted Hand</title>
+    <title>User Dashboard | Trusted Hand</title>
     <link rel="stylesheet" href="./css/style.css" />
   </head>
   <body>
 
     <script>
-      // 🔐 AUTH + ROLE GUARD
-      const token = localStorage.getItem("token");
-      const role = localStorage.getItem("role");
+      // 🔐 AUTH + ROLE GUARD (FIXED)
+      const userInfo = JSON.parse(localStorage.getItem("userInfo"));
 
-      if (!token || role !== "customer") {
+      if (!userInfo || !userInfo.token || userInfo.role !== "customer") {
         window.location.href = "../auth/login.html";
       }
+
+      const token = userInfo.token;
     </script>
 
     <header>
@@ -72,13 +73,13 @@
         <h3>Profile</h3>
         <form id="profileForm">
           <label>Full Name</label>
-          <input type="text" id="name" required>
+          <input type="text" id="name" required />
 
           <label>Email</label>
-          <input type="email" id="email" disabled>
+          <input type="email" id="email" disabled />
 
           <label>Phone</label>
-          <input type="text" id="phone">
+          <input type="text" id="phone" />
 
           <button type="submit">Update Profile</button>
         </form>
@@ -100,8 +101,14 @@
       // 🔄 LOAD DASHBOARD
       async function loadDashboard() {
         try {
-          // PROFILE
-          const profileRes = await fetch("https://trustedhands-backend.onrender.com/api/users/profile", { headers });
+          // 👤 PROFILE
+          const profileRes = await fetch(
+            "https://trustedhands-backend.onrender.com/api/users/profile",
+            { headers }
+          );
+
+          if (!profileRes.ok) throw new Error("Auth failed");
+
           const profile = await profileRes.json();
 
           document.getElementById("welcomeMessage").textContent =
@@ -110,8 +117,12 @@
           document.getElementById("email").value = profile.email;
           document.getElementById("phone").value = profile.phone || "";
 
-          // BOOKINGS
-          const bookingsRes = await fetch("https://trustedhands-backend.onrender.com/api/bookings/my", { headers });
+          // 📦 BOOKINGS
+          const bookingsRes = await fetch(
+            "https://trustedhands-backend.onrender.com/api/bookings/my",
+            { headers }
+          );
+
           const bookings = await bookingsRes.json();
 
           document.getElementById("totalBookings").textContent = bookings.length;
@@ -122,19 +133,24 @@
           table.innerHTML = "";
 
           if (!bookings.length) {
-            table.innerHTML = "<tr><td colspan='4'>No bookings yet</td></tr>";
-          } else {
-            bookings.forEach(b => {
-              table.innerHTML += `
-                <tr>
-                  <td>${b.artisan.name}</td>
-                  <td>${b.artisan.profession}</td>
-                  <td>${new Date(b.bookingDate).toLocaleDateString()}</td>
-                  <td>${b.status}</td>
-                </tr>
-              `;
-            });
+            table.innerHTML =
+              "<tr><td colspan='4'>No bookings yet</td></tr>";
+            return;
           }
+
+          bookings.forEach(b => {
+            const artisanName = b.artisan?.name || "Unknown";
+            const service = b.artisan?.profession || "N/A";
+
+            table.innerHTML += `
+              <tr>
+                <td>${artisanName}</td>
+                <td>${service}</td>
+                <td>${new Date(b.bookingDate).toLocaleDateString()}</td>
+                <td>${b.status}</td>
+              </tr>
+            `;
+          });
 
         } catch (err) {
           alert("Session expired. Please login again.");
@@ -150,11 +166,14 @@
         const name = document.getElementById("name").value;
         const phone = document.getElementById("phone").value;
 
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/users/profile", {
-          method: "PUT",
-          headers,
-          body: JSON.stringify({ name, phone })
-        });
+        const res = await fetch(
+          "https://trustedhands-backend.onrender.com/api/users/profile",
+          {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({ name, phone })
+          }
+        );
 
         if (res.ok) {
           alert("Profile updated successfully");

@@ -1,197 +1,293 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Artisan Reviews | Trusted Hand</title>
-  <link rel="stylesheet" href="./css/style.css">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f9;
-      margin: 0;
-      padding: 0;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Artisan Reviews | Trusted Hand</title>
 
-    header {
-      background: #007bff;
-      color: #fff;
-      padding: 15px;
-      text-align: center;
-    }
+    <link rel="icon" type="image/png" href="./images/logo.png" />
+    <link rel="stylesheet" href="./css/style.css" />
 
-    .container {
-      width: 85%;
-      max-width: 900px;
-      margin: 40px auto;
-      background: #fff;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    }
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f4f6f9;
+        margin: 0;
+      }
 
-    h2 {
-      text-align: center;
-      color: #333;
-      margin-bottom: 10px;
-    }
+      .container {
+        width: 90%;
+        max-width: 900px;
+        margin: 40px auto;
+        background: #fff;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      }
 
-    .artisan-info {
-      text-align: center;
-      margin-bottom: 20px;
-    }
+      h2, h3 { text-align: center; }
 
-    .rating {
-      color: #ffcc00;
-      font-size: 20px;
-    }
+      .artisan-info {
+        text-align: center;
+        margin-bottom: 25px;
+      }
 
-    form {
-      margin: 25px 0;
-      background: #f9f9f9;
-      padding: 20px;
-      border-radius: 10px;
-    }
+      .rating {
+        color: #ffcc00;
+        font-size: 20px;
+        font-weight: bold;
+      }
 
-    label {
-      font-weight: bold;
-      display: block;
-      margin-bottom: 8px;
-    }
+      form {
+        background: #f9f9f9;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+      }
 
-    select, textarea, button {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 15px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      font-size: 15px;
-    }
+      label {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 6px;
+      }
 
-    button {
-      background: #007bff;
-      color: #fff;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background 0.3s ease;
-    }
+      select, textarea, button {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+      }
 
-    button:hover {
-      background: #0056b3;
-    }
+      button {
+        background: #007bff;
+        color: #fff;
+        font-weight: bold;
+        cursor: pointer;
+      }
 
-    .review-list {
-      margin-top: 25px;
-    }
+      button:hover { background: #0056b3; }
 
-    .review {
-      border-bottom: 1px solid #ddd;
-      padding: 12px 0;
-    }
+      .review {
+        border-bottom: 1px solid #ddd;
+        padding: 12px 0;
+      }
 
-    .review:last-child {
-      border-bottom: none;
-    }
+      .stars { color: #ffcc00; }
 
-    .review strong {
-      color: #333;
-    }
+      .error {
+        color: red;
+        font-weight: bold;
+        text-align: center;
+      }
 
-    .review .stars {
-      color: #ffcc00;
-      font-size: 16px;
-      margin-left: 5px;
-    }
+      .success {
+        color: green;
+        font-weight: bold;
+        text-align: center;
+      }
 
-    footer {
-      text-align: center;
-      padding: 15px;
-      background: #222;
-      color: #fff;
-      margin-top: 40px;
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Trusted Hand</h1>
-  </header>
+      footer {
+        text-align: center;
+        padding: 15px;
+        margin-top: 40px;
+      }
+    </style>
+  </head>
+  <body>
 
+    <!-- Navbar -->
+    <header>
+      <nav class="navbar">
+        <div class="logo">
+          <img src="./images/logo.png" class="logo-img" alt="Trusted Hand Logo">
+          <span>Trusted Hand</span>
+        </div>
 
-  <div class="container">
-    <h2>Artisan Reviews</h2>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="artisan/artisan.html">Artisans</a></li>
+          <li><a href="customer/my-bookings.html">My Bookings</a></li>
+          <li><a href="auth/login.html" class="btn">Login</a></li>
+        </ul>
+      </nav>
+    </header>
 
-    <div class="artisan-info">
-      <h3>John Doe – Electrician</h3>
-      <p><span class="rating">★★★★☆</span> (4.0 average rating)</p>
-    </div>
+    <!-- Content -->
+    <div class="container">
+      <h2>Artisan Reviews</h2>
 
-    <!-- Review Form -->
-    <form id="reviewForm">
-      <label for="rating">Your Rating:</label>
-      <select id="rating" name="rating" required>
-        <option value="">Select Rating</option>
-        <option value="5">★★★★★ (5)</option>
-        <option value="4">★★★★☆ (4)</option>
-        <option value="3">★★★☆☆ (3)</option>
-        <option value="2">★★☆☆☆ (2)</option>
-        <option value="1">★☆☆☆☆ (1)</option>
-      </select>
-
-      <label for="comment">Your Review:</label>
-      <textarea id="comment" name="comment" rows="4" placeholder="Write your feedback..." required></textarea>
-
-      <button type="submit">Submit Review</button>
-    </form>
-
-    <!-- Reviews List -->
-    <div class="review-list" id="reviews">
-      <h3>Past Reviews</h3>
-      
-      <div class="review">
-        <strong>Adeola:</strong> <span class="stars">★★★★★</span>
-        <p>Excellent service! Very professional and fast.</p>
+      <div class="artisan-info" id="artisanInfo">
+        Loading artisan...
       </div>
 
-      <div class="review">
-        <strong>Tunde:</strong> <span class="stars">★★★★☆</span>
-        <p>Good work overall, but came a bit late.</p>
-      </div>
+      <!-- Review Form -->
+      <form id="reviewForm">
+        <label>Your Rating</label>
+        <select id="rating" required>
+          <option value="">Select rating</option>
+          <option value="5">★★★★★ (5)</option>
+          <option value="4">★★★★☆ (4)</option>
+          <option value="3">★★★☆☆ (3)</option>
+          <option value="2">★★☆☆☆ (2)</option>
+          <option value="1">★☆☆☆☆ (1)</option>
+        </select>
 
-      <div class="review">
-        <strong>Mary:</strong> <span class="stars">★★★☆☆</span>
-        <p>Average experience. The repair worked but not perfectly.</p>
+        <label>Your Review</label>
+        <textarea id="comment" rows="4" placeholder="Write your review..." required></textarea>
+
+        <button type="submit">Submit Review</button>
+        <p id="message"></p>
+      </form>
+
+      <!-- Reviews -->
+      <div id="reviews">
+        <h3>Customer Reviews</h3>
+        <p>Loading reviews...</p>
       </div>
     </div>
-  </div>
 
-  <footer>
-    <p>&copy; <span id="year"></span> Trusted Hand. All rights reserved.</p>
-  </footer>
+    <footer>
+      <p>&copy; <span id="year"></span> Trusted Hand</p>
+    </footer>
 
-  <script>
-    // Auto update footer year
-    document.getElementById('year').textContent = new Date().getFullYear();
+    <script>
+    /* =========================
+      AUTH CHECK
+    ========================= */
+    const user = JSON.parse(localStorage.getItem("userInfo"));
 
-    // Example simple frontend-only form handler (to connect backend later)
-    document.getElementById('reviewForm').addEventListener('submit', function(event) {
-      event.preventDefault();
-      const rating = document.getElementById('rating').value;
-      const comment = document.getElementById('comment').value;
-      if (!rating || !comment.trim()) {
-        alert("Please provide a rating and comment.");
+    if (!user || !user.token || user.role !== "customer") {
+      alert("Please login as a customer to view and post reviews.");
+      window.location.href = "auth/login.html";
+    }
+
+    const token = user.token;
+
+    /* =========================
+      GET ARTISAN ID
+    ========================= */
+    const params = new URLSearchParams(window.location.search);
+    const artisanId = params.get("artisanId");
+
+    if (!artisanId) {
+      alert("Invalid artisan selected");
+      window.location.href = "artisan/artisan.html";
+    }
+
+    /* =========================
+      LOAD ARTISAN
+    ========================= */
+    async function loadArtisan() {
+      try {
+        const res = await fetch(
+          `https://trustedhands-backend.onrender.com/api/artisans/${artisanId}`
+        );
+        const artisan = await res.json();
+
+        document.getElementById("artisanInfo").innerHTML = `
+          <h3>${artisan.name}</h3>
+          <p>${artisan.skill}</p>
+          <p class="rating">⭐ ${artisan.rating || 0} / 5</p>
+        `;
+      } catch {
+        document.getElementById("artisanInfo").innerHTML =
+          "<p class='error'>Failed to load artisan</p>";
+      }
+    }
+
+    /* =========================
+      LOAD REVIEWS
+    ========================= */
+    async function loadReviews() {
+      try {
+        const res = await fetch(
+          `https://trustedhands-backend.onrender.com/api/reviews/${artisanId}`
+        );
+        const reviews = await res.json();
+
+        const reviewsDiv = document.getElementById("reviews");
+
+        if (!reviews.length) {
+          reviewsDiv.innerHTML = "<h3>No reviews yet</h3>";
+          return;
+        }
+
+        reviewsDiv.innerHTML = "<h3>Customer Reviews</h3>";
+
+        reviews.forEach(r => {
+          reviewsDiv.innerHTML += `
+            <div class="review">
+              <strong>${r.customer?.name || "Anonymous"}</strong><br>
+              <span class="stars">
+                ${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}
+              </span>
+              <p>${r.comment}</p>
+            </div>
+          `;
+        });
+      } catch {
+        document.getElementById("reviews").innerHTML =
+          "<p class='error'>Failed to load reviews</p>";
+      }
+    }
+
+    /* =========================
+      SUBMIT REVIEW
+    ========================= */
+    document.getElementById("reviewForm").addEventListener("submit", async e => {
+      e.preventDefault();
+
+      const rating = document.getElementById("rating").value;
+      const comment = document.getElementById("comment").value.trim();
+      const message = document.getElementById("message");
+
+      if (!rating || !comment) {
+        message.textContent = "Fill all fields";
+        message.className = "error";
         return;
       }
 
-      const reviewList = document.getElementById('reviews');
-      const newReview = document.createElement('div');
-      newReview.classList.add('review');
-      newReview.innerHTML = `<strong>You:</strong> <span class="stars">${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}</span><p>${comment}</p>`;
-      reviewList.appendChild(newReview);
+      try {
+        const res = await fetch(
+          `https://trustedhands-backend.onrender.com/api/reviews/${artisanId}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ rating, comment })
+          }
+        );
 
-      document.getElementById('reviewForm').reset();
-      alert("Thank you for your feedback!");
+        const data = await res.json();
+
+        if (!res.ok) {
+          message.textContent = data.message || "Review failed";
+          message.className = "error";
+          return;
+        }
+
+        message.textContent = "✅ Review submitted successfully";
+        message.className = "success";
+        document.getElementById("reviewForm").reset();
+
+        loadReviews();
+        loadArtisan();
+      } catch {
+        message.textContent = "Server error";
+        message.className = "error";
+      }
     });
-  </script>
-</body>
+
+    /* =========================
+      INIT
+    ========================= */
+    document.getElementById("year").textContent = new Date().getFullYear();
+    loadArtisan();
+    loadReviews();
+    </script>
+
+  </body>
 </html>

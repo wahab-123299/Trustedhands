@@ -8,6 +8,7 @@ const artisanSchema = new mongoose.Schema(
       required: [true, "Please enter artisan’s full name"],
       trim: true,
     },
+
     email: {
       type: String,
       required: [true, "Please enter artisan’s email"],
@@ -15,52 +16,73 @@ const artisanSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+
     password: {
       type: String,
       required: [true, "Please create a password"],
       minlength: [6, "Password must be at least 6 characters"],
     },
+
     phone: {
       type: String,
       required: [true, "Please provide a phone number"],
       trim: true,
     },
+
     address: {
       type: String,
       trim: true,
     },
+
     profession: {
       type: String,
-      required: [true, "Please enter artisan’s skill category (e.g. Plumber, Electrician)"],
+      required: [
+        true,
+        "Please enter artisan’s skill category (e.g. Plumber, Electrician)",
+      ],
     },
+
     experience: {
-      type: String,
-      default: "0 years",
+      type: Number, // ✅ better than string
+      default: 0, // years
+      min: 0,
     },
+
     rating: {
       type: Number,
-      default: 0,
+      default: 0, // auto-updated from reviews
       min: 0,
       max: 5,
     },
+
+    numReviews: {
+      type: Number,
+      default: 0,
+    },
+
     verified: {
       type: Boolean,
       default: false,
     },
+
     availability: {
       type: String,
       enum: ["Available", "Busy", "Offline"],
       default: "Available",
     },
+
     role: {
       type: String,
       default: "artisan",
+      enum: ["artisan"],
     },
   },
   { timestamps: true }
 );
 
-// 🔒 Hash password before saving
+/* =========================
+   PASSWORD HASHING
+========================= */
 artisanSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
 
@@ -69,7 +91,9 @@ artisanSchema.pre("save", async function (next) {
   next();
 });
 
-// 🔐 Compare entered password with hashed one
+/* =========================
+   PASSWORD COMPARISON
+========================= */
 artisanSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };

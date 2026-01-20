@@ -1,105 +1,184 @@
-/* ===== Post Job Page ===== */
-body {
-  font-family: 'Poppins', sans-serif;
-  background-color: #f8f9fa;
-  color: #333;
+/* =========================
+   GLOBAL RESET & BASE
+========================= */
+* {
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
 }
 
-header {
-  background-color: #007bff;
-  color: white;
-  padding: 15px 0;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+body {
+  font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+  color: #333;
+  line-height: 1.6;
 }
 
-header .container {
+/* =========================
+   CONTAINER
+========================= */
+.container {
   width: 90%;
   max-width: 1200px;
   margin: auto;
+}
+
+/* =========================
+   HEADER / NAVBAR
+========================= */
+header {
+  background-color: #007bff;
+  color: #fff;
+  padding: 15px 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+header .container {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
+/* Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+
+.logo-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+/* Navigation */
 nav a {
-  color: white;
+  color: #fff;
   text-decoration: none;
   margin-left: 15px;
   padding: 8px 12px;
   border-radius: 6px;
-  transition: 0.3s;
+  font-weight: 500;
+  transition: 0.3s ease;
 }
 
-nav a:hover, nav a.active {
-  background-color: white;
+nav a:hover,
+nav a.active {
+  background-color: #fff;
   color: #007bff;
 }
 
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 1.3rem;
-    font-weight: bold;
-}
-
-.logo-img {
-    width: 40px;
-    height: 40px;
-    object-fit: contain;
-}
-
-/* ===== Job Form ===== */
+/* =========================
+   POST JOB SECTION
+========================= */
 .post-job-section {
   padding: 60px 0;
 }
 
+/* Card */
 .post-job-section .container {
-  width: 90%;
   max-width: 600px;
-  background: white;
+  background: #fff;
   padding: 30px;
   border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
+
+/* =========================
+   HEADINGS
+========================= */
 h2 {
   color: #007bff;
   margin-bottom: 10px;
+  text-align: center;
+}
+
+p {
+  text-align: center;
+  color: #666;
+  margin-bottom: 20px;
+}
+
+/* =========================
+   FORM ELEMENTS
+========================= */
+form {
+  display: flex;
+  flex-direction: column;
 }
 
 label {
-  display: block;
   margin-top: 15px;
   font-weight: 500;
   color: #555;
 }
 
-input, textarea {
+input,
+textarea {
   width: 100%;
   padding: 10px;
   margin-top: 5px;
   border: 1px solid #ccc;
   border-radius: 6px;
-  outline: none;
   font-size: 1rem;
+  outline: none;
 }
 
+input:focus,
+textarea:focus {
+  border-color: #007bff;
+}
+
+/* =========================
+   BUTTON
+========================= */
 button {
   margin-top: 25px;
-  width: 100%;
   padding: 12px;
   background-color: #007bff;
-  color: white;
+  color: #fff;
   font-size: 1rem;
+  font-weight: 600;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: 0.3s;
+  transition: 0.3s ease;
 }
 
 button:hover {
   background-color: #0056b3;
+}
+
+/* =========================
+   STATUS MESSAGE
+========================= */
+#status {
+  margin-top: 15px;
+  text-align: center;
+  font-weight: 600;
+  color: #28a745;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+@media (max-width: 600px) {
+  header .container {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  nav a {
+    margin-left: 0;
+    margin-right: 10px;
+    display: inline-block;
+  }
+
+  .post-job-section {
+    padding: 40px 0;
+  }
 }

@@ -1,55 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin - Manage Artisans | Trusted Hand</title>
-  <link rel="stylesheet" href="../css/admin.css">
-  <style>
-    .search-bar { padding: 0.6rem; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem; width: 300px; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
-    th, td { text-align: left; padding: 0.9rem; border-bottom: 1px solid #eee; }
-    th { background: #007bff; color: #fff; }
-    tr:hover { background: #f1f1f1; }
-    .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-    .modal-content { background: #fff; padding: 2rem; border-radius: 8px; width: 400px; max-width: 90%; margin: 10% auto; position: relative; }
-    .close { position: absolute; top: 10px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #333; }
-    .btn-save { margin-top: 1rem; width: 100%; padding: 0.7rem; background: #007bff; color: #fff; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
-    .approve { background: #198754; color: #fff; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer; }
-    .suspend { background: #dc3545; color: #fff; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer; }
-  </style>
-</head>
-<body>
-  <div class="admin-container">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <h2>Trusted Hand</h2>
-      <ul>
-        <li><a href="admin-dashboard.html">Dashboard</a></li>
-        <li><a href="admin-users.html">Users</a></li>
-        <li><a href="admin-artisans.html" class="active">Artisans</a></li>
-        <li><a href="admin-jobs.html">Jobs</a></li>
-        <li><a href="admin-payments.html">Payments</a></li>
-        <li><a href="admin-settings.html">Settings</a></li>
-        <li><a href="#" onclick="logout()">Logout</a></li>
-      </ul>
-    </aside>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Admin – Manage Artisans | Trusted Hand</title>
+    <link rel="stylesheet" href="../css/admin.css"/>
 
-    <!-- Main Content -->
-    <main class="main-content">
-      <header>
-        <h1>Manage Artisans</h1>
-        <input type="text" id="searchArtisan" placeholder="Search artisans by name, skill, or location..." class="search-bar">
-      </header>
+    <style>
+      .search-bar{padding:.6rem;border-radius:6px;border:1px solid #ccc;width:300px}
+      table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden}
+      th,td{padding:.9rem;border-bottom:1px solid #eee}
+      th{background:#007bff;color:#fff}
+      tr:hover{background:#f1f1f1}
+      .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999}
+      .modal-content{background:#fff;padding:2rem;border-radius:8px;width:400px;margin:10% auto;position:relative}
+      .close{position:absolute;top:10px;right:15px;font-size:1.5rem;cursor:pointer}
+      .btn-save{margin-top:1rem;width:100%;padding:.7rem;background:#007bff;color:#fff;border:none;border-radius:6px}
+      .approve{background:#198754;color:#fff;border:none;padding:.4rem .8rem;border-radius:4px}
+      .suspend{background:#dc3545;color:#fff;border:none;padding:.4rem .8rem;border-radius:4px}
+    </style>
+  </head>
+  <body>
 
-      <!-- Artisan Table -->
-      <section class="table-section">
-        <table class="data-table">
+    <div class="admin-container">
+
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <h2>Trusted Hand</h2>
+        <ul>
+          <li><a href="admin-dashboard.html">Dashboard</a></li>
+          <li><a href="admin-users.html">Users</a></li>
+          <li><a class="active">Artisans</a></li>
+          <li><a href="admin-jobs.html">Jobs</a></li>
+          <li><a href="admin-payments.html">Payments</a></li>
+          <li><a href="#" onclick="logout()">Logout</a></li>
+        </ul>
+      </aside>
+
+      <!-- MAIN -->
+      <main class="main-content">
+        <header>
+          <h1>Manage Artisans</h1>
+          <input id="search" class="search-bar" placeholder="Search name, profession, location"/>
+        </header>
+
+        <table>
           <thead>
             <tr>
               <th>ID</th>
-              <th>Full Name</th>
-              <th>Skill</th>
+              <th>Name</th>
+              <th>Profession</th>
               <th>Location</th>
               <th>Rating</th>
               <th>Status</th>
@@ -57,207 +57,155 @@
             </tr>
           </thead>
           <tbody id="artisanList">
-            <tr><td colspan="7">Loading artisans...</td></tr>
+            <tr><td colspan="7">Loading...</td></tr>
           </tbody>
         </table>
-      </section>
-    </main>
-  </div>
-
-  <!-- Edit Artisan Modal -->
-  <div id="artisanModal" class="modal">
-    <div class="modal-content">
-      <span class="close">&times;</span>
-      <h3>Edit Artisan</h3>
-      <form id="editArtisanForm">
-        <input type="hidden" id="artisanId" />
-        <label for="artisanName">Full Name</label>
-        <input type="text" id="artisanName" required />
-        <label for="artisanSkill">Skill</label>
-        <input type="text" id="artisanSkill" required />
-        <label for="artisanLocation">Location</label>
-        <input type="text" id="artisanLocation" required />
-        <label for="artisanStatus">Status</label>
-        <select id="artisanStatus">
-          <option value="Active">Active</option>
-          <option value="Pending">Pending</option>
-          <option value="Suspended">Suspended</option>
-        </select>
-        <button type="submit" class="btn-save">Save Changes</button>
-      </form>
+      </main>
     </div>
-  </div>
 
-  <script>
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("Please login as admin");
-      window.location.href = "login.html";
-    }
+    <!-- MODAL -->
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Edit Artisan</h3>
 
-    const artisanList = document.getElementById("artisanList");
-    const artisanModal = document.getElementById("artisanModal");
-    const closeModal = document.querySelector(".close");
-    const editForm = document.getElementById("editArtisanForm");
+        <form id="editForm">
+          <input type="hidden" id="artisanId"/>
+          <label>Name</label>
+          <input id="name" required/>
+          <label>Profession</label>
+          <input id="profession" required/>
+          <label>Location</label>
+          <input id="address" required/>
+          <label>Status</label>
+          <select id="status">
+            <option>Active</option>
+            <option>Pending</option>
+            <option>Suspended</option>
+          </select>
+          <button class="btn-save">Save</button>
+        </form>
+      </div>
+    </div>
 
-    let artisans = [];
-    let currentArtisanId = null;
+    <script>
+      const token = localStorage.getItem("token");
+      if (!token) location.href = "login.html";
 
-    /* ================= LOAD ARTISANS ================= */
-    async function loadArtisans() {
-      artisanList.innerHTML = "<tr><td colspan='7'>Loading...</td></tr>";
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/artisans", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+      const API = "https://trustedhands-backend.onrender.com/api/admin/artisans";
+      const list = document.getElementById("artisanList");
+      const modal = document.getElementById("modal");
+      let artisans = [];
+      let currentId = null;
+
+      /* LOAD */
+      async function loadArtisans() {
+        const res = await fetch(API, { headers:{Authorization:`Bearer ${token}`}});
         const data = await res.json();
+        if (!res.ok) return alert(data.message);
+        artisans = data;
+        render();
+      }
 
-        if (!res.ok) {
-          artisanList.innerHTML = `<tr><td colspan="7">❌ ${data.message || "Failed to load artisans"}</td></tr>`;
+      /* RENDER */
+      function render(q="") {
+        list.innerHTML = "";
+        const f = artisans.filter(a =>
+          a.name?.toLowerCase().includes(q) ||
+          a.profession?.toLowerCase().includes(q) ||
+          a.address?.toLowerCase().includes(q)
+        );
+
+        if (!f.length) {
+          list.innerHTML = "<tr><td colspan='7'>No artisans</td></tr>";
           return;
         }
 
-        artisans = data;
-        renderArtisans();
-      } catch (err) {
-        artisanList.innerHTML = "<tr><td colspan='7'>⚠️ Server error</td></tr>";
-      }
-    }
-
-    /* ================= RENDER ================= */
-    function renderArtisans(search = "") {
-      artisanList.innerHTML = "";
-
-      const filtered = artisans.filter(a =>
-        a.name.toLowerCase().includes(search.toLowerCase()) ||
-        a.skill.toLowerCase().includes(search.toLowerCase()) ||
-        a.location.toLowerCase().includes(search.toLowerCase())
-      );
-
-      if (!filtered.length) {
-        artisanList.innerHTML = "<tr><td colspan='7'>No artisans found.</td></tr>";
-        return;
-      }
-
-      filtered.forEach(a => {
-        artisanList.innerHTML += `
+        f.forEach(a=>{
+          list.innerHTML += `
           <tr>
             <td>${a._id}</td>
             <td>${a.name}</td>
-            <td>${a.skill}</td>
-            <td>${a.location}</td>
+            <td>${a.profession}</td>
+            <td>${a.address}</td>
             <td>${a.rating || "N/A"}</td>
             <td>${a.status}</td>
             <td>
-              <button class="approve" onclick="openModal('${a._id}')">Edit</button>
+              <button class="approve" onclick="edit('${a._id}')">Edit</button>
               ${
-                a.status === "Active"
-                  ? `<button class="suspend" onclick="updateStatus('${a._id}', 'Suspended')">Suspend</button>`
-                  : `<button class="approve" onclick="updateStatus('${a._id}', 'Active')">Activate</button>`
+                a.status==="Active"
+                ? `<button class="suspend" onclick="setStatus('${a._id}','Suspended')">Suspend</button>`
+                : `<button class="approve" onclick="setStatus('${a._id}','Active')">Activate</button>`
               }
             </td>
-          </tr>
-        `;
-      });
-    }
+          </tr>`;
+        });
+      }
 
-    /* ================= OPEN MODAL ================= */
-    function openModal(id) {
-      const artisan = artisans.find(a => a._id === id);
-      if (!artisan) return;
+      /* EDIT */
+      function edit(id){
+        const a = artisans.find(x=>x._id===id);
+        currentId = id;
+        artisanId.value = id;
+        name.value = a.name;
+        profession.value = a.profession;
+        address.value = a.address;
+        status.value = a.status;
+        modal.style.display="block";
+      }
 
-      currentArtisanId = id;
-      document.getElementById("artisanId").value = artisan._id;
-      document.getElementById("artisanName").value = artisan.name;
-      document.getElementById("artisanSkill").value = artisan.skill;
-      document.getElementById("artisanLocation").value = artisan.location;
-      document.getElementById("artisanStatus").value = artisan.status;
-
-      artisanModal.style.display = "block";
-    }
-
-    /* ================= UPDATE ARTISAN ================= */
-    editForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-
-      const updated = {
-        name: document.getElementById("artisanName").value,
-        skill: document.getElementById("artisanSkill").value,
-        location: document.getElementById("artisanLocation").value,
-        status: document.getElementById("artisanStatus").value
+      /* SAVE */
+      editForm.onsubmit = async e =>{
+        e.preventDefault();
+        const res = await fetch(`${API}/${currentId}`,{
+          method:"PUT",
+          headers:{
+            "Content-Type":"application/json",
+            Authorization:`Bearer ${token}`
+          },
+          body:JSON.stringify({
+            name:name.value,
+            profession:profession.value,
+            address:address.value,
+            status:status.value
+          })
+        });
+        const d = await res.json();
+        if(!res.ok) return alert(d.message);
+        modal.style.display="none";
+        loadArtisans();
       };
 
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/artisans/${currentArtisanId}", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
+      /* STATUS */
+      async function setStatus(id,status){
+        const res = await fetch(`${API}/${id}/status`,{
+          method:"PUT",
+          headers:{
+            "Content-Type":"application/json",
+            Authorization:`Bearer ${token}`
           },
-          body: JSON.stringify(updated)
+          body:JSON.stringify({status})
         });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          alert(data.message || "Update failed");
-          return;
-        }
-
-        alert("✅ Artisan updated successfully");
-        artisanModal.style.display = "none";
+        const d = await res.json();
+        if(!res.ok) return alert(d.message);
         loadArtisans();
-      } catch {
-        alert("⚠️ Server error");
       }
-    });
 
-    /* ================= UPDATE STATUS (FIXED) ================= */
-    async function updateStatus(id, status) {
-      try {
-        const res = await fetch("https://trustedhands-backend.onrender.com/api/admin/artisans/${id}/status", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ status })
-        });
+      /* SEARCH */
+      search.onkeyup = e=>render(e.target.value.toLowerCase());
 
-        const data = await res.json();
+      /* CLOSE */
+      document.querySelector(".close").onclick=()=>modal.style.display="none";
+      window.onclick=e=>e.target===modal&&(modal.style.display="none");
 
-        if (!res.ok) {
-          alert(data.message || "Failed to update status");
-          return;
-        }
-
-        alert("✅ Status updated");
-        loadArtisans();
-      } catch {
-        alert("⚠️ Server error");
+      /* LOGOUT */
+      function logout(){
+        localStorage.removeItem("token");
+        location.href="login.html";
       }
-    }
 
-    /* ================= SEARCH ================= */
-    document.getElementById("searchArtisan").addEventListener("keyup", (e) => {
-      renderArtisans(e.target.value);
-    });
+      loadArtisans();
+    </script>
 
-    /* ================= MODAL CLOSE ================= */
-    closeModal.onclick = () => artisanModal.style.display = "none";
-    window.onclick = (e) => {
-      if (e.target === artisanModal) artisanModal.style.display = "none";
-    };
-
-    /* ================= LOGOUT ================= */
-    function logout() {
-      localStorage.removeItem("token");
-      window.location.href = "login.html";
-    }
-
-    /* ================= INIT ================= */
-    loadArtisans();
-  </script>
-
-</body>
+  </body>
 </html>

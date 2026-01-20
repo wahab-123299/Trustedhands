@@ -19,143 +19,176 @@
 </head>
 <body>
 
-<header class="hero small-hero">
-  <div class="hero-content">
-    <h1>Book Artisan</h1>
-    <p>Fill the form to confirm your booking</p>
-  </div>
-</header>
+  <header class="hero small-hero">
+    <div class="hero-content">
+      <h1>Book Artisan</h1>
+      <p>Fill the form to confirm your booking</p>
+    </div>
+  </header>
 
-<section class="booking-form">
-  <p id="artisanInfo">Loading artisan...</p>
+  <section class="booking-form">
+    <p id="artisanInfo">Loading artisan...</p>
 
-  <form id="bookingForm">
-    <label>Service Location</label>
-    <input type="text" id="location" required />
+    <form id="bookingForm">
+      <label>Service Location</label>
+      <input type="text" id="location" required />
 
-    <label>Booking Date</label>
-    <input type="date" id="date" required />
+      <label>Booking Date</label>
+      <input type="date" id="date" required />
 
-    <label>Booking Time</label>
-    <input type="time" id="time" required />
+      <label>Booking Time</label>
+      <input type="time" id="time" required />
 
-    <label>Job Details</label>
-    <textarea id="details" placeholder="Describe the work..." required></textarea>
+      <label>Job Details</label>
+      <textarea id="details" placeholder="Describe the work..." required></textarea>
 
-    <button type="submit">Confirm Booking</button>
-  </form>
+      <button type="submit">Confirm Booking</button>
+    </form>
 
-  <p id="message"></p>
-</section>
+    <p id="message"></p>
+  </section>
 
-<script>
+  <script>
+    // =========================
+    // AUTH CHECK
+    // =========================
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login to book an artisan");
+      window.location.href = "../auth/login.html";
+    }
+
+    // =========================
+    // GET ARTISAN ID
+    // =========================
+    function bookArtisan() {
+      const params = new URLSearchParams(window.location.search);
+      const artisanId = params.get("artisanId");
+
+      if (!artisanId) {
+        alert("Invalid artisan");
+        return;
+      }
+    
+      window.location.href = "../search.html";
+    }
+
+    // =========================
+    // DATE RESTRICTION
+    // =========================
+    const dateInput = document.getElementById("date");
+    dateInput.min = new Date().toISOString().split("T")[0];
+
+
   // =========================
-  // AUTH CHECK
+  // VERIFY CUSTOMER ROLE
   // =========================
-  const token = localStorage.getItem("token");
-  if (!token) {
-    alert("Please login to book an artisan");
-    window.location.href = "../auth/login.html";
-  }
-
-  // =========================
-  // GET ARTISAN ID
-  // =========================
-  function bookArtisan() {
     const params = new URLSearchParams(window.location.search);
-    const artisanId = params.get("artisanId");
+    async function verifyCustomer() {
+      try {
+        const res = await fetch(
+          "https://trustedhands-backend.onrender.com/api/auth/me",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
 
-    if (!artisanId) {
-      alert("Invalid artisan");
-      return;
-    }
-  
-    window.location.href = "../search.html";
-  }
+        const user = await res.json();
 
-  // =========================
-  // DATE RESTRICTION
-  // =========================
-  const dateInput = document.getElementById("date");
-  dateInput.min = new Date().toISOString().split("T")[0];
-
-  // =========================
-  // LOAD ARTISAN DETAILS
-  // =========================
-  async function loadArtisan() {
-    try {
-      const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}`);
-      const artisan = await res.json();
-
-      if (!res.ok) throw new Error();
-
-      document.getElementById("artisanInfo").textContent =
-        `Booking: ${artisan.name} (${artisan.skill || artisan.service})`;
-
-    } catch {
-      document.getElementById("artisanInfo").textContent =
-        "⚠️ Unable to load artisan details.";
-    }
-  }
-
-  loadArtisan();
-
-  // =========================
-  // SUBMIT BOOKING
-  // =========================
-  const form = document.getElementById("bookingForm");
-  const message = document.getElementById("message");
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const date = dateInput.value;
-    const time = document.getElementById("time").value;
-
-    if (!date || !time) {
-      message.textContent = "❌ Date and time are required";
-      message.className = "error";
-      return;
+        if (!res.ok || user.role !== "customer") {
+          alert("Only customers can book artisans");
+          window.location.href = "../index.html";
+        }
+      } catch {
+        window.location.href = "../login.html";
+      }
     }
 
-    const bookingData = {
-      artisan: artisanId,
-      location: document.getElementById("location").value.trim(),
-      bookingDate: new Date(`${date}T${time}`).toISOString(),
-      details: document.getElementById("details").value.trim()
-    };
+    verifyCustomer();
 
-    try {
-      const res = await fetch("https://trustedhands-backend.onrender.com/api/bookings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(bookingData)
-      });
 
-      const data = await res.json();
+    // =========================
+    // LOAD ARTISAN DETAILS
+    // =========================
+    async function loadArtisan() {
+      try {
+        const res = await fetch(`https://trustedhands-backend.onrender.com/api/artisans/${artisanId}`);
+        const artisan = await res.json();
 
-      if (!res.ok) {
-        message.textContent = data.message || "Booking failed";
+        if (!res.ok || artisan.status !== "Active") {
+          throw new Error();
+        }
+
+
+        document.getElementById("artisanInfo").textContent =
+          `Booking: ${artisan.name} (${artisan.skill || artisan.service})`;
+
+      } catch {
+        document.getElementById("artisanInfo").textContent =
+          "⚠️ Unable to load artisan details.";
+      }
+    }
+
+    loadArtisan();
+
+    // =========================
+    // SUBMIT BOOKING
+    // =========================
+    const form = document.getElementById("bookingForm");
+    const message = document.getElementById("message");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const date = dateInput.value;
+      const time = document.getElementById("time").value;
+
+      if (!date || !time) {
+        message.textContent = "❌ Date and time are required";
         message.className = "error";
         return;
       }
 
-      message.textContent = "✅ Booking successful!";
-      message.className = "success";
+      const bookingData = {
+        artisan: artisanId,
+        location: document.getElementById("location").value.trim(),
+        bookingDate: new Date(`${date}T${time}`).toISOString(),
+        details: document.getElementById("details").value.trim()
+      };
 
-      setTimeout(() => {
-        window.location.href = "../my-bookings.html";
-      }, 1500);
+      try {
+        const res = await fetch("https://trustedhands-backend.onrender.com/api/bookings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(bookingData)
+        });
 
-    } catch {
-      message.textContent = "⚠️ Server error. Try again.";
-      message.className = "error";
-    }
-  });
-</script>
+        const data = await res.json();
+
+        if (!res.ok) {
+          message.textContent = data.message || "Booking failed";
+          message.className = "error";
+          return;
+        }
+
+        message.textContent = "✅ Booking successful!";
+        message.className = "success";
+
+        setTimeout(() => {
+          window.location.href = "../my-bookings.html";
+        }, 1500);
+
+      } catch {
+        message.textContent = "⚠️ Server error. Try again.";
+        message.className = "error";
+      }
+    });
+  </script>
 
 </body>
 </html>

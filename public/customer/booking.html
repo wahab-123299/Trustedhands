@@ -1,160 +1,175 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Book Artisan | Trusted Hand</title>
-  <link rel="stylesheet" href="./css/style.css" />
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Book Artisan | Trusted Hand</title>
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body>
 
-<script>
-  // 🔐 AUTH CHECK (CUSTOMER ONLY)
-  const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+  <script>
+    // 🔐 AUTH CHECK (CUSTOMER ONLY)
+    const userInfo = JSON.parse(localStorage.getItem("userInfo"));
 
-  if (!userInfo || !userInfo.token || userInfo.role !== "customer") {
-    window.location.href = "../auth/login.html";
-  }
+    if (!userInfo || !userInfo.token || userInfo.role !== "customer") {
+      window.location.href = "../auth/login.html";
+    }
 
-  const token = userInfo.token;
-</script>
+    const token = userInfo.token;
+  </script>
 
-<header>
-  <div class="container">
-    <h1>Trusted Hand</h1>
-    <nav>
-      <a href="../index.html">Home</a>
-      <a href="search.html">Find Artisans</a>
-      <a href="my-bookings.html">My Bookings</a>
-      <a href="#" id="logoutBtn">Logout</a>
-    </nav>
-  </div>
-</header>
+  <header>
+    <div class="container">
+      <h1>Trusted Hand</h1>
+      <nav>
+        <a href="../index.html">Home</a>
+        <a href="search.html">Find Artisans</a>
+        <a href="my-bookings.html">My Bookings</a>
+        <a href="#" id="logoutBtn">Logout</a>
+      </nav>
+    </div>
+  </header>
 
-<main class="container">
-  <h2>Book Artisan</h2>
+  <main class="container">
+    <h2>Book Artisan</h2>
 
-  <form id="bookingForm">
-    <input type="hidden" id="artisanId" />
+    <form id="bookingForm">
+      <input type="hidden" id="artisanId" />
 
-    <label>Artisan</label>
-    <input type="text" id="artisanName" disabled />
+      <label>Artisan</label>
+      <input type="text" id="artisanName" disabled />
 
-    <label>Job Details</label>
-    <textarea id="details" required placeholder="Describe the job..."></textarea>
+      <label>Job Details</label>
+      <textarea id="details" required placeholder="Describe the job..."></textarea>
 
-    <label>Location</label>
-    <input type="text" id="location" required />
+      <label>Location</label>
+      <input type="text" id="location" required />
 
-    <label>Date & Time</label>
-    <input type="datetime-local" id="bookingDate" required />
+      <label>Date & Time</label>
+      <input type="datetime-local" id="bookingDate" required />
 
-    <button type="submit">Confirm Booking</button>
-  </form>
+      <button type="submit">Confirm Booking</button>
+    </form>
 
-  <p id="statusMessage"></p>
-</main>
+    <p id="statusMessage"></p>
 
-<footer>
-  <p>&copy; 2025 Trusted Hand</p>
-</footer>
+    <!-- ✅ PAYMENT SECTION (FIXED BUG #1) -->
+    <div id="paymentSection" style="display: none; margin-top: 20px;">
+      <button id="payBtn">Proceed to Payment</button>
+    </div>
+  </main>
 
-<script>
-  const params = new URLSearchParams(window.location.search);
-  const artisanId = params.get("artisanId");
-  const artisanName = params.get("artisanName");
+  <footer>
+    <p>&copy; 2025 Trusted Hand</p>
+  </footer>
 
-  if (!artisanId) {
-    alert("Invalid artisan selection");
-    window.location.href = "search.html";
-  }
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const artisanId = params.get("artisanId");
+    const artisanName = params.get("artisanName");
 
-  document.getElementById("artisanId").value = artisanId;
-  document.getElementById("artisanName").value =
-    artisanName || "Selected Artisan";
+    if (!artisanId) {
+      alert("Invalid artisan selection");
+      window.location.href = "search.html";
+    }
 
-  const statusMessage = document.getElementById("statusMessage");
-  const paymentSection = document.getElementById("paymentSection");
+    document.getElementById("artisanId").value = artisanId;
+    document.getElementById("artisanName").value =
+      artisanName || "Selected Artisan";
 
-  let createdBookingId = null; // 🔐 REAL booking ID from backend
+    const statusMessage = document.getElementById("statusMessage");
+    const paymentSection = document.getElementById("paymentSection");
+    const payBtn = document.getElementById("payBtn");
 
-  // 📤 CREATE BOOKING
-  document.getElementById("bookingForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
+    let createdBookingId = null; // ✅ REAL booking ID
 
-    const bookingData = {
-      artisan: artisanId,
-      location: document.getElementById("location").value,
-      bookingDate: document.getElementById("bookingDate").value,
-      details: document.getElementById("details").value,
-    };
+    // 📤 CREATE BOOKING
+    document.getElementById("bookingForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-    try {
-      const res = await fetch("https://trustedhands-backend.onrender.com/api/bookings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(bookingData),
-      });
+      const bookingData = {
+        artisan: artisanId,
+        location: document.getElementById("location").value,
+        bookingDate: document.getElementById("bookingDate").value,
+        details: document.getElementById("details").value,
+      };
 
-      const data = await res.json();
+      try {
+        const res = await fetch(
+          "https://trustedhands-backend.onrender.com/api/bookings",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(bookingData),
+          }
+        );
 
-      if (!res.ok) {
+        const data = await res.json();
+
+        if (!res.ok) {
+          statusMessage.style.color = "red";
+          statusMessage.textContent = data.message || "Booking failed";
+          return;
+        }
+
+        // ✅ BOOKING CREATED
+        createdBookingId = data._id;
+
+        statusMessage.style.color = "green";
+        statusMessage.textContent =
+          "Booking created successfully. Proceed to payment.";
+
+        paymentSection.style.display = "block";
+      } catch (err) {
         statusMessage.style.color = "red";
-        statusMessage.textContent = data.message || "Booking failed";
+        statusMessage.textContent = "Server error. Try again.";
+      }
+    });
+
+    // 💳 PAYSTACK PAYMENT
+    payBtn.addEventListener("click", async () => {
+      if (!createdBookingId) {
+        alert("Booking not created yet");
         return;
       }
 
-      // ✅ BOOKING CREATED
-      createdBookingId = data._id;
+      try {
+        const res = await fetch(
+          "https://trustedhands-backend.onrender.com/api/payments/initialize",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ bookingId: createdBookingId }),
+          }
+        );
 
-      statusMessage.style.color = "green";
-      statusMessage.textContent = "Booking created successfully. Proceed to payment.";
+        const data = await res.json();
 
-      paymentSection.style.display = "block"; // show Pay button
+        if (!res.ok) {
+          alert(data.message || "Payment initialization failed");
+          return;
+        }
 
-    } catch (err) {
-      statusMessage.style.color = "red";
-      statusMessage.textContent = "Server error. Try again.";
-    }
-  });
-
-  // 💳 PAYSTACK PAYMENT (REAL)
-  document.getElementById("payBtn").onclick = async () => {
-    try {
-      const res = await fetch("https://trustedhands-backend.onrender.com/api/payments/initialize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          bookingId: createdBookingId, // ✅ REAL booking ID
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.message || "Payment initialization failed");
-        return;
+        // 🔁 Redirect to Paystack
+        window.location.href = data.authorization_url;
+      } catch (err) {
+        alert("Payment failed");
       }
+    });
 
-      // 🔁 Redirect to Paystack
-      window.location.href = data.authorization_url;
-    } catch (err) {
-      alert("Payment failed");
-    }
-  };
+    // 🚪 LOGOUT
+    document.getElementById("logoutBtn").onclick = () => {
+      localStorage.clear();
+      window.location.href = "../auth/login.html";
+    };
+  </script>
 
-  // 🚪 LOGOUT
-  document.getElementById("logoutBtn").onclick = () => {
-    localStorage.clear();
-    window.location.href = "../auth/login.html";
-  };
-</script>
-
-</body>
+  </body>
 </html>

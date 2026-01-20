@@ -8,6 +8,9 @@ import jobRoutes from "./routes/jobRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import adminJobRoutes from "./routes/adminJobRoutes.js";
+import adminPaymentRoutes from "./routes/adminPaymentRoutes.js";
+import adminSettingsRoutes from "./routes/adminSettingsRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -48,12 +51,15 @@ app.get("/", (req, res) => {
   res.send("🚀 Trusted Hand API is running...");
 });
 
+app.use("/api/auth", authRoutes);
 app.use("/api/artisans", artisanRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/payments", paymentRoutes);
-app.use(express.static(path.join(__dirname, "../frontend/public")))
+app.use("/api/admin", adminJobRoutes);
+app.use("/api/admin", adminPaymentRoutes);
+app.use("/api/admin", adminSettingsRoutes);
 
 // ===== Error Handling =====
 app.use(notFound);

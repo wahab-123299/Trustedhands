@@ -1,5 +1,5 @@
 /* ===========================
-   GLOBAL STYLES
+   GLOBAL RESET
 =========================== */
 * {
   margin: 0;
@@ -8,146 +8,125 @@
 }
 
 body {
-  font-family: 'Poppins', sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   background: #f8f9fa;
   color: #333;
   line-height: 1.6;
 }
 
 /* ===========================
-   NAVIGATION
+   REUSABLE CONTAINER
 =========================== */
-.menu-toggle {
-  display: none;
-  font-size: 26px;
-  background: none;
-  border: none;
-  color: white;
-  cursor: pointer;
+.container {
+  width: 90%;
+  max-width: 1200px;
+  margin: auto;
 }
 
-
+/* ===== NAVBAR ===== */
 .navbar {
-  background: #007bff;
-  color: #fff;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 15px 40px;
+  justify-content: space-between;
+  background: #0d6efd;
+  padding: 15px 30px;
 }
 
+/* LOGO */
 .logo {
   display: flex;
   align-items: center;
   gap: 10px;
+  color: #fff;
   font-weight: bold;
 }
 
 .logo-img {
-  width: 40px;
+  width: 28px;
 }
 
-.navbar h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin: 0;
+/* MENU BUTTON (MOBILE) */
+.menu-toggle {
+  display: none;
+  font-size: 24px;
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
 }
 
+/* NAV LIST */
 .navbar ul {
-  list-style: none;
   display: flex;
   align-items: center;
   gap: 20px;
+  list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.navbar ul li {
-  display: inline-block;
-}
-
-.navbar a {
-  color: white;
+/* LINKS */
+.navbar ul li a {
+  color: #010209;
   text-decoration: none;
   font-weight: 500;
-  transition: color 0.3s ease;
 }
 
-.navbar a:hover,
-.navbar a.active {
-  color: #ffe082;
+.navbar ul li a:hover,
+.navbar ul li a.active {
+  background-color: #ffffff;
+  border-radius: 5px;
 }
 
-.navbar nav a,
-.navbar a {
-  color: white;
+/* BUTTON LINKS */
+.navbar .btn,
+.post-job-btn {
+  background: #fff;
+  color: #0d6efd;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: bold;
 }
 
-
-.navbar .btn {
-  background: white;
-  color: #007bff;
-  padding: 8px 15px;
-  border-radius: 8px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background 0.3s ease, color 0.3s ease;
-}
-
-.navbar .btn:hover {
-  background: #0056b3;
-  color: #fff;
-}
-
-/* Mobile Navigation (Responsive) */
+/* ===== MOBILE VIEW ===== */
 @media (max-width: 768px) {
-  .navbar {
-    flex-direction: column;
-    align-items: flex-start;
+  .menu-toggle {
+    display: block;
   }
 
   .navbar ul {
-    display: none;
+    position: absolute;
+    top: 70px;
+    left: 0;
+    width: 100%;
+    background: #0d6efd;
     flex-direction: column;
-    width: 100%;
-    margin-top: 10px;
+    align-items: flex-start;
+    padding: 20px;
+    display: none;
   }
 
-  .navbar ul li {
-    width: 100%;
-  }
-
-  .navbar a {
-    display: block;
-    width: 100%;
-    padding: 10px;
+  body.nav-open .navbar ul {
+    display: flex;
   }
 }
 
-
-button,
-.navbar a,
-.artisan-card button {
-  min-height: 44px;
+/* REMOVE INPUT FROM NAVBAR */
+.navbar input {
+  display: none !important;
 }
-
 
 /* ===========================
-   HERO / HEADER
+   HERO SECTION
 =========================== */
 .hero {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
   min-height: 60vh;
   background: #6b6b6b;
-}
-
-.hero-content {
-  width: 100%;
-  max-width: 900px;
-  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
 }
 
 .hero-content h1 {
@@ -157,76 +136,43 @@ button,
 
 .hero-content p {
   font-size: 1.2rem;
-  margin-bottom: 30px;
+  margin-bottom: 25px;
 }
 
-.hero,
-.categories,
-.featured,
-.how-it-works {
-  max-width: 1200px;
-  margin: auto;
-  padding: 2rem;
-}
-
-/* Search Bar */
+/* Search bar */
 .search-bar {
   display: flex;
   gap: 12px;
-  width: 100%;
+  max-width: 700px;
+  margin: auto;
 }
-
-@media (max-width: 768px) {
-  .search-bar {
-    flex-direction: column;
-    padding: 0 10px;
-  }
-
-  .search-bar input,
-  .search-bar button {
-    width: 100%;
-  }
-}
-
 
 .search-bar input {
   flex: 1;
   padding: 14px;
   border-radius: 6px;
   border: none;
-  font-size: 15px;
 }
 
 .search-bar button {
-  padding: 14px 30px;
-  border-radius: 6px;
+  padding: 14px 28px;
   border: none;
   background: #ffd166;
   font-weight: bold;
+  border-radius: 6px;
   cursor: pointer;
-  white-space: nowrap;
 }
 
 .search-bar button:hover {
   background: #ffc107;
 }
 
-@media (max-width: 480px) {
-  .hero-content h1 {
-    font-size: 1.8rem;
-  }
-
-  .hero-content p {
-    font-size: 1rem;
-  }
-}
-
 /* ===========================
    CATEGORIES
 =========================== */
 .categories {
-  text-align: center;
   padding: 60px 20px;
+  text-align: center;
 }
 
 .category-grid {
@@ -241,8 +187,8 @@ button,
   padding: 20px;
   border-radius: 10px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  transition: transform 0.3s;
   cursor: pointer;
+  transition: 0.3s;
 }
 
 .category-card:hover {
@@ -250,314 +196,79 @@ button,
 }
 
 /* ===========================
-   HOW IT WORKS
-=========================== */
-.how-it-works {
-  text-align: center;
-  background: #f1f5f9;
-  padding: 60px 20px;
-}
-
-.steps {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 20px;
-  margin-top: 20px;
-}
-
-.step {
-  background: white;
-  padding: 20px 30px;
-  border-radius: 12px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-}
-
-/* ===========================
    FEATURED ARTISANS
 =========================== */
-.featured {
-  padding: 60px 20px;
-  text-align: center;
-}
-
+.artisan-list,
 .artisan-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 25px;
-  margin-top: 30px;
+  margin: 30px auto;
+  width: 90%;
+  max-width: 1200px;
 }
 
 .artisan-card {
-  background: #fff;
+  background: white;
   border-radius: 12px;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.1);
   text-align: center;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
   padding: 20px;
+  transition: 0.3s;
 }
 
 .artisan-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
 }
 
 .artisan-card img {
   width: 100%;
   height: 180px;
   object-fit: cover;
-  border-radius: 12px;
-}
-
-/* ===========================
-   ABOUT PAGE
-=========================== */
-.about-hero {
-  background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), 
-              url('../images/about-bg.jpg') center/cover no-repeat;
-  color: #fff;
-  text-align: center;
-  padding: 100px 20px;
-}
-
-.about-content {
-  padding: 60px 20px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 30px;
-}
-
-.about-box {
-  background: #fff;
-  padding: 30px;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-
-.team {
-  background: #f9fafb;
-  text-align: center;
-  padding: 60px 20px;
-}
-
-.team-grid {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 30px;
-  margin-top: 30px;
-}
-
-.team-member img {
-  width: 150px;
-  border-radius: 50%;
-  margin-bottom: 15px;
-}
-
-/* ===========================
-   SERVICES PAGE
-=========================== */
-.services-hero {
-  text-align: center;
-  background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('../images/services-bg.jpg') center/cover no-repeat;
-  color: white;
-  padding: 100px 20px;
-}
-
-.services-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 25px;
-  padding: 60px 20px;
-}
-
-.service-card {
-  background: #fff;
-  border-radius: 15px;
-  text-align: center;
-  padding: 25px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  transition: transform 0.3s;
-}
-
-.service-card:hover {
-  transform: translateY(-5px);
-}
-
-.service-card img {
-  width: 100%;
-  height: 200px;
-  object-fit: cover;
   border-radius: 10px;
 }
 
-.btn-primary {
-  display: inline-block;
-  margin-top: 15px;
-  background: #007bff;
-  color: white;
-  padding: 10px 25px;
-  border-radius: 8px;
-  text-decoration: none;
-  transition: background 0.3s;
-}
-
-.btn-primary:hover {
-  background: #0056b3;
-}
-
-/* ===========================
-   CONTACT PAGE
-=========================== */
-.contact-hero {
-  text-align: center;
-  background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('../images/contact-bg.jpg') center/cover no-repeat;
-  color: white;
-  padding: 100px 20px;
-}
-
-.contact-container {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-around;
-  padding: 60px 20px;
-  background: #f9f9f9;
-}
-
-.contact-form, .contact-info {
-  flex: 1;
-  min-width: 300px;
-  max-width: 500px;
-  background: #fff;
-  padding: 30px;
-  border-radius: 15px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  margin: 15px;
-}
-
-.contact-form input, .contact-form textarea {
-  width: 100%;
-  padding: 12px;
+.artisan-card h3 {
   margin: 10px 0;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 16px;
+  color: #007bff;
 }
 
-.contact-form .btn-primary {
-  background: #007bff;
-  color: white;
-  padding: 10px 25px;
+.artisan-card p {
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.artisan-card button {
+  margin-top: 15px;
+  padding: 10px 18px;
   border: none;
   border-radius: 8px;
+  background: #007bff;
+  color: white;
   cursor: pointer;
-  transition: background 0.3s;
 }
 
-.contact-form .btn-primary:hover {
+.artisan-card button:hover {
   background: #0056b3;
 }
 
-.contact-info h3 {
-  margin-top: 20px;
-}
-
-.social-links a {
-  color: #007bff;
-  text-decoration: none;
-  transition: color 0.3s;
-}
-
-.social-links a:hover {
-  color: #0056b3;
-}
-
 /* ===========================
-   FOOTER
+   DASHBOARD HEADER
 =========================== */
-footer {
-  text-align: center;
-  padding: 30px 15px;
-  background: #007bff;
-  color: #fff;
-  margin-top: 40px;
-}
-
-footer .socials a {
-  color: #ffe082;
-  text-decoration: none;
-  margin: 0 5px;
-}
-
-footer .socials a:hover {
-  color: #fff;
-}
-
-/* ===========================
-   RESPONSIVE DESIGN
-=========================== */
-@media (max-width: 768px) {
-  .navbar ul {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .contact-container {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .hero-content h1 {
-    font-size: 2rem;
-  }
-
-  .category-grid, .services-grid, .about-content {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ===========================
-   DASHBOARD PAGE
-=========================== */
-
-.container {
-  width: 90%;
-  max-width: 1200px;
-  margin: 2rem auto;
-  padding: 0 1rem;
-}
-
-
-/* ===========================
-   DASHBOARD NAVBAR
-=========================== */
-
 .dashboard-header {
   background: #007bff;
   color: white;
   padding: 15px 0;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
 }
 
 .dashboard-header .container {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  width: 90%;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.dashboard-header h1 {
-  font-size: 1.6rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  align-items: center;
 }
 
 .dashboard-header nav {
   display: flex;
-  flex-wrap: wrap;
   gap: 20px;
 }
 
@@ -565,56 +276,25 @@ footer .socials a:hover {
   color: white;
   text-decoration: none;
   font-weight: 500;
-  transition: color 0.3s, border-bottom 0.3s;
-  padding-bottom: 2px;
 }
 
-.dashboard-header nav a:hover,
-.dashboard-header nav a.active {
+.dashboard-header nav a.active,
+.dashboard-header nav a:hover {
   color: #ffdd57;
   border-bottom: 2px solid #ffdd57;
 }
 
-/* ====== Responsive Navbar ====== */
-@media (max-width: 768px) {
-  .dashboard-header .container {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .dashboard-header nav {
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 10px;
-  }
-}
-
-
-/* ====== USER SECTIONS ====== */
+/* ===========================
+   DASHBOARD SECTIONS
+=========================== */
 .user-section {
-  background: #fff;
-  padding: 25px 30px;
+  background: white;
+  padding: 25px;
   margin-bottom: 30px;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
-.user-section:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.12);
-}
-
-.user-section h3 {
-  margin-bottom: 20px;
-  color: #007bff;
-  border-left: 5px solid #007bff;
-  padding-left: 12px;
-  font-size: 1.3rem;
-  font-weight: 600;
-}
-
-/* ====== STATS CARDS ====== */
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -623,436 +303,518 @@ footer .socials a:hover {
 
 .stat-card {
   background: linear-gradient(135deg, #007bff, #00b4d8);
-  color: #fff;
-  padding: 25px 20px;
+  color: white;
+  padding: 25px;
   border-radius: 12px;
   text-align: center;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.stat-card:hover {
-  transform: scale(1.03);
-  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.18);
-}
-
-.stat-card h4 {
-  margin-bottom: 10px;
-  font-weight: 500;
-  font-size: 1.1rem;
-  letter-spacing: 0.3px;
-}
-
-.stat-card p {
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 0;
-}
-
-/* Tables for dashboard */
-.dashboard-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 15px;
-}
-
-.dashboard-table th, .dashboard-table td {
-  padding: 12px;
-  border-bottom: 1px solid #ddd;
-  text-align: left;
-}
-
-.dashboard-table th {
-  background: #007bff;
-  color: white;
-}
-
-/* Reviews */
-.review {
-  background: #f8f9fa;
-  border-left: 4px solid #007bff;
-  padding: 15px;
-  margin-bottom: 15px;
-  border-radius: 8px;
-}
-
-/* Profile Form */
-.profile-form {
-  display: flex;
-  flex-direction: column;
-}
-
-.profile-form label {
-  margin-top: 10px;
-  font-weight: 600;
-}
-
-.profile-form input {
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  margin-top: 5px;
-}
-
-.profile-form button {
-  background: #007bff;
-  color: white;
-  border: none;
-  padding: 12px;
-  border-radius: 8px;
-  margin-top: 15px;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.profile-form button:hover {
-  background: #0056b3;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .stats {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ===========================
-   BOOKING PAGE
+   BOOKING FORM
 =========================== */
-
-.small-hero {
-  background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), 
-              url('../images/booking-bg.jpg') center/cover no-repeat;
-  color: #fff;
-  text-align: center;
-  padding: 80px 20px;
-}
-
-/* Booking Form Section */
 .booking-form {
   max-width: 600px;
   background: white;
   margin: 50px auto;
   padding: 40px;
   border-radius: 12px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-}
-
-/* Form Elements */
-.booking-form form {
-  display: flex;
-  flex-direction: column;
-}
-
-.booking-form label {
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: #222;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
 }
 
 .booking-form input,
-.booking-form textarea,
-.booking-form button {
-  margin-bottom: 20px;
-  padding: 12px 15px;
-  border: 1px solid #ccc;
+.booking-form textarea {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
   border-radius: 8px;
-  font-size: 1rem;
-  outline: none;
-  transition: border 0.3s;
+  border: 1px solid #ccc;
 }
 
-.booking-form input:focus,
-.booking-form textarea:focus {
-  border-color: #00b4d8;
-}
-
-/* Button Styling */
 .booking-form button {
   background: linear-gradient(135deg, #0077b6, #00b4d8);
+  border: none;
+  padding: 14px;
   color: white;
+  border-radius: 8px;
   font-weight: 600;
-  border: none;
   cursor: pointer;
-  transition: background 0.3s, transform 0.2s;
 }
 
-.booking-form button:hover {
-  background: linear-gradient(135deg, #0096c7, #00b4d8);
-  transform: scale(1.02);
-}
 
-/* Status Message */
-#statusMessage {
+
+/* ===========================
+   FOOTER
+=========================== */
+footer {
+  background: #007bff;
+  color: white;
   text-align: center;
-  font-weight: 500;
-  margin-top: 10px;
+  padding: 30px 15px;
 }
 
-/* ===========================
-   FILTER SECTION
-=========================== */
-.filters {
-  background: #fff;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  width: 90%;
-  max-width: 1000px;
-  margin: 30px auto;
-  display: flex;
-  justify-content: center;
-}
-
-.filters form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  align-items: center;
-  justify-content: center;
-}
-
-.filters select,
-.filters button {
-  padding: 10px 15px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  outline: none;
-  transition: 0.3s ease;
-}
-
-.filters select:focus {
-  border-color: #007bff;
-}
-
-.filters button {
-  background: #007bff;
-  color: white;
-  border: none;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.filters button:hover {
-  background: #0056b3;
-}
-
-/* ===========================
-   ARTISAN LISTING PAGE 
-   =========================== */
-
-.artisan-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 25px;
-  width: 90%;
-  max-width: 1200px;
-  margin: 30px auto;
-}
-
-/* Artisan Card */
-/* Removed duplicate .artisan-card definition; consolidated above */
-
-.artisan-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
-}
-
-/* Image */
-.artisan-card img {
-  width: 100%;
-  height: 180px;
-  object-fit: cover;
-}
-
-/* Info */
-.artisan-card h3 {
-  margin: 10px 0 5px;
-  color: #007bff;
-  font-size: 1.2rem;
-}
-
-.artisan-card p {
-  margin: 5px 0;
-  color: #555;
-  font-size: 0.95rem;
-}
-
-/* Rating */
-.artisan-card p:nth-child(4) {
-  color: #ffb400;
-  font-weight: 500;
-}
-
-/* Button */
-.artisan-card button {
-  background: #007bff;
-  color: white;
-  border: none;
-  padding: 10px 18px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-  margin: 15px 0 20px;
-  transition: background 0.3s ease;
-}
-
-.artisan-card button:hover {
-  background: #0056b3;
-}
-
-/* ===========================
-   RESPONSIVE DESIGN
-=========================== */
-@media (max-width: 768px) {
-  .small-hero {
-    padding: 40px 15px;
-  }
-
-  .filters {
-    width: 95%;
-  }
-
-  .filters form {
-    flex-direction: column;
-  }
-
-  .artisan-list {
-    width: 95%;
-  }
-
-  .artisan-card img {
-    height: 160px;
-  }
-}
-
-
-/* ===== Navigation ===== */
-nav {
-  display: flex;
-  gap: 20px;
-}
-
-nav a {
+footer a {
+  color: #ffe082;
   text-decoration: none;
-  color: rgb(0, 0, 0);
-  font-weight: 500;
-  padding: 8px 14px;
-  border-radius: 6px;
-  transition: all 0.3s ease;
 }
 
-/* Hover & Active Links */
-nav a:hover {
-  background-color: white;
-  color: #007bff;
-  transform: translateY(-2px);
-}
-
-nav a.active {
-  background-color: white;
-  color: #007bff;
-}
-
-/* ===== Responsive Design ===== */
+/* ===========================
+   RESPONSIVE
+=========================== */
 @media (max-width: 768px) {
-  header .container {
+  .navbar {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  nav {
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
+  .navbar nav {
+    flex-direction: column;
+    width: 100%;
   }
 
-  nav a {
-    padding: 8px 10px;
-    font-size: 0.95rem;
+  .search-bar {
+    flex-direction: column;
+  }
+
+  .hero-content h1 {
+    font-size: 2rem;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
   }
 }
 
 
-
-/* Login container */
-.login-container {
-  background: #fff;
-  padding: 2rem 2.5rem;
-  border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-  width: 100%;
-  max-width: 400px;
+/* ===============================
+   SERVICES HERO
+================================ */
+.services-hero {
+  background: linear-gradient(rgba(0,34,79,0.8), rgba(0,34,79,0.8)),
+              url("../images/services-bg.jpg") center/cover no-repeat;
+  color: #fff;
   text-align: center;
+  padding: 80px 20px;
+}
+
+.services-hero h1 {
+  font-size: 42px;
+  margin-bottom: 10px;
+}
+
+.services-hero p {
+  font-size: 18px;
+  opacity: 0.95;
+}
+
+/* ===============================
+   SERVICES GRID
+================================ */
+.services-grid {
+  width: 90%;
+  max-width: 1200px;
+  margin: 60px auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 30px;
+}
+
+/* ===============================
+   SERVICE CARD
+================================ */
+.service-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+  overflow: hidden;
+  text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.service-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+}
+
+.service-card img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+}
+
+.service-card h3 {
+  margin: 18px 0 8px;
+  font-size: 22px;
+  color: #00224f;
+}
+
+.service-card p {
+  padding: 0 18px;
+  font-size: 15px;
+  color: #555;
+  margin-bottom: 18px;
+}
+
+/* ===============================
+   BUTTONS
+================================ */
+.btn-primary {
+  display: inline-block;
+  margin-bottom: 22px;
+  padding: 10px 20px;
+  background: #0055ff;
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: background 0.3s ease;
+}
+
+.btn-primary:hover {
+  background: #003ecb;
+}
+
+/* ===============================
+   FOOTER
+================================ */
+footer {
+  background: #00224f;
+  color: #fff;
+  text-align: center;
+  padding: 18px 10px;
+  font-size: 14px;
+}
+
+/* ===============================
+   RESPONSIVE
+================================ */
+@media (max-width: 768px) {
+  .services-hero h1 {
+    font-size: 32px;
+  }
+
+  .services-hero p {
+    font-size: 16px;
+  }
+}
+
+/* ===============================
+   PAYMENT STATUS
+================================ */
+.paid {
+  color: #28a745;
+  font-weight: bold;
+}
+
+.unpaid {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+/* ===============================
+   BOOKING STATUS BADGES
+================================ */
+.status {
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.status.pending {
+  color: #ffc107;
+}
+
+.status.completed {
+  color: #28a745;
+}
+
+.status.cancelled {
+  color: #dc3545;
+}
+
+/* ===============================
+   TABLE RESPONSIVE FIX
+================================ */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+thead {
+  background: #00224f;
+  color: #fff;
+}
+
+th, td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+tr:hover {
+  background: #f8f9fa;
+}
+
+/* ===============================
+   BUTTONS
+================================ */
+.primary-btn {
+  background: #007bff;
+  color: #fff;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.primary-btn:hover {
+  background: #0056b3;
+}
+
+/* ===============================
+   STATUS TAGS
+================================ */
+.status {
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.status.paid {
+  color: #28a745;
+}
+
+.status.transferred {
+  color: #007bff;
+}
+
+/* ===============================
+   TABLE FIX
+================================ */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* ===== SEARCH PAGE ===== */
+.search-section {
+  padding: 40px 0;
+}
+
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 25px;
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.result-card {
+  background: #fff;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+}
+
+.result-card h3 {
+  margin-top: 0;
+  color: #007bff;
+}
+
+.result-card p {
+  margin: 6px 0;
+}
+
+.muted {
+  color: #777;
+}
+
+.error {
+  color: red;
+  font-weight: bold;
+}
+/* ===== PAYMENT VERIFY PAGE ===== */
+main.container h2 {
+  color: #007bff;
+  margin-bottom: 10px;
+}
+
+main.container p {
+  font-size: 16px;
+}
+
+/* ===== LOGIN PAGE ONLY ===== */
+.login-container {
+  max-width: 420px;
+  margin: 80px auto;
+  padding: 30px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
 }
 
 .login-container h2 {
-  margin-bottom: 1.5rem;
+  text-align: center;
+  margin-bottom: 20px;
+  color: #0d6efd;
+}
+
+.login-container form {
+  display: flex;
+  flex-direction: column;
+}
+
+.login-container label {
+  margin-top: 12px;
+  font-weight: 500;
+}
+
+.login-container input,
+.login-container select {
+  padding: 10px;
+  margin-top: 6px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 15px;
+}
+
+.login-container button {
+  margin-top: 20px;
+  padding: 12px;
+  background: #0d6efd;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.login-container button:hover {
+  background: #0b5ed7;
+}
+
+.login-container .links {
+  text-align: center;
+  margin-top: 15px;
+}
+
+.login-container .links a {
+  color: #0d6efd;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.login-container .links a:hover {
+  text-decoration: underline;
+}
+
+/* ============================
+   SIGNUP PAGE STYLES
+============================ */
+.signup-container {
+  max-width: 420px;
+  margin: 90px auto;
+  padding: 28px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.signup-container h2 {
+  text-align: center;
+  margin-bottom: 22px;
+  color: #0a73ff;
+}
+
+/* FORM LABELS */
+.signup-container label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
   color: #333;
 }
 
-/* Form styles */
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-label {
-  text-align: left;
-  font-weight: 600;
-  color: #444;
-}
-
-input {
-  padding: 0.75rem;
+/* INPUTS & SELECT */
+.signup-container input,
+.signup-container select {
+  width: 100%;
+  padding: 11px;
+  margin-bottom: 16px;
   border: 1px solid #ccc;
   border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.signup-container input:focus,
+.signup-container select:focus {
   outline: none;
-  transition: border-color 0.3s ease;
+  border-color: #0a73ff;
 }
 
-input:focus {
-  border-color: #4facfe;
-}
-
-/* Button styles */
-button {
-  padding: 0.75rem;
-  background: #4facfe;
+/* SIGNUP BUTTON */
+.signup-container button {
+  width: 100%;
+  padding: 13px;
+  background: #0a73ff;
+  color: #ffffff;
   border: none;
   border-radius: 6px;
-  color: #fff;
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: bold;
   cursor: pointer;
   transition: background 0.3s ease;
 }
 
-button:hover {
-  background: #00c6fb;
+.signup-container button:hover {
+  background: #085cd6;
 }
 
-/* Status message */
+/* STATUS MESSAGE */
 #statusMessage {
-  margin-top: 1rem;
+  text-align: center;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+/* LOGIN NOTE */
+.signup-container .note {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 14px;
+}
+
+.signup-container .note a {
+  color: #0a73ff;
+  text-decoration: none;
   font-weight: 600;
 }
 
-/* Links */
-.links {
-  margin-top: 1.5rem;
-  font-size: 0.9rem;
+.signup-container .note a:hover {
+  text-decoration: underline;
 }
 
-.links a {
-  color: #4facfe;
-  text-decoration: none;
-  transition: color 0.3s ease;
+/* ============================
+   MOBILE RESPONSIVE
+============================ */
+@media (max-width: 480px) {
+  .signup-container {
+    margin: 60px 15px;
+    padding: 22px;
+  }
 }
-
-.links a:hover {
-  color: #00c6fb;
-}
-

@@ -4,50 +4,51 @@ import User from "../models/User.js";
 import Artisan from "../models/artisan.js";
 
 /**
- * @desc    Protect routes (for both Users and Artisans)
+ * @desc    Protect routes (Users & Artisans)
  */
 export const protect = asyncHandler(async (req, res, next) => {
   let token;
 
-  if (req.headers.authorization?.startsWith("Bearer")) {
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
     try {
       token = req.headers.authorization.split(" ")[1];
 
-      // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Try to find a User first
-      let user = await User.findById(decoded.id).select("-password");
+      // Try User first
+      let account = await User.findById(decoded.id).select("-password");
 
-      // If not found in User, check Artisan collection
-      if (!user) {
-        user = await Artisan.findById(decoded.id).select("-password");
+      // If not user, try artisan
+      if (!account) {
+        account = await Artisan.findById(decoded.id).select("-password");
       }
 
-      if (!user) {
+      if (!account) {
         res.status(401);
-        throw new Error("User or Artisan not found");
+        throw new Error("Account not found");
       }
 
-      // Attach user data to request object
-      req.user = user;
+      req.user = account;
       next();
     } catch (error) {
-      console.error("Token verification failed:", error.message);
+      console.error("Auth error:", error.message);
       res.status(401);
-      throw new Error("Not authorized, invalid or expired token");
+      throw new Error("Not authorized, token invalid or expired");
     }
   } else {
     res.status(401);
-    throw new Error("Not authorized, token missing");
+    throw new Error("Not authorized, no token provided");
   }
 });
 
 /**
- * @desc    Restrict access to admin users only
+ * @desc    Admin-only access
  */
 export const adminOnly = (req, res, next) => {
-  if (req.user && req.user.role === "admin") {
+  if (req.user?.role === "admin") {
     next();
   } else {
     res.status(403);
