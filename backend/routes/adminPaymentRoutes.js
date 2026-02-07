@@ -1,13 +1,46 @@
-import express from "express";
-import {
-  getAllPayments,
-  updatePaymentStatus,
-} from "../controllers/adminPaymentController.js";
-import { protect, admin } from "../middleware/authMiddleware.js";
+import Payment from "../models/payment.js";
 
-const router = express.Router();
+/**
+ * @desc    Get all payments (Admin only)
+ * @route   GET /api/admin/payments
+ */
+export const getAllPayments = async (req, res) => {
+  try {
+    const payments = await Payment.find({})
+      .populate("user", "name email")
+      .sort({ createdAt: -1 });
 
-router.get("/payments", protect, admin, getAllPayments);
-router.put("/payments/:id", protect, admin, updatePaymentStatus);
+    res.status(200).json(payments);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch payments" });
+  }
+};
 
-export default router;
+/**
+ * @desc    Update payment status (Admin only)
+ * @route   PUT /api/admin/payments/:id
+ */
+export const updatePaymentStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    const payment = await Payment.findById(req.params.id);
+
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+
+    payment.status = status || payment.status;
+    await payment.save();
+
+    res.status(200).json({
+      message: "Payment status updated",
+      payment,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to update payment status",
+      error: error.message,
+    });
+  }
+};

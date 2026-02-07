@@ -77,12 +77,19 @@
         try {
           const res = await fetch(
             `https://trustedhands-backend.onrender.com${endpoint}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name, email, password })
-            }
-          );
+          {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            email,
+            password,
+            role
+          }),
+        }
+        );
+
+         
 
           const data = await res.json();
 
