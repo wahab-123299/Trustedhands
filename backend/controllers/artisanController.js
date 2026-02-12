@@ -4,8 +4,14 @@ import Job from "../models/Job.js";
 import generateToken from "../utils/generateToken.js";
 import bcrypt from "bcryptjs";
 
+/* =======================================================
+   AUTH
+======================================================= */
+
 /**
- * REGISTER ARTISAN
+ * @desc    Register artisan
+ * @route   POST /api/artisans/register
+ * @access  Public
  */
 export const registerArtisan = asyncHandler(async (req, res) => {
   const { name, email, password, profession } = req.body;
@@ -21,8 +27,7 @@ export const registerArtisan = asyncHandler(async (req, res) => {
     throw new Error("Artisan already exists");
   }
 
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
+  const hashedPassword = await bcrypt.hash(password, 10);
 
   const artisan = await Artisan.create({
     name,
@@ -41,7 +46,9 @@ export const registerArtisan = asyncHandler(async (req, res) => {
 });
 
 /**
- * LOGIN ARTISAN
+ * @desc    Login artisan
+ * @route   POST /api/artisans/login
+ * @access  Public
  */
 export const authArtisan = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -62,8 +69,14 @@ export const authArtisan = asyncHandler(async (req, res) => {
   });
 });
 
+/* =======================================================
+   PROFILE
+======================================================= */
+
 /**
- * GET ARTISAN PROFILE
+ * @desc    Get artisan profile
+ * @route   GET /api/artisans/profile
+ * @access  Private
  */
 export const getArtisanProfile = asyncHandler(async (req, res) => {
   const artisan = await Artisan.findById(req.user._id).select("-password");
@@ -77,7 +90,9 @@ export const getArtisanProfile = asyncHandler(async (req, res) => {
 });
 
 /**
- * UPDATE ARTISAN PROFILE
+ * @desc    Update artisan profile
+ * @route   PUT /api/artisans/profile
+ * @access  Private
  */
 export const updateArtisanProfile = asyncHandler(async (req, res) => {
   const artisan = await Artisan.findById(req.user._id);
@@ -95,11 +110,27 @@ export const updateArtisanProfile = asyncHandler(async (req, res) => {
   artisan.experience = req.body.experience || artisan.experience;
 
   const updatedArtisan = await artisan.save();
-  res.json(updatedArtisan);
+
+  res.json({
+    _id: updatedArtisan._id,
+    name: updatedArtisan.name,
+    email: updatedArtisan.email,
+    profession: updatedArtisan.profession,
+    phone: updatedArtisan.phone,
+    bio: updatedArtisan.bio,
+    address: updatedArtisan.address,
+    experience: updatedArtisan.experience,
+  });
 });
 
+/* =======================================================
+   JOBS
+======================================================= */
+
 /**
- * GET ACTIVE JOBS
+ * @desc    Get active jobs
+ * @route   GET /api/artisans/jobs/active
+ * @access  Private
  */
 export const getActiveJobs = asyncHandler(async (req, res) => {
   const jobs = await Job.find({
@@ -111,7 +142,9 @@ export const getActiveJobs = asyncHandler(async (req, res) => {
 });
 
 /**
- * JOB HISTORY
+ * @desc    Get completed jobs (history)
+ * @route   GET /api/artisans/jobs/history
+ * @access  Private
  */
 export const getJobHistory = asyncHandler(async (req, res) => {
   const jobs = await Job.find({
@@ -123,7 +156,9 @@ export const getJobHistory = asyncHandler(async (req, res) => {
 });
 
 /**
- * MARK JOB AS COMPLETE
+ * @desc    Mark job as completed
+ * @route   PUT /api/artisans/jobs/:id/complete
+ * @access  Private
  */
 export const markJobComplete = asyncHandler(async (req, res) => {
   const job = await Job.findById(req.params.id);
@@ -131,6 +166,12 @@ export const markJobComplete = asyncHandler(async (req, res) => {
   if (!job) {
     res.status(404);
     throw new Error("Job not found");
+  }
+
+  // Ensure artisan owns this job
+  if (job.artisan.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error("Not authorized to update this job");
   }
 
   job.status = "completed";
