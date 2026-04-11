@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "ignoreDeprecations": "6.0",
+    // Enables importing TypeScript files with explicit extensions (experimental, may affect module resolution)
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    // Output file generation is disabled because a separate build step (e.g., with a bundler) is used.
+    "noEmit": true,
+    // Requires React 17 or newer for the new JSX transform
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noFallthroughCasesInSwitch": true,
+    // 'baseUrl' is set for path mapping to enable absolute imports; useful for monorepos or custom import paths.
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}
+
