@@ -14,14 +14,6 @@ import { authApi, userApi, RegisterData } from "@/services/api";
 import { User, ArtisanProfile } from "@/types";
 
 // ==========================================
-// API CONFIG
-// ==========================================
-
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3000/api";
-const SOCKET_URL = API_URL.replace("/api", "");
-
-// ==========================================
 // TYPES
 // ==========================================
 
@@ -88,8 +80,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
   const socketRef = useRef<Socket | null>(null);
   
-  // Track if we've already initialized to prevent double calls
   const hasInitialized = useRef(false);
+  const isLoggingIn = useRef(false);
+
+  const API_URL = import.meta.env.VITE_API_URL || "https://trustedhands.onrender.com/api";
+  const SOCKET_URL = API_URL.replace("/api", "");
 
   // ==========================================
   // SOCKET
@@ -105,60 +100,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const connectSocket = useCallback(
-    (userId: string) => {
-      if (socketRef.current?.connected) return;
+  const connectSocket = useCallback((userId: string) => {
+    if (socketRef.current?.connected) return;
+    disconnectSocket();
 
-      disconnectSocket();
+    const socketInstance = io(SOCKET_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      auth: { userId },
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1000,
+    });
 
-      const socketInstance = io(SOCKET_URL, {
-        withCredentials: true,
-        transports: ["websocket"],
-        auth: { userId },
-      });
+    socketInstance.on("connect", () => {
+      setSocketConnected(true);
+      socketInstance.emit("join_personal", { userId });
+    });
 
-      socketInstance.on("connect", () => {
-        setSocketConnected(true);
-        socketInstance.emit("join_personal", { userId });
-      });
+    socketInstance.on("disconnect", () => setSocketConnected(false));
 
-      socketInstance.on("disconnect", () => {
-        setSocketConnected(false);
-      });
-
-      socketInstance.on("connect_error", () => {
-        if (!socketConnected) {
-          toast.error("Real-time connection failed");
-        }
-      });
-
-      socketRef.current = socketInstance;
-      setSocket(socketInstance);
-    },
-    [disconnectSocket, socketConnected]
-  );
+    socketRef.current = socketInstance;
+    setSocket(socketInstance);
+  }, [disconnectSocket, SOCKET_URL]);
 
   // ==========================================
-  // INIT AUTH - NO INFINITE LOOP
+  // INIT AUTH - FIXED WITH BETTER DEBUGGING
   // ==========================================
 
   useEffect(() => {
-    // Prevent double initialization in React StrictMode
     if (hasInitialized.current) return;
     hasInitialized.current = true;
 
     const initAuth = async () => {
+      if (isLoggingIn.current) return;
+      
       try {
         setState((prev) => ({ ...prev, isLoading: true }));
         
-        console.log('🔄 Validating session with /users/me...');
+        const token = localStorage.getItem('token');
+        console.log('[AuthContext] Init - Token exists:', !!token);
+        
+        if (!token) {
+          console.log('[AuthContext] No token, setting unauthenticated');
+          setState({
+            user: null,
+            artisanProfile: null,
+            isAuthenticated: false,
+            isLoading: false,
+            isInitialized: true,
+          });
+          return;
+        }
+        
+        // Validate token by fetching user
+        console.log('[AuthContext] Validating token...');
         const response = await userApi.getMe();
         const res = response.data as ApiResponse<AuthResponseData>;
 
         const { user, artisanProfile } = res.data;
+        console.log('[AuthContext] Token valid, user:', user.email);
 
-        console.log('✅ Session valid, user:', user.email);
-        
         setState({
           user,
           artisanProfile: artisanProfile || null,
@@ -169,10 +170,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         connectSocket(user._id);
       } catch (error: any) {
-        console.error('❌ Session validation failed:', error.message);
+        console.error('[AuthContext] Init failed:', error.message);
+        console.error('[AuthContext] Status:', error.response?.status);
         
-        // Set state to not authenticated but MARK AS INITIALIZED
-        // This prevents infinite loading/retry loops
+        // Only clear token on 401, not on network errors
+        if (error.response?.status === 401) {
+          console.log('[AuthContext] Clearing invalid token');
+          localStorage.removeItem('token');
+        }
+        
         setState({
           user: null,
           artisanProfile: null,
@@ -180,38 +186,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           isLoading: false,
           isInitialized: true,
         });
-        
-        // Clear invalid token
-        localStorage.removeItem('token');
       }
     };
 
-    initAuth();
-
-    return () => disconnectSocket();
+    // Small delay to let React hydrate
+    const timer = setTimeout(initAuth, 100);
+    
+    return () => {
+      clearTimeout(timer);
+      disconnectSocket();
+    };
   }, [connectSocket, disconnectSocket]);
 
   // ==========================================
-  // LOGIN
+  // LOGIN - FIXED
   // ==========================================
 
   const login = useCallback(
     async (email: string, password: string) => {
       try {
+        isLoggingIn.current = true;
         setState((prev) => ({ ...prev, isLoading: true }));
 
-        console.log('🔑 Attempting login...');
+        console.log('[AuthContext] Logging in:', email);
+        
         const response = await authApi.login({ email, password });
         const res = response.data as ApiResponse<AuthResponseData>;
 
         const { user, artisanProfile, dashboardRoute, accessToken } = res.data;
 
-        console.log('✅ Login successful, token received:', !!accessToken);
-
-        if (accessToken) {
-          localStorage.setItem('token', accessToken);
+        if (!accessToken) {
+          throw new Error('No access token received from server');
         }
 
+        // Save token
+        localStorage.setItem('token', accessToken);
+        console.log('[AuthContext] Token saved, length:', accessToken.length);
+
+        // Update state
         setState({
           user,
           artisanProfile: artisanProfile || null,
@@ -221,18 +233,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
 
         connectSocket(user._id);
-
         toast.success(`Welcome ${user.fullName}`);
 
-        setTimeout(() => {
-          navigate(
-            location.state?.from?.pathname || dashboardRoute || "/",
-            { replace: true }
-          );
-        }, 100);
+        // Navigate
+        const destination = location.state?.from?.pathname || dashboardRoute || '/';
+        console.log('[AuthContext] Navigating to:', destination);
+        
+        isLoggingIn.current = false;
+        navigate(destination, { replace: true });
 
       } catch (err: any) {
-        console.error('❌ Login failed:', err.message);
+        console.error('[AuthContext] Login failed:', err.message);
+        isLoggingIn.current = false;
         setState((prev) => ({ ...prev, isLoading: false }));
         toast.error(err?.message || "Login failed");
         throw err;
@@ -242,25 +254,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   // ==========================================
-  // REGISTER
+  // REGISTER - FIXED
   // ==========================================
 
   const register = useCallback(
     async (data: RegisterData) => {
       try {
+        isLoggingIn.current = true;
         setState((prev) => ({ ...prev, isLoading: true }));
 
-        console.log('📝 Attempting registration...');
+        console.log('[AuthContext] Registering:', data.email);
+        
         const response = await authApi.register(data);
         const res = response.data as ApiResponse<AuthResponseData>;
 
         const { user, artisanProfile, dashboardRoute, accessToken } = res.data;
 
-        console.log('✅ Registration successful, token received:', !!accessToken);
-
-        if (accessToken) {
-          localStorage.setItem('token', accessToken);
+        if (!accessToken) {
+          throw new Error('No access token received from server');
         }
+
+        localStorage.setItem('token', accessToken);
+        console.log('[AuthContext] Token saved after register');
 
         setState({
           user,
@@ -271,15 +286,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
 
         connectSocket(user._id);
-
         toast.success("Registration successful");
 
-        setTimeout(() => {
-          navigate(dashboardRoute || "/", { replace: true });
-        }, 100);
+        const destination = dashboardRoute || '/';
+        isLoggingIn.current = false;
+        navigate(destination, { replace: true });
 
       } catch (err: any) {
-        console.error('❌ Registration failed:', err.message);
+        console.error('[AuthContext] Register failed:', err.message);
+        isLoggingIn.current = false;
         setState((prev) => ({ ...prev, isLoading: false }));
         toast.error(err?.message || "Registration failed");
         throw err;
@@ -296,12 +311,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await authApi.logout();
     } catch (err) {
-      console.log('Logout API call failed (ignoring):', err);
+      console.log('Logout API failed (ignoring):', err);
     }
 
     disconnectSocket();
-    
-    console.log('🚪 Logging out, clearing token...');
     localStorage.removeItem('token');
 
     setState({
@@ -312,7 +325,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isInitialized: true,
     });
 
-    navigate("/", { replace: true });
+    navigate("/login", { replace: true });
+    toast.success("Logged out successfully");
   }, [disconnectSocket, navigate]);
 
   // ==========================================
@@ -320,18 +334,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // ==========================================
 
   const refreshUser = useCallback(async () => {
-    const response = await userApi.getMe();
-    const res = response.data as ApiResponse<AuthResponseData>;
+    try {
+      const response = await userApi.getMe();
+      const res = response.data as ApiResponse<AuthResponseData>;
+      const { user, artisanProfile } = res.data;
 
-    const { user, artisanProfile } = res.data;
-
-    setState((prev) => ({
-      ...prev,
-      user,
-      artisanProfile: artisanProfile || null,
-      isAuthenticated: true,
-    }));
-  }, []);
+      setState((prev) => ({
+        ...prev,
+        user,
+        artisanProfile: artisanProfile || null,
+        isAuthenticated: true,
+      }));
+    } catch (error: any) {
+      console.error('[AuthContext] Refresh user failed:', error.message);
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+        setState({
+          user: null,
+          artisanProfile: null,
+          isAuthenticated: false,
+          isLoading: false,
+          isInitialized: true,
+        });
+        navigate('/login');
+      }
+    }
+  }, [navigate]);
 
   const updateUser = useCallback((data: Partial<User>) => {
     setState((prev) => ({

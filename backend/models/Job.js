@@ -11,7 +11,6 @@ const jobSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: false,  // ← CHANGED: Made optional since job is posted before artisan is assigned
-    index: true,
     default: null
   },
   title: {

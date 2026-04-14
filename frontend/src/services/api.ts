@@ -1,10 +1,10 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  withCredentials: true,
+  withCredentials: true,  // ✅ CRITICAL: Sends cookies with requests
   headers: {
     'Content-Type': 'application/json',
   },
@@ -12,36 +12,27 @@ const api = axios.create({
 });
 
 // ==========================================
-// REQUEST INTERCEPTOR - TOKEN FROM LOCALSTORAGE
+// REQUEST INTERCEPTOR
 // ==========================================
-
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Read token from localStorage
-    const token = localStorage.getItem('token');
-
-    console.log('🔍 Token from localStorage:', token ? 'EXISTS' : 'NULL');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('✅ Authorization header set');
-    } else {
-      console.log('⚠️ No token found in localStorage');
     }
     
-    // Add timestamp to prevent caching
-    if (config.method === 'get') {
-      config.params = {
-        ...config.params,
-        _t: Date.now(),
-      };
+    // ✅ DEBUG: Log outgoing requests
+    if (import.meta.env.MODE === 'development') {
+      console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, {
+        hasToken: !!token,
+        withCredentials: config.withCredentials
+      });
     }
-
+    
     return config;
   },
-  (error: AxiosError) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // ==========================================
@@ -61,16 +52,15 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
 };
 
 api.interceptors.response.use(
-  (response: AxiosResponse) => {
-    return response;
-  },
+  (response: AxiosResponse) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+    // Network error (no response)
     if (!error.response) {
       return Promise.reject({
         ...error,
-        message: 'Network error. Please check your internet connection.',
+        message: 'Network error. Check your connection.',
       });
     }
 
@@ -78,34 +68,48 @@ api.interceptors.response.use(
     const errorCode = data?.error?.code;
     const errorMessage = data?.error?.message || '';
 
-    // Handle 401 Unauthorized - Try to refresh token
-    if (status === 401 && !originalRequest._retry) {
-      if (originalRequest.url?.includes('/auth/refresh')) {
+    // ✅ FIXED: Better 401 handling
+    if (status === 401) {
+      // If already retrying or it's a refresh request, logout
+      if (originalRequest._retry || originalRequest.url?.includes('/auth/refresh')) {
         localStorage.removeItem('token');
+        // Only redirect if not already on login
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
 
+      // Try to refresh token
       if (!isRefreshing) {
         isRefreshing = true;
         originalRequest._retry = true;
 
         try {
+          console.log('[API] Attempting token refresh...');
           const response = await api.post('/auth/refresh');
           const { accessToken } = response.data.data;
 
           localStorage.setItem('token', accessToken);
+          console.log('[API] Token refreshed successfully');
           onTokenRefreshed(accessToken);
           isRefreshing = false;
 
           return api(originalRequest);
         } catch (refreshError: any) {
+          console.error('[API] Token refresh failed:', refreshError.message);
           isRefreshing = false;
           refreshSubscribers = [];
           localStorage.removeItem('token');
+          
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
           return Promise.reject(refreshError);
         }
       }
 
+      // Queue request while refreshing
       return new Promise((resolve) => {
         addRefreshSubscriber((token: string) => {
           originalRequest.headers['Authorization'] = `Bearer ${token}`;
@@ -114,12 +118,8 @@ api.interceptors.response.use(
       });
     }
 
-    // Handle 403 Forbidden
+    // Handle 403
     if (status === 403) {
-      if (errorCode === 'AUTH_UNAUTHORIZED' || errorCode === 'AUTH_TOKEN_EXPIRED') {
-        localStorage.removeItem('token');
-      }
-      
       return Promise.reject({
         ...error,
         message: errorMessage || 'Access denied.',
@@ -138,7 +138,7 @@ api.interceptors.response.use(
     if (status === 429) {
       return Promise.reject({
         ...error,
-        message: errorMessage || 'Too many requests. Please try again later.',
+        message: errorMessage || 'Too many requests.',
         code: 'RATE_LIMIT',
       });
     }
@@ -152,7 +152,7 @@ api.interceptors.response.use(
 );
 
 // ==========================================
-// API INTERFACES
+// API INTERFACES & EXPORTS
 // ==========================================
 
 export interface ApiResponse<T = any> {
@@ -166,10 +166,6 @@ export interface ApiResponse<T = any> {
     pages: number;
   };
 }
-
-// ==========================================
-// AUTH API
-// ==========================================
 
 export interface LoginData {
   email: string;
@@ -226,10 +222,6 @@ export const authApi = {
     api.post<ApiResponse<void>>(`/auth/reset-password/${token}`, { password }),
 };
 
-// ==========================================
-// USER API
-// ==========================================
-
 export const userApi = {
   getMe: () => 
     api.get<ApiResponse<any>>('/users/me'),
@@ -253,10 +245,6 @@ export const userApi = {
   deleteMe: () => 
     api.delete<ApiResponse<void>>('/users/me'),
 };
-
-// ==========================================
-// ARTISAN API
-// ==========================================
 
 export interface ArtisanProfileUpdate {
   skills?: string[];
@@ -329,10 +317,6 @@ export const artisanApi = {
     api.delete<ApiResponse<{ portfolioImages: string[] }>>('/artisans/portfolio', { data: { imageUrl } }),
 };
 
-// ==========================================
-// JOB API
-// ==========================================
-
 export interface JobCreateData {
   title: string;
   description: string;
@@ -363,16 +347,14 @@ export const jobApi = {
   getById: (id: string) => 
     api.get<ApiResponse<{ job: any }>>(`/jobs/${id}`),
 
-  getJobApplications: (jobId: string) => {
-    return api.get(`/jobs/${jobId}/applications`);
-  },
+  getJobApplications: (jobId: string) => 
+    api.get(`/jobs/${jobId}/applications`),
   
   accept: (id: string) => 
     api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/accept`),
 
-  acceptApplication: (applicationId: string) => {
-    return api.post(`/applications/${applicationId}/accept`);
-  },
+  acceptApplication: (applicationId: string) => 
+    api.post(`/applications/${applicationId}/accept`),
   
   start: (id: string) => 
     api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/start`),
@@ -386,9 +368,8 @@ export const jobApi = {
   cancel: (id: string, reason?: string) => 
     api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/cancel`, { reason }),
 
-  rejectApplication: (applicationId: string) => {
-    return api.post(`/applications/${applicationId}/reject`);
-  },
+  rejectApplication: (applicationId: string) => 
+    api.post(`/applications/${applicationId}/reject`),
   
   addReview: (id: string, data: ReviewData) => 
     api.post<ApiResponse<{ review: any }>>(`/jobs/${id}/review`, data),
@@ -399,10 +380,6 @@ export const jobApi = {
   apply: (id: string, data?: { coverLetter?: string; proposedRate?: number }) => 
     api.post<ApiResponse<void>>(`/jobs/${id}/apply`, data),
 };
-
-// ==========================================
-// APPLICATIONS API
-// ==========================================
 
 export const applicationsApi = {
   getMyApplications: (params?: { status?: string; page?: number; limit?: number }) => 
@@ -415,18 +392,10 @@ export const applicationsApi = {
     api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
 };
 
-// ==========================================
-// PAYMENT API
-// ==========================================
-
 export interface PaymentInitializeData {
   jobId: string;
   email?: string;
   metadata?: Record<string, any>;
-}
-
-export interface WithdrawalRequest {
-  amount: number;
 }
 
 export const walletApi = {
@@ -444,9 +413,8 @@ export const paymentApi = {
   verify: (reference: string) => 
     api.get<ApiResponse<{ transaction: any; paystackData: any }>>(`/payments/verify/${reference}`),
   
-  verifyPayment: (reference: string) => {
-    return api.get(`/payments/verify/${reference}`);
-  },
+  verifyPayment: (reference: string) => 
+    api.get(`/payments/verify/${reference}`),
 
   releasePayment: (jobId: string) => 
     api.put<ApiResponse<{ transaction: any; job: any }>>(`/payments/release/${jobId}`),
@@ -466,10 +434,6 @@ export const paymentApi = {
   verifyAccount: (data: { accountNumber: string; bankCode: string }) => 
     api.post<ApiResponse<{ accountNumber: string; accountName: string; bankCode: string }>>('/payments/verify-account', data),
 };
-
-// ==========================================
-// CHAT API
-// ==========================================
 
 export interface CreateConversationData {
   participantId: string;
@@ -493,10 +457,6 @@ export const chatApi = {
     api.put<ApiResponse<void>>(`/chat/conversations/${conversationId}/read`),
 };
 
-// ==========================================
-// UTILITY FUNCTIONS
-// ==========================================
-
 export const handleApiError = (error: any): string => {
   if (error.response?.data?.error?.message) {
     return error.response.data.error.message;
@@ -504,13 +464,12 @@ export const handleApiError = (error: any): string => {
   if (error.message) {
     return error.message;
   }
-  return 'An unexpected error occurred. Please try again.';
+  return 'An unexpected error occurred.';
 };
 
 export const getErrorCode = (error: any): string => {
   return error.response?.data?.error?.code || error.code || 'UNKNOWN_ERROR';
 };
 
-// Export the api instance
 export { api };
 export default api;

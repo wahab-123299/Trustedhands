@@ -1,19 +1,22 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 const ProtectedRoute = () => {
-  const { user, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isInitialized } = useAuth();
+  const location = useLocation();
 
-  if (isLoading) {
+  // Wait for auth to initialize
+  if (!isInitialized || isLoading) {
     return <LoadingSpinner />;
   }
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
+  // Only redirect if we're sure user is not authenticated
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return <Outlet />; // Render child routes
+  return <Outlet />;
 };
 
 export default ProtectedRoute;

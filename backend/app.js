@@ -8,26 +8,26 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
-const path = require('path');
 
 const { errorHandler } = require('./middleware');
-const {
-  authRoutes,
-  userRoutes,
-  artisanRoutes,
-  jobRoutes,
-  paymentRoutes,
-  chatRoutes,
-  applicationRoutes
-} = require('./routes');
+
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const artisanRoutes = require('./routes/artisanRoutes');
+const jobRoutes = require('./routes/jobRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const chatRoutes = require('./routes/chatRoutes');
+const applicationRoutes = require('./routes/applicationRoutes');
 
 const app = express();
+
+// ✅ FIXED: Trust proxy (required for Render to get client IP and secure cookies)
+app.set('trust proxy', 1);
 
 // ==========================================
 // SECURITY MIDDLEWARE
 // ==========================================
 
-// Helmet with custom configuration for API
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -35,66 +35,72 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173']
+      connectSrc: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173', 'https://trustedhands.onrender.com']
     }
   },
-  crossOriginEmbedderPolicy: false // Allow embedded resources
+  crossOriginEmbedderPolicy: false
 }));
 
-// CORS configuration - MUST allow credentials
-app.use(cors({
-  origin: (origin, callback) => {
+// ✅ FIXED: Simplified CORS - allow all origins in development, specific in production
+const corsOptions = {
+  origin: function (origin, callback) {
     const allowedOrigins = [
       process.env.FRONTEND_URL,
       'http://localhost:5173',
-      'http://localhost:3000'
+      'http://localhost:3000',
+      'https://trustedhands.onrender.com',
+      'https://trustedhands.onrender.com/'
     ].filter(Boolean);
     
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (mobile apps, curl, postman) OR from allowed origins
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.some(allowed => origin?.includes(allowed))) {
       callback(null, true);
     } else {
+      console.log('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, // THIS IS CRITICAL - allows cookies
+  credentials: true,  // ✅ CRITICAL: Must be true for cookies
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
-  maxAge: 86400
-}));
+  maxAge: 86400,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // ==========================================
-// RATE LIMITING (Different tiers)
+// RATE LIMITING
 // ==========================================
 
-// General API rate limiter
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: {
     success: false,
     error: {
       code: 'RATE_LIMIT',
-      message: 'Too many requests from this IP, please try again later.'
+      message: 'Too many requests. Please try again later.'
     }
   },
-  // Skip successful requests for health checks
-  skip: (req) => req.path === '/health'
+  skip: (req) => req.path === '/health' || req.path === '/api'
 });
 app.use('/api/', generalLimiter);
 
-// Stricter rate limiter for auth endpoints (prevent brute force)
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts per 15 minutes
-  skipSuccessfulRequests: true, // Don't count successful logins
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
   message: {
     success: false,
     error: {
       code: 'AUTH_RATE_LIMIT',
-      message: 'Too many authentication attempts. Please try again later.'
+      message: 'Too many auth attempts. Please try again later.'
     }
   }
 });
@@ -106,105 +112,81 @@ app.use('/api/auth/forgot-password', authLimiter);
 // BODY PARSING
 // ==========================================
 
-// Body parser with size limits
 app.use(express.json({ 
   limit: '10mb',
-  strict: true // Only accept arrays and objects
+  strict: true
 }));
 app.use(express.urlencoded({ 
   extended: true, 
   limit: '10mb',
-  parameterLimit: 1000 // Limit number of form fields
+  parameterLimit: 1000
 }));
 
-// Cookie parser with secret for signed cookies (optional)
-app.use(cookieParser(process.env.COOKIE_SECRET || 'default-secret-change-in-production'));
+app.use(cookieParser(process.env.COOKIE_SECRET || 'default-secret'));
 
 // ==========================================
 // DATA SANITIZATION
 // ==========================================
 
-// Data sanitization against NoSQL query injection
 app.use(mongoSanitize({
-  replaceWith: '_', // Replace prohibited characters with underscore
+  replaceWith: '_',
   onSanitize: ({ req, key }) => {
     console.warn(`Sanitized key: ${key} from IP: ${req.ip}`);
   }
 }));
 
-// Data sanitization against XSS
 app.use(xss());
-
-// Prevent HTTP Parameter Pollution
 app.use(hpp({
-  whitelist: [ // Allow these parameters to have multiple values
-    'skills',
-    'status',
-    'category',
-    'sortBy'
-  ]
+  whitelist: ['skills', 'status', 'category', 'sortBy']
 }));
 
 // ==========================================
 // COMPRESSION & LOGGING
 // ==========================================
 
-// Compression (gzip)
 app.use(compression({
-  level: 6, // Balance between compression and CPU usage
+  level: 6,
   filter: (req, res) => {
-    if (req.headers['x-no-compression']) {
-      return false; // Don't compress responses with this header
-    }
+    if (req.headers['x-no-compression']) return false;
     return compression.filter(req, res);
   }
 }));
 
-// Request logging
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 } else {
-  // Production logging (can be extended to use Winston)
   app.use(morgan('combined', {
-    skip: (req, res) => res.statusCode < 400 // Only log errors in production
+    skip: (req, res) => res.statusCode < 400
   }));
 }
-
-// ==========================================
-// STATIC FILES (if needed)
-// ==========================================
-
-// Serve uploaded files (if storing locally - better to use Cloudinary)
-// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ==========================================
 // HEALTH & API STATUS
 // ==========================================
 
-// Health check endpoint (no rate limit)
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'TrustedHand API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    version: '1.0.0'
+    version: '1.0.0',
+    uptime: process.uptime()
   });
 });
 
-// API info endpoint
 app.get('/api', (req, res) => {
   res.json({
     success: true,
     message: 'TrustedHand API v1.0.0',
-    documentation: '/api/docs', // If you add Swagger later
     endpoints: {
       auth: '/api/auth',
       users: '/api/users',
       artisans: '/api/artisans',
       jobs: '/api/jobs',
       payments: '/api/payments',
-      chat: '/api/chat'
+      chat: '/api/chat',
+      applications: '/api/applications'
     }
   });
 });
@@ -213,31 +195,43 @@ app.get('/api', (req, res) => {
 // ROUTES
 // ==========================================
 
+console.log('📋 Registering routes...');
+
 app.use('/api/auth', authRoutes);
+console.log('✅ Auth routes at /api/auth');
+
 app.use('/api/users', userRoutes);
+console.log('✅ User routes at /api/users');
+
 app.use('/api/artisans', artisanRoutes);
+console.log('✅ Artisan routes at /api/artisans');
+
 app.use('/api/jobs', jobRoutes);
-app.use('/api/applications', applicationRoutes); // ✅ Add this
+console.log('✅ Job routes at /api/jobs');
+
+app.use('/api/applications', applicationRoutes);
+console.log('✅ Application routes at /api/applications');
+
 app.use('/api/payments', paymentRoutes);
+console.log('✅ Payment routes at /api/payments');
+
 app.use('/api/chat', chatRoutes);
+console.log('✅ Chat routes at /api/chat');
 
 // ==========================================
 // ERROR HANDLING
 // ==========================================
 
-// 404 handler for undefined routes
 app.use((req, res, next) => {
   res.status(404).json({
     success: false,
     error: {
       code: 'NOT_FOUND',
-      message: `Route ${req.method} ${req.originalUrl} not found`,
-      suggestion: 'Check the API documentation for available endpoints'
+      message: `Route ${req.method} ${req.originalUrl} not found`
     }
   });
 });
 
-// Global error handler (must be last)
 app.use(errorHandler);
 
 module.exports = app;

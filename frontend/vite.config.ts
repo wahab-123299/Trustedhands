@@ -12,12 +12,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-    },
+    // Proxy removed - API calls go directly to Render backend
   },
   build: {
     outDir: 'dist',
