@@ -8,10 +8,9 @@ import React, {
   useRef,
   useMemo
 } from 'react';
-import { Socket } from 'socket.io-client';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
-import { Message, Conversation as _Conversation } from '@/types';
+import { Message } from '@/types';
 
 // ==========================================
 // TYPE DEFINITIONS
@@ -26,13 +25,12 @@ interface TypingUser {
 
 interface SocketContextType {
   // Connection state
-  socket: Socket | null;
   isConnected: boolean;
   connectionError: string | null;
   
   // Presence
   onlineUsers: Set<string>;
-  typingUsers: Map<string, TypingUser[]>; // conversationId -> typing users
+  typingUsers: Map<string, TypingUser[]>;
   
   // Actions
   joinConversation: (conversationId: string) => Promise<void>;
@@ -66,17 +64,13 @@ interface SendMessageData {
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
-// Socket URL from environment
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000';
 // ==========================================
 // SOCKET PROVIDER
 // ==========================================
 
 export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user, socket: authSocket } = useAuth();
-  
-  // Use socket from AuthContext if available, otherwise manage separately
-  const socket = authSocket;
+  // Get socket from AuthContext instead of creating it here
+  const { socket, user, isAuthenticated } = useAuth();
   
   // State
   const [isConnected, setIsConnected] = useState(false);
@@ -93,7 +87,7 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const typingTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // ==========================================
-  // SOCKET EVENT HANDLERS
+  // CONNECTION STATE TRACKING
   // ==========================================
 
   useEffect(() => {
@@ -103,7 +97,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return;
     }
 
-    // Connection events
     const handleConnect = () => {
       console.log('🔌 SocketContext: Socket connected');
       setIsConnected(true);
@@ -118,18 +111,38 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const handleDisconnect = (reason: string) => {
       console.log('❌ SocketContext: Socket disconnected:', reason);
       setIsConnected(false);
-      
-      if (reason === 'io server disconnect') {
-        // Server forced disconnect, attempt reconnect
-        setTimeout(() => socket.connect(), 1000);
-      }
     };
 
     const handleConnectError = (error: Error) => {
       console.error('SocketContext: Connection error:', error.message);
       setIsConnected(false);
       setConnectionError(error.message);
+      
+      if (!error.message?.includes('AUTH_TOKEN_REQUIRED')) {
+        toast.error('Chat connection failed');
+      }
     };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
+
+    // Set initial state
+    setIsConnected(socket.connected);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleConnectError);
+    };
+  }, [socket]);
+
+  // ==========================================
+  // SOCKET EVENT HANDLERS
+  // ==========================================
+
+  useEffect(() => {
+    if (!socket || !isAuthenticated) return;
 
     // Message events
     const handleReceiveMessage = (data: { message: Message; conversationId: string; clientMessageId?: string }) => {
@@ -142,7 +155,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         pendingMessages.current.delete(clientMessageId);
       }
       
-      // Add message to state
       addMessageInternal(conversationId, message);
       
       // Show notification if not from current user
@@ -150,7 +162,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (senderId !== user?._id) {
         const senderName = typeof message.senderId === 'string' ? 'Someone' : message.senderId.fullName;
         
-        // Only show toast if not currently viewing this conversation
         const currentPath = window.location.pathname;
         if (!currentPath.includes(`/chat/${conversationId}`)) {
           toast.info(`New message from ${senderName}`, {
@@ -167,19 +178,16 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const handleMessageSent = (data: { message: Message; conversationId: string; clientMessageId?: string }) => {
       const { message, conversationId, clientMessageId } = data;
       
-      // Resolve pending promise
       if (clientMessageId && pendingMessages.current.has(clientMessageId)) {
         const resolve = pendingMessages.current.get(clientMessageId)!;
         resolve();
         pendingMessages.current.delete(clientMessageId);
       }
       
-      // Replace optimistic message with real one
       setMessages(prev => {
         const newMessages = new Map(prev);
         const conversationMessages = newMessages.get(conversationId) || [];
         
-        // Find and replace optimistic message
         const index = conversationMessages.findIndex(m => 
           m._id === clientMessageId || 
           m._id?.toString().startsWith('temp_') ||
@@ -220,7 +228,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
 
     const handleMessagesRead = (data: { conversationId: string; readBy: string; readAt: Date; count: number }) => {
-      // Update all messages from this user as read
       setMessages(prev => {
         const newMessages = new Map(prev);
         const conversationMessages = newMessages.get(data.conversationId);
@@ -246,7 +253,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const conversationTyping = newTyping.get(data.conversationId) || [];
         
         if (data.isTyping) {
-          // Add user to typing list
           if (!conversationTyping.find(t => t.userId === data.userId)) {
             conversationTyping.push({
               userId: data.userId,
@@ -256,18 +262,14 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             });
           }
         } else {
-          // Remove user from typing list
           const index = conversationTyping.findIndex(t => t.userId === data.userId);
-          if (index >= 0) {
-            conversationTyping.splice(index, 1);
-          }
+          if (index >= 0) conversationTyping.splice(index, 1);
         }
         
         newTyping.set(data.conversationId, conversationTyping);
         return newTyping;
       });
       
-      // Auto-clear after 5 seconds
       if (data.isTyping) {
         const timeoutKey = `${data.conversationId}-${data.userId}`;
         if (typingTimeouts.current.has(timeoutKey)) {
@@ -313,7 +315,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const handleNotification = (data: any) => {
       switch (data.type) {
         case 'new_message':
-          // Already handled by receive_message
           break;
         case 'payment_received':
           toast.success('Payment Received', { description: data.message });
@@ -331,13 +332,12 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const handleError = (data: { code: string; message: string }) => {
       console.error('Socket error:', data);
-      toast.error(data.message || 'An error occurred');
+      if (!data.message?.includes('AUTH_TOKEN_REQUIRED')) {
+        toast.error(data.message || 'An error occurred');
+      }
     };
 
-    // Register event listeners
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-    socket.on('connect_error', handleConnectError);
+    // Register listeners
     socket.on('receive_message', handleReceiveMessage);
     socket.on('message_sent', handleMessageSent);
     socket.on('message_status', handleMessageStatus);
@@ -349,19 +349,12 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     socket.on('notification', handleNotification);
     socket.on('error', handleError);
 
-    // Set initial connection state
-    setIsConnected(socket.connected);
-
-    // Cleanup
     return () => {
-      // Clear all timeouts
+      // Cleanup timeouts
       typingTimeouts.current.forEach(timeout => clearTimeout(timeout));
       typingTimeouts.current.clear();
       
       // Remove listeners
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
-      socket.off('connect_error', handleConnectError);
       socket.off('receive_message', handleReceiveMessage);
       socket.off('message_sent', handleMessageSent);
       socket.off('message_status', handleMessageStatus);
@@ -373,7 +366,7 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       socket.off('notification', handleNotification);
       socket.off('error', handleError);
     };
-  }, [socket, user?._id]);
+  }, [socket, isAuthenticated, user?._id]);
 
   // ==========================================
   // INTERNAL HELPERS
@@ -384,9 +377,7 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const newMessages = new Map(prev);
       const conversationMessages = newMessages.get(conversationId) || [];
       
-      // Prevent duplicates
       if (!conversationMessages.find(m => m._id === message._id)) {
-        // Keep messages sorted by date
         const insertIndex = conversationMessages.findIndex(
           m => new Date(m.createdAt) > new Date(message.createdAt)
         );
@@ -414,7 +405,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
 
     return new Promise((resolve, reject) => {
-      // Prevent duplicate joins
       if (joinedConversations.current.has(conversationId)) {
         resolve();
         return;
@@ -429,8 +419,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           clearTimeout(timeout);
           socket.off('conversation_joined', handleJoined);
           joinedConversations.current.add(conversationId);
-          
-          // Set initial messages
           setConversationMessages(conversationId, data.messages);
           resolve();
         }
@@ -456,48 +444,33 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const clientMessageId = data.clientMessageId || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create optimistic message
     const optimisticMessage: Message = {
       _id: clientMessageId,
       conversationId: data.conversationId,
-      receiverId: data.receiverId,           // ✅ Add this
+      receiverId: data.receiverId,
       senderId: user!,
       content: data.content,
       attachments: data.attachments || [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isRead: false,
-      isDeleted: false,                      // ✅ Add this
+      isDeleted: false,
       deliveryStatus: "sent",
     };
 
-    // Add optimistic message
     addMessageInternal(data.conversationId, optimisticMessage);
 
-    // Create promise for acknowledgment
     return new Promise((resolve, reject) => {
-      // Store resolve function for later
       pendingMessages.current.set(clientMessageId, resolve);
 
-      // Timeout fallback
       const timeout = setTimeout(() => {
         if (pendingMessages.current.has(clientMessageId)) {
           pendingMessages.current.delete(clientMessageId);
-          
-          // Mark as failed
           updateMessage(data.conversationId, clientMessageId, { deliveryStatus: 'failed' });
-          
           reject(new Error('Message send timeout'));
         }
       }, 10000);
 
-      // Send to server
-      socket.emit('send_message', {
-        ...data,
-        clientMessageId,
-      });
-
-      // Cleanup timeout on resolve
       const originalResolve = pendingMessages.current.get(clientMessageId);
       if (originalResolve) {
         pendingMessages.current.set(clientMessageId, () => {
@@ -505,6 +478,8 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           originalResolve();
         });
       }
+
+      socket.emit('send_message', { ...data, clientMessageId });
     });
   }, [socket, isConnected, user, addMessageInternal]);
 
@@ -524,14 +499,12 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (socket && isConnected) {
       socket.emit('mark_conversation_read', { conversationId });
       
-      // Optimistically update local state
       setConversationUnread(prev => {
         const newMap = new Map(prev);
         newMap.set(conversationId, 0);
         return newMap;
       });
       
-      // Recalculate total
       const newTotal = Array.from(conversationUnread.values()).reduce((sum, count) => sum + count, 0) - (conversationUnread.get(conversationId) || 0);
       setUnreadCount(newTotal);
     }
@@ -614,7 +587,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // ==========================================
 
   const value = useMemo(() => ({
-    socket,
     isConnected,
     connectionError,
     onlineUsers,
@@ -634,7 +606,6 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     updateMessage,
     updateMessageStatus,
   }), [
-    socket,
     isConnected,
     connectionError,
     onlineUsers,

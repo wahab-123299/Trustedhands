@@ -1,67 +1,48 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
-// Debug: Log the API URL being used
-console.log('[API Config] import.meta.env.VITE_API_URL:', import.meta.env.VITE_API_URL);
-console.log('[API Config] MODE:', import.meta.env.MODE);
-console.log('[API Config] DEV:', import.meta.env.DEV);
-console.log('[API Config] PROD:', import.meta.env.PROD);
+
+// Store logs for debugging after redirect
+const debugLogs: string[] = [];
+const addLog = (msg: string) => {
+  const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  debugLogs.push(line);
+  console.log(line);
+  // Keep only last 50 logs
+  if (debugLogs.length > 50) debugLogs.shift();
+};
+
+// Expose to window for inspection
+if (typeof window !== 'undefined') {
+  (window as any).getAuthLogs = () => {
+    console.log('=== AUTH DEBUG LOGS ===\n' + debugLogs.join('\n'));
+    return debugLogs;
+  };
+  (window as any).clearAuthLogs = () => {
+    debugLogs.length = 0;
+  };
+}
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
-
-console.log('[API Config] Final API_URL:', API_URL);
+addLog(`[API Config] URL: ${API_URL}`);
 
 const api = axios.create({
   baseURL: API_URL,
-  withCredentials: true,  // ✅ CRITICAL: Sends cookies with requests
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
-  timeout: 30000,
+  timeout: 60000, // ⬆️ Increased to 60s for Render cold starts
 });
 
-// Ensure withCredentials is set on defaults too
 api.defaults.withCredentials = true;
 
 // ==========================================
-// REQUEST INTERCEPTOR - FIXED VERSION
+// REFRESH TOKEN STATE
 // ==========================================
-api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    // ALWAYS read fresh from localStorage
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    
-    if (token) {
-      // ✅ FIXED: Must set on config.headers directly
-      config.headers.Authorization = `Bearer ${token}`;
-      
-      // Debug logging
-      console.log('[API Request]', config.method?.toUpperCase(), config.url, {
-        hasToken: true,
-        tokenPreview: token.substring(0, 20) + '...',
-        authHeader: config.headers.Authorization?.substring(0, 30) + '...'
-      });
-    } else {
-      console.log('[API Request] No token for:', config.url);
-    }
-    
-    // Log full config for debugging
-    console.log('[API Request] Full headers:', JSON.stringify(config.headers, null, 2));
-    
-    return config;
-  },
-  (error) => {
-    console.error('[API Request] Error:', error);
-    return Promise.reject(error);
-  }
-);
-
-// ==========================================
-// RESPONSE INTERCEPTOR
-// ==========================================
-
 let isRefreshing = false;
 let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshPromise: Promise<string> | null = null;
 
 const onTokenRefreshed = (token: string) => {
   refreshSubscribers.forEach((callback) => callback(token));
@@ -72,107 +53,158 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
   refreshSubscribers.push(callback);
 };
 
+// ==========================================
+// REQUEST INTERCEPTOR
+// ==========================================
+api.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    
+    if (token) {
+      try {
+        // Validate token isn't expired before using
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const expiryTime = payload.exp * 1000; // Convert to milliseconds
+        const now = Date.now();
+        
+        // ✅ FIXED: Add 60-second buffer for clock skew
+        // Don't clear token if it's just slightly expired (within 60s)
+        // Let the server validate and return 401 if truly expired
+        if (now >= expiryTime + 60000) { // 60 second grace period
+          addLog(`[Request] Token truly expired (${Math.floor((now - expiryTime)/1000)}s past), clearing`);
+          localStorage.removeItem('token');
+          // Don't set header - let it fail and trigger refresh
+        } else if (now >= expiryTime) {
+          // Token appears expired but within grace period - still use it
+          // Server will reject if truly invalid
+          addLog(`[Request] Token appears expired but within grace period, using anyway`);
+          config.headers.Authorization = `Bearer ${token}`;
+        } else {
+          config.headers.Authorization = `Bearer ${token}`;
+          const timeLeft = Math.floor((expiryTime - now) / 1000);
+          addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - Token valid (${timeLeft}s left)`);
+        }
+      } catch (e) {
+        // Invalid token format
+        addLog(`[Request] Invalid token format, clearing`);
+        localStorage.removeItem('token');
+      }
+    } else {
+      addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - NO TOKEN`);
+    }
+    
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// ==========================================
+// RESPONSE INTERCEPTOR - WITH RETRY LOGIC
+// ==========================================
 api.interceptors.response.use(
   (response: AxiosResponse) => {
-    console.log('[API Response]', response.config.method?.toUpperCase(), response.config.url, 'Status:', response.status);
+    addLog(`[Response] ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
     return response;
   },
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _retryCount?: number };
 
-    console.error('[API Response] Error:', error.message);
-    console.error('[API Response] Status:', error.response?.status);
-    console.error('[API Response] Data:', error.response?.data);
-
+    // Handle network errors (no response) - RENDER COLD START
     if (!error.response) {
+      addLog(`[Response] Network error: ${error.message}`);
+      
+      // Retry network errors up to 2 times
+      const retryCount = originalRequest._retryCount || 0;
+      if (retryCount < 2 && error.code === 'ECONNABORTED') {
+        addLog(`[Response] Retrying network error (${retryCount + 1}/2)...`);
+        originalRequest._retryCount = retryCount + 1;
+        
+        // Wait 3 seconds before retry
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        return api(originalRequest);
+      }
+      
       return Promise.reject({
         ...error,
-        message: 'Network error. Please check your connection.',
+        message: 'Server is waking up. Please try again.',
+        isWakeUpError: true,
       });
     }
 
     const { status, data } = error.response as any;
-    const errorCode = data?.error?.code;
-    const errorMessage = data?.error?.message || '';
+    const errorCode = data?.error?.code || data?.code;
+    const errorMessage = data?.error?.message || data?.message || '';
+
+    addLog(`[Response] ERROR ${status}: ${errorCode} - ${errorMessage}`);
 
     // Handle 401 - Try to refresh token
     if (status === 401) {
-      console.log('[API Response] 401 Unauthorized - attempting refresh');
+      addLog('[Response] Got 401, checking if we should refresh...');
 
       if (originalRequest._retry || originalRequest.url?.includes('/auth/refresh')) {
-        console.log('[API Response] Already retried or is refresh request - logging out');
+        addLog('[Response] Already retried or is refresh request - clearing token');
         localStorage.removeItem('token');
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+        addLog('[Response] Token cleared, NOT redirecting (let ProtectedRoute handle it)');
         return Promise.reject(error);
       }
 
-      if (!isRefreshing) {
-        isRefreshing = true;
-        originalRequest._retry = true;
-
-        try {
-          console.log('[API Response] Calling /auth/refresh...');
-          const response = await api.post('/auth/refresh');
-          const { accessToken } = response.data.data;
-
-          console.log('[API Response] Token refreshed, new token length:', accessToken.length);
-          localStorage.setItem('token', accessToken);
-          onTokenRefreshed(accessToken);
-          isRefreshing = false;
-
-          return api(originalRequest);
-        } catch (refreshError: any) {
-          console.error('[API Response] Refresh failed:', refreshError.message);
-          isRefreshing = false;
-          refreshSubscribers = [];
-          localStorage.removeItem('token');
-          
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login';
-          }
-          return Promise.reject(refreshError);
-        }
+      // If already refreshing, wait for it
+      if (isRefreshing && refreshPromise) {
+        addLog('[Response] Token refresh in progress, queuing request');
+        return new Promise((resolve) => {
+          addRefreshSubscriber((token: string) => {
+            originalRequest.headers['Authorization'] = `Bearer ${token}`;
+            resolve(api(originalRequest));
+          });
+        });
       }
 
-      return new Promise((resolve) => {
-        addRefreshSubscriber((token: string) => {
-          originalRequest.headers['Authorization'] = `Bearer ${token}`;
-          resolve(api(originalRequest));
-        });
-      });
+      // Start refresh
+      isRefreshing = true;
+      originalRequest._retry = true;
+
+      refreshPromise = (async () => {
+        try {
+          addLog('[Response] Calling /auth/refresh...');
+          const response = await api.post('/auth/refresh');
+          const { accessToken } = response.data.data || response.data;
+
+          addLog(`[Response] Token refreshed: ${accessToken.substring(0, 15)}...`);
+          localStorage.setItem('token', accessToken);
+          onTokenRefreshed(accessToken);
+          return accessToken;
+        } catch (refreshError: any) {
+          addLog(`[Response] Refresh failed: ${refreshError.message}`);
+          localStorage.removeItem('token');
+          throw refreshError;
+        } finally {
+          isRefreshing = false;
+          refreshPromise = null;
+        }
+      })();
+
+      try {
+        const newToken = await refreshPromise;
+        // Update header with new token before retry
+        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        addLog('[Response] Token cleared after failed refresh, NOT redirecting');
+        return Promise.reject(refreshError);
+      }
     }
 
     // Handle 403
     if (status === 403) {
       if (errorCode === 'AUTH_UNAUTHORIZED' || errorCode === 'AUTH_TOKEN_EXPIRED') {
         localStorage.removeItem('token');
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+        addLog('[Response] 403 - Token cleared');
       }
       
       return Promise.reject({
         ...error,
         message: errorMessage || 'Access denied.',
         code: errorCode || 'FORBIDDEN',
-      });
-    }
-
-    if (status === 404) {
-      return Promise.reject({
-        ...error,
-        message: errorMessage || 'Resource not found.',
-        code: errorCode || 'NOT_FOUND',
-      });
-    }
-
-    if (status === 429) {
-      return Promise.reject({
-        ...error,
-        message: errorMessage || 'Too many requests.',
-        code: 'RATE_LIMIT',
       });
     }
 
@@ -183,6 +215,35 @@ api.interceptors.response.use(
     });
   }
 );
+
+// ==========================================
+// SERVER WAKE-UP HELPER (for Render cold starts)
+// ==========================================
+export const wakeUpServer = async (): Promise<boolean> => {
+  try {
+    addLog('[WakeUp] Pinging server...');
+    // Use a simple GET that doesn't require auth
+    await axios.get(`${API_URL.replace('/api', '')}/health`, { 
+      timeout: 10000,
+      withCredentials: true 
+    });
+    addLog('[WakeUp] Server is awake');
+    return true;
+  } catch (error: any) {
+    // Health endpoint might not exist, try root
+    try {
+      await axios.get(API_URL.replace('/api', ''), { 
+        timeout: 10000,
+        withCredentials: true 
+      });
+      addLog('[WakeUp] Server responded (root)');
+      return true;
+    } catch {
+      addLog('[WakeUp] Server ping failed');
+      return false;
+    }
+  }
+};
 
 // ==========================================
 // API INTERFACES & EXPORTS
