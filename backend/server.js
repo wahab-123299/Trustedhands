@@ -5,10 +5,13 @@ require('dotenv').config();
 const app = require('./app');
 const connectDB = require('./config/database');
 const chatSocket = require('./socket/chatSocket');
+const mongoose = require('mongoose');
 
 
 // In server.js or app.js, at the top
 console.log('MongoDB URI:', process.env.MONGODB_URI);
+
+mongoose.set('strictQuery', false);
 
 // ==========================================
 // SERVER INITIALIZATION

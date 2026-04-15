@@ -154,7 +154,6 @@ artisanProfileSchema.index({ 'availability.status': 1 });
 artisanProfileSchema.index({ averageRating: -1 });
 artisanProfileSchema.index({ 'rate.amount': 1 });
 artisanProfileSchema.index({ experienceYears: 1 });
-artisanProfileSchema.index({ userId: 1, isCertified: 1 });
 artisanProfileSchema.index({ 
   skills: 1, 
   'availability.status': 1, 

@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+mongoose.set('strictQuery', false);
+
 /**
  * Connect to MongoDB with enhanced error handling and event listeners
  * @returns {Promise<typeof mongoose>} Mongoose connection instance
