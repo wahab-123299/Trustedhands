@@ -8,16 +8,9 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
+const mongoose = require('mongoose');
 
 const { errorHandler } = require('./middleware');
-
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const artisanRoutes = require('./routes/artisanRoutes');
-const jobRoutes = require('./routes/jobRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
-const chatRoutes = require('./routes/chatRoutes');
-const applicationRoutes = require('./routes/applicationRoutes');
 
 const app = express();
 
@@ -35,34 +28,39 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173', 'https://trustedhands.onrender.com']
+      connectSrc: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173', 'https://trustedhands.onrender.com', 'http://localhost:5173', 'http://localhost:3000']
     }
   },
   crossOriginEmbedderPolicy: false
 }));
 
-// ✅ FIXED: Simplified CORS - allow all origins in development, specific in production
+// ==========================================
+// CORS CONFIGURATION - FIXED
+// ==========================================
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
-      process.env.FRONTEND_URL,
       'http://localhost:5173',
       'http://localhost:3000',
+      process.env.FRONTEND_URL,
       'https://trustedhands.onrender.com',
-      'https://trustedhands.onrender.com/'
+      undefined
     ].filter(Boolean);
     
-    // Allow requests with no origin (mobile apps, curl, postman) OR from allowed origins
-    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.some(allowed => origin?.includes(allowed))) {
+    console.log('[CORS] Request from origin:', origin);
+    console.log('[CORS] Allowed origins:', allowedOrigins);
+    
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.some(allowed => allowed && origin?.includes(allowed))) {
+      console.log('[CORS] Allowed');
       callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
+      console.log('[CORS] Blocked');
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,  // ✅ CRITICAL: Must be true for cookies
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
   maxAge: 86400,
   preflightContinue: false,
@@ -122,7 +120,7 @@ app.use(express.urlencoded({
   parameterLimit: 1000
 }));
 
-app.use(cookieParser(process.env.COOKIE_SECRET || 'default-secret'));
+app.use(cookieParser(process.env.COOKIE_SECRET || 'default-secret-change-in-production'));
 
 // ==========================================
 // DATA SANITIZATION
@@ -165,13 +163,31 @@ if (process.env.NODE_ENV === 'development') {
 // ==========================================
 
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    success: true,
+  const dbState = mongoose.connection.readyState;
+  const dbStatus = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  }[dbState] || 'unknown';
+
+  const isHealthy = dbState === 1;
+
+  res.status(isHealthy ? 200 : 503).json({
+    success: isHealthy,
     message: 'TrustedHand API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    database: {
+      status: dbStatus,
+      connected: dbState === 1
+    },
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
+    }
   });
 });
 
@@ -195,28 +211,13 @@ app.get('/api', (req, res) => {
 // ROUTES
 // ==========================================
 
-console.log('📋 Registering routes...');
-
-app.use('/api/auth', authRoutes);
-console.log('✅ Auth routes at /api/auth');
-
-app.use('/api/users', userRoutes);
-console.log('✅ User routes at /api/users');
-
-app.use('/api/artisans', artisanRoutes);
-console.log('✅ Artisan routes at /api/artisans');
-
-app.use('/api/jobs', jobRoutes);
-console.log('✅ Job routes at /api/jobs');
-
-app.use('/api/applications', applicationRoutes);
-console.log('✅ Application routes at /api/applications');
-
-app.use('/api/payments', paymentRoutes);
-console.log('✅ Payment routes at /api/payments');
-
-app.use('/api/chat', chatRoutes);
-console.log('✅ Chat routes at /api/chat');
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/artisans', require('./routes/artisanRoutes'));
+app.use('/api/jobs', require('./routes/jobRoutes'));
+app.use('/api/applications', require('./routes/applicationRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
+app.use('/api/chat', require('./routes/chatRoutes'));
 
 // ==========================================
 // ERROR HANDLING
@@ -234,4 +235,4 @@ app.use((req, res, next) => {
 
 app.use(errorHandler);
 
-module.exports = app;
+module.exports = app;g

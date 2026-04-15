@@ -10,6 +10,10 @@ const { AppError } = require('../utils/errorHandler');
 // ==========================================
 
 const generateTokens = (userId) => {
+  // Debug log
+  console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
+  console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
+  
   const accessToken = jwt.sign(
     { userId },
     process.env.JWT_SECRET,
@@ -82,21 +86,24 @@ const registerValidation = [
 // ==========================================
 
 const getCookieOptions = (maxAge) => {
-  // Force production mode if on Render (they use HTTPS)
   const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+  
+  // Debug log
+  console.log('[Cookies] Environment:', isProduction ? 'production' : 'development');
+  console.log('[Cookies] Setting secure:', isProduction);
+  console.log('[Cookies] Setting sameSite:', isProduction ? 'none' : 'lax');
   
   return {
     httpOnly: true,
-    secure: true,           // Always true for Render (HTTPS)
-    sameSite: 'none',       // Must be 'none' for cross-site cookies on Render
+    secure: isProduction,        // true for production (HTTPS)
+    sameSite: isProduction ? 'none' : 'lax',  // 'none' for cross-origin, 'lax' for same-origin
     maxAge,
     path: '/',
-    // domain: undefined    // Let browser set automatically
   };
 };
 
 // ==========================================
-// REGISTRATION - FIXED
+// REGISTRATION
 // ==========================================
 
 exports.register = [
@@ -207,7 +214,7 @@ exports.register = [
 
         const artisanProfile = await ArtisanProfile.create({
           userId: user._id,
-          skills,                                    // ✅ FIXED: Removed undefined 'Profession'
+          skills,                                    // Fixed: removed undefined 'Profession'
           experienceYears: experienceYears || '0-1',
           rate: {
             amount: parseFloat(rate.amount),
@@ -271,16 +278,18 @@ exports.register = [
       const { accessToken, refreshToken } = generateTokens(user._id);
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'unknown');
 
-      // ✅ FIXED: Use consistent cookie settings
+      // Set cookies
       res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
       res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+      console.log('[Register] Success - Token sent, length:', accessToken.length);
 
       res.status(201).json({
         success: true,
         message: 'Registration successful. Please check your email to verify.',
         data: {
           user: user.toJSON(),
-          accessToken,        // ✅ Send in body for localStorage
+          accessToken,
           dashboardRoute: role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
         }
       });
@@ -291,12 +300,14 @@ exports.register = [
 ];
 
 // ==========================================
-// LOGIN - FIXED
+// LOGIN
 // ==========================================
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+
+    console.log('[Login] Attempt for:', email);
 
     if (!email || !password) {
       throw new AppError('VALIDATION_ERROR', 'Please provide email and password.');
@@ -333,16 +344,18 @@ exports.login = async (req, res, next) => {
       unreadCount = 0;
     }
 
-    // ✅ FIXED: Use consistent cookie settings
+    // Set cookies
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+    console.log('[Login] Success - Token sent, length:', accessToken.length);
 
     res.json({
       success: true,
       message: 'Login successful',
       data: {
         user: user.toJSON(),
-        accessToken,        // ✅ Send in body for localStorage
+        accessToken,
         unreadMessageCount: unreadCount,
         dashboardRoute: user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
       }
@@ -353,7 +366,7 @@ exports.login = async (req, res, next) => {
 };
 
 // ==========================================
-// LOGOUT - FIXED
+// LOGOUT
 // ==========================================
 
 exports.logout = async (req, res, next) => {
@@ -378,11 +391,10 @@ exports.logout = async (req, res, next) => {
       }
     }
 
-    // ✅ FIXED: Use same options when clearing
     const clearOptions = {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
+      secure: process.env.NODE_ENV === 'production' || process.env.RENDER === 'true',
+      sameSite: (process.env.NODE_ENV === 'production' || process.env.RENDER === 'true') ? 'none' : 'lax',
       path: '/'
     };
 
@@ -399,12 +411,15 @@ exports.logout = async (req, res, next) => {
 };
 
 // ==========================================
-// REFRESH TOKEN - FIXED
+// REFRESH TOKEN
 // ==========================================
 
 exports.refresh = async (req, res, next) => {
   try {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+    console.log('[Refresh] Token from cookie:', !!req.cookies.refreshToken);
+    console.log('[Refresh] Token from body:', !!req.body.refreshToken);
 
     if (!refreshToken) {
       throw new AppError('AUTH_TOKEN_EXPIRED', 'Refresh token not found.');
@@ -448,7 +463,6 @@ exports.refresh = async (req, res, next) => {
       }
     });
 
-    // ✅ FIXED: Consistent cookies
     res.cookie('accessToken', tokens.accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', tokens.refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
@@ -464,7 +478,7 @@ exports.refresh = async (req, res, next) => {
 };
 
 // ==========================================
-// EMAIL VERIFICATION (unchanged)
+// EMAIL VERIFICATION
 // ==========================================
 
 exports.verifyEmail = async (req, res, next) => {
@@ -560,7 +574,7 @@ exports.resendVerification = async (req, res, next) => {
 };
 
 // ==========================================
-// PASSWORD RESET (unchanged)
+// PASSWORD RESET
 // ==========================================
 
 exports.forgotPassword = async (req, res, next) => {

@@ -2,24 +2,50 @@ const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 
+/**
+ * Extract token from request (Authorization header or cookies)
+ * @param {Object} req - Express request object
+ * @returns {String|null} JWT token or null
+ */
 const extractToken = (req) => {
+  // Debug log
+  console.log('[Auth Middleware] Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('[Auth Middleware] Authorization header:', req.headers.authorization);
+  console.log('[Auth Middleware] Cookies:', req.cookies);
+
+  // Check Authorization header FIRST (what your frontend sends)
   if (req.headers.authorization?.startsWith('Bearer ')) {
-    return req.headers.authorization.split(' ')[1];
+    const token = req.headers.authorization.split(' ')[1];
+    console.log('[Auth Middleware] Token extracted from header, length:', token.length);
+    return token;
   }
   
+  // Fallback to httpOnly cookie
   if (req.cookies?.accessToken) {
+    console.log('[Auth Middleware] Token extracted from cookie');
     return req.cookies.accessToken;
   }
   
+  console.log('[Auth Middleware] No token found');
   return null;
 };
 
+/**
+ * Verify JWT token and return decoded payload
+ * @param {String} token - JWT token
+ * @returns {Object} Decoded token payload
+ * @throws {AppError} If token is invalid or expired
+ */
 const verifyToken = (token) => {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET);
+    console.log('[Auth Middleware] Verifying token with secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('[Auth Middleware] Token verified, userId:', decoded.userId);
+    return decoded;
   } catch (error) {
+    console.error('[Auth Middleware] Token verification failed:', error.name, error.message);
     if (error.name === 'TokenExpiredError') {
-      throw new AppError('AUTH_TOKEN_EXPIRED', 'Session expired. Please login.');
+      throw new AppError('AUTH_TOKEN_EXPIRED', 'Your session has expired. Please login again.');
     }
     if (error.name === 'JsonWebTokenError') {
       throw new AppError('AUTH_UNAUTHORIZED', 'Invalid token format.');
@@ -28,27 +54,45 @@ const verifyToken = (token) => {
   }
 };
 
+// ==========================================
+// MAIN AUTHENTICATION MIDDLEWARE
+// ==========================================
+
+/**
+ * Authenticate user - Required authentication
+ * Verifies JWT, checks user exists, active, and token not blacklisted
+ */
 exports.authenticate = async (req, res, next) => {
   try {
+    console.log('[Auth Middleware] === START AUTHENTICATION ===');
+    
     const token = extractToken(req);
 
     if (!token) {
+      console.log('[Auth Middleware] No token provided - rejecting');
       throw new AppError('AUTH_UNAUTHORIZED', 'Access denied. No token provided.');
     }
 
+    // Verify token signature and expiration
     const decoded = verifyToken(token);
 
+    // Find user
+    console.log('[Auth Middleware] Finding user:', decoded.userId);
     const user = await User.findById(decoded.userId)
       .select('_id email role fullName phone isActive profileImage location');
 
     if (!user) {
-      throw new AppError('USER_NOT_FOUND', 'User no longer exists.');
+      console.log('[Auth Middleware] User not found:', decoded.userId);
+      throw new AppError('USER_NOT_FOUND', 'User associated with this token no longer exists.');
     }
 
     if (!user.isActive) {
-      throw new AppError('AUTH_UNAUTHORIZED', 'Account deactivated.');
+      console.log('[Auth Middleware] User deactivated:', user._id);
+      throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated. Contact support.');
     }
 
+    // Check if token is blacklisted
+    console.log('[Auth Middleware] Checking blacklist...');
     const userWithTokens = await User.findById(decoded.userId)
       .select('blacklistedTokens');
     
@@ -57,18 +101,31 @@ exports.authenticate = async (req, res, next) => {
     );
     
     if (isBlacklisted) {
-      throw new AppError('AUTH_UNAUTHORIZED', 'Token revoked.');
+      console.log('[Auth Middleware] Token is blacklisted');
+      throw new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please login again.');
     }
 
+    // Attach user and token to request for downstream use
     req.user = user;
     req.token = token;
     
+    console.log('[Auth Middleware] === AUTHENTICATION SUCCESS ===');
     next();
   } catch (error) {
+    console.error('[Auth Middleware] === AUTHENTICATION FAILED ===', error.message);
     next(error);
   }
 };
 
+// ==========================================
+// ROLE-BASED AUTHORIZATION
+// ==========================================
+
+/**
+ * Authorize by role(s)
+ * @param  {...String} roles - Allowed roles ('customer', 'artisan', 'admin')
+ * @returns {Function} Express middleware
+ */
 exports.authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -78,7 +135,7 @@ exports.authorize = (...roles) => {
     if (!roles.includes(req.user.role)) {
       return next(new AppError(
         'AUTH_UNAUTHORIZED', 
-        `Access denied. Required: ${roles.join(' or ')}.`
+        `Access denied. Required role: ${roles.join(' or ')}. Your role: ${req.user.role}.`
       ));
     }
     
@@ -86,10 +143,17 @@ exports.authorize = (...roles) => {
   };
 };
 
+// ==========================================
+// ARTISAN-SPECIFIC AUTHORIZATION
+// ==========================================
+
+/**
+ * Check if user is a verified artisan with complete profile
+ */
 exports.requireVerifiedArtisan = async (req, res, next) => {
   try {
     if (req.user.role !== 'artisan') {
-      throw new AppError('AUTH_UNAUTHORIZED', 'Artisan account required.');
+      throw new AppError('AUTH_UNAUTHORIZED', 'This action requires an artisan account.');
     }
 
     const { ArtisanProfile } = require('../models');
@@ -98,7 +162,7 @@ exports.requireVerifiedArtisan = async (req, res, next) => {
       .lean();
 
     if (!profile) {
-      throw new AppError('ARTISAN_NOT_FOUND', 'Complete your profile first.');
+      throw new AppError('ARTISAN_NOT_FOUND', 'Artisan profile not found. Please complete your profile.');
     }
 
     req.artisanProfile = profile;
@@ -108,11 +172,21 @@ exports.requireVerifiedArtisan = async (req, res, next) => {
   }
 };
 
+// ==========================================
+// OPTIONAL AUTHENTICATION
+// ==========================================
+
+/**
+ * Optional authentication - Attaches user if valid token exists
+ * Does NOT fail if no token or invalid token
+ */
 exports.optionalAuth = async (req, res, next) => {
   try {
     const token = extractToken(req);
     
-    if (!token) return next();
+    if (!token) {
+      return next();
+    }
 
     try {
       const decoded = verifyToken(token);
@@ -121,7 +195,7 @@ exports.optionalAuth = async (req, res, next) => {
         .select('_id email role fullName isActive')
         .lean();
 
-      if (user?.isActive) {
+      if (user && user.isActive) {
         const userWithTokens = await User.findById(decoded.userId)
           .select('blacklistedTokens');
           
@@ -135,7 +209,10 @@ exports.optionalAuth = async (req, res, next) => {
         }
       }
     } catch (error) {
-      // Silent fail for optional auth
+      // Silently fail - optional auth should not block request
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Optional auth failed:', error.message);
+      }
     }
 
     next();
@@ -144,6 +221,13 @@ exports.optionalAuth = async (req, res, next) => {
   }
 };
 
+// ==========================================
+// REFRESH TOKEN MIDDLEWARE
+// ==========================================
+
+/**
+ * Verify refresh token and issue new access token
+ */
 exports.verifyRefreshToken = async (req, res, next) => {
   try {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
@@ -157,7 +241,7 @@ exports.verifyRefreshToken = async (req, res, next) => {
       decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
-        throw new AppError('AUTH_TOKEN_EXPIRED', 'Refresh token expired.');
+        throw new AppError('AUTH_TOKEN_EXPIRED', 'Refresh token expired. Please login again.');
       }
       throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token.');
     }
@@ -172,7 +256,7 @@ exports.verifyRefreshToken = async (req, res, next) => {
     if (!tokenExists) {
       user.refreshTokens = [];
       await user.save();
-      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token.');
+      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token. Please login again.');
     }
 
     req.user = user;

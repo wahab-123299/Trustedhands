@@ -1,38 +1,59 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
+// Debug: Log the API URL being used
+console.log('[API Config] import.meta.env.VITE_API_URL:', import.meta.env.VITE_API_URL);
+console.log('[API Config] MODE:', import.meta.env.MODE);
+console.log('[API Config] DEV:', import.meta.env.DEV);
+console.log('[API Config] PROD:', import.meta.env.PROD);
+
 const API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
+
+console.log('[API Config] Final API_URL:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,  // ✅ CRITICAL: Sends cookies with requests
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   },
   timeout: 30000,
 });
 
+// Ensure withCredentials is set on defaults too
+api.defaults.withCredentials = true;
+
 // ==========================================
-// REQUEST INTERCEPTOR
+// REQUEST INTERCEPTOR - FIXED VERSION
 // ==========================================
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // ALWAYS read fresh from localStorage
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     
     if (token) {
+      // ✅ FIXED: Must set on config.headers directly
       config.headers.Authorization = `Bearer ${token}`;
+      
+      // Debug logging
+      console.log('[API Request]', config.method?.toUpperCase(), config.url, {
+        hasToken: true,
+        tokenPreview: token.substring(0, 20) + '...',
+        authHeader: config.headers.Authorization?.substring(0, 30) + '...'
+      });
+    } else {
+      console.log('[API Request] No token for:', config.url);
     }
     
-    // ✅ DEBUG: Log outgoing requests
-    if (import.meta.env.MODE === 'development') {
-      console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, {
-        hasToken: !!token,
-        withCredentials: config.withCredentials
-      });
-    }
+    // Log full config for debugging
+    console.log('[API Request] Full headers:', JSON.stringify(config.headers, null, 2));
     
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('[API Request] Error:', error);
+    return Promise.reject(error);
+  }
 );
 
 // ==========================================
@@ -52,15 +73,21 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
 };
 
 api.interceptors.response.use(
-  (response: AxiosResponse) => response,
+  (response: AxiosResponse) => {
+    console.log('[API Response]', response.config.method?.toUpperCase(), response.config.url, 'Status:', response.status);
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // Network error (no response)
+    console.error('[API Response] Error:', error.message);
+    console.error('[API Response] Status:', error.response?.status);
+    console.error('[API Response] Data:', error.response?.data);
+
     if (!error.response) {
       return Promise.reject({
         ...error,
-        message: 'Network error. Check your connection.',
+        message: 'Network error. Please check your connection.',
       });
     }
 
@@ -68,36 +95,36 @@ api.interceptors.response.use(
     const errorCode = data?.error?.code;
     const errorMessage = data?.error?.message || '';
 
-    // ✅ FIXED: Better 401 handling
+    // Handle 401 - Try to refresh token
     if (status === 401) {
-      // If already retrying or it's a refresh request, logout
+      console.log('[API Response] 401 Unauthorized - attempting refresh');
+
       if (originalRequest._retry || originalRequest.url?.includes('/auth/refresh')) {
+        console.log('[API Response] Already retried or is refresh request - logging out');
         localStorage.removeItem('token');
-        // Only redirect if not already on login
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
         return Promise.reject(error);
       }
 
-      // Try to refresh token
       if (!isRefreshing) {
         isRefreshing = true;
         originalRequest._retry = true;
 
         try {
-          console.log('[API] Attempting token refresh...');
+          console.log('[API Response] Calling /auth/refresh...');
           const response = await api.post('/auth/refresh');
           const { accessToken } = response.data.data;
 
+          console.log('[API Response] Token refreshed, new token length:', accessToken.length);
           localStorage.setItem('token', accessToken);
-          console.log('[API] Token refreshed successfully');
           onTokenRefreshed(accessToken);
           isRefreshing = false;
 
           return api(originalRequest);
         } catch (refreshError: any) {
-          console.error('[API] Token refresh failed:', refreshError.message);
+          console.error('[API Response] Refresh failed:', refreshError.message);
           isRefreshing = false;
           refreshSubscribers = [];
           localStorage.removeItem('token');
@@ -109,7 +136,6 @@ api.interceptors.response.use(
         }
       }
 
-      // Queue request while refreshing
       return new Promise((resolve) => {
         addRefreshSubscriber((token: string) => {
           originalRequest.headers['Authorization'] = `Bearer ${token}`;
@@ -120,6 +146,13 @@ api.interceptors.response.use(
 
     // Handle 403
     if (status === 403) {
+      if (errorCode === 'AUTH_UNAUTHORIZED' || errorCode === 'AUTH_TOKEN_EXPIRED') {
+        localStorage.removeItem('token');
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      }
+      
       return Promise.reject({
         ...error,
         message: errorMessage || 'Access denied.',
