@@ -57,8 +57,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isInitialized: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  register: (data: RegisterData, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
   updateArtisanProfile: (data: Partial<ArtisanProfile>) => void;
@@ -110,7 +110,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const SOCKET_URL = API_URL.replace("/api", "");
 
   // ==========================================
-  // SOCKET - FIXED WITH TOKEN
+  // TOKEN STORAGE HELPERS (Remember Me Support)
+  // ==========================================
+
+  const getToken = useCallback((): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('token') || sessionStorage.getItem('token');
+  }, []);
+
+  const storeToken = useCallback((token: string, rememberMe: boolean = true): void => {
+    if (typeof window === 'undefined') return;
+    
+    if (rememberMe) {
+      localStorage.setItem('token', token);
+      localStorage.setItem('rememberMe', 'true');
+    } else {
+      sessionStorage.setItem('token', token);
+      localStorage.removeItem('rememberMe');
+    }
+  }, []);
+
+  const clearTokens = useCallback((): void => {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('rememberMe');
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('refreshToken');
+    sessionStorage.removeItem('user');
+  }, []);
+
+  const isRememberMe = useCallback((): boolean => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('rememberMe') === 'true';
+  }, []);
+
+  // ==========================================
+  // SOCKET - FIXED WITH TOKEN & RECONNECTION
   // ==========================================
 
   const disconnectSocket = useCallback(() => {
@@ -132,13 +169,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const socketInstance = io(SOCKET_URL, {
       withCredentials: true,
-      transports: ["websocket", "polling"],
+      transports: ["polling", "websocket"], // Polling first, then upgrade to WebSocket
       auth: { 
         userId,
         token: currentToken
       },
-      reconnectionAttempts: 3,
+      reconnection: true,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     socketInstance.on("connect", () => {
@@ -147,15 +187,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       socketInstance.emit("join_personal", { userId });
     });
 
-    socketInstance.on("disconnect", () => {
-      addLog('[Socket] Disconnected');
+    socketInstance.on("disconnect", (reason) => {
+      addLog(`[Socket] Disconnected: ${reason}`);
       setSocketConnected(false);
     });
 
+    // FIXED: Handle connection errors including JWT expiry
     socketInstance.on("connect_error", (err) => {
       addLog(`[Socket] Connection error: ${err.message}`);
-      if (err.message.includes('AUTH_TOKEN_REQUIRED')) {
-        addLog('[Socket] Auth failed - token may be invalid');
+      
+      // Handle auth errors - redirect to login if token expired
+      if (err.message.includes('jwt expired') || 
+          err.message.includes('AUTH_TOKEN_REQUIRED') ||
+          err.message.includes('invalid token')) {
+        addLog('[Socket] Token invalid/expired - logging out');
+        disconnectSocket();
+        clearTokens();
+        // Clear state and redirect
+        setState({
+          user: null,
+          token: null,
+          artisanProfile: null,
+          isAuthenticated: false,
+          isLoading: false,
+          isInitialized: true,
+        });
+        navigate('/login');
+        toast.error('Session expired. Please log in again.');
       }
     });
 
@@ -165,10 +223,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     socketRef.current = socketInstance;
     setSocket(socketInstance);
-  }, [disconnectSocket, SOCKET_URL]);
+  }, [disconnectSocket, SOCKET_URL, navigate, clearTokens]);
 
   // ==========================================
-  // INIT AUTH
+  // INIT AUTH - WITH REMEMBER ME SUPPORT
   // ==========================================
 
   useEffect(() => {
@@ -188,8 +246,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog('[Init] === STARTING AUTH INITIALIZATION ===');
         setState((prev) => ({ ...prev, isLoading: true }));
         
-        const token = localStorage.getItem('token');
-        addLog(`[Init] Token from localStorage: ${token ? 'EXISTS (' + token.substring(0, 20) + '...)' : 'NULL'}`);
+        const token = getToken();
+        addLog(`[Init] Token from storage: ${token ? 'EXISTS (' + token.substring(0, 20) + '...)' : 'NULL'}`);
         
         if (!token) {
           addLog('[Init] No token, setting unauthenticated');
@@ -229,9 +287,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Init] Status: ${error.response?.status}`);
         addLog(`[Init] Error data: ${JSON.stringify(error.response?.data)}`);
         
-        if (error.response?.status === 401) {
-          addLog('[Init] Clearing token (401)');
-          localStorage.removeItem('token');
+        // FIXED: Also check for socket/auth related errors
+        if (error.response?.status === 401 || 
+            error.message?.includes('jwt expired')) {
+          addLog('[Init] Clearing token (401/expired)');
+          clearTokens();
         }
         
         setState({
@@ -253,19 +313,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearTimeout(timer);
       disconnectSocket();
     };
-  }, [connectSocket, disconnectSocket]);
+  }, [connectSocket, disconnectSocket, getToken, clearTokens]);
 
   // ==========================================
-  // LOGIN
+  // LOGIN - WITH REMEMBER ME SUPPORT
   // ==========================================
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, rememberMe: boolean = true) => {
       try {
         isLoggingIn.current = true;
         setState((prev) => ({ ...prev, isLoading: true }));
 
-        addLog(`[Login] Starting login for: ${email}`);
+        addLog(`[Login] Starting login for: ${email} (rememberMe: ${rememberMe})`);
         
         const response = await authApi.login({ email, password });
         const res = response.data as ApiResponse<AuthResponseData>;
@@ -281,10 +341,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw new Error('No access token received from server');
         }
 
-        localStorage.setItem('token', accessToken);
+        // FIXED: Store token based on remember me preference
+        storeToken(accessToken, rememberMe);
         
-        const savedToken = localStorage.getItem('token');
-        addLog(`[Login] Token saved to localStorage: ${!!savedToken}`);
+        const savedToken = getToken();
+        addLog(`[Login] Token saved to storage: ${!!savedToken}`);
         addLog(`[Login] Saved token matches: ${savedToken === accessToken}`);
 
         setState({
@@ -317,20 +378,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw err;
       }
     },
-    [connectSocket, navigate, location.state]
+    [connectSocket, navigate, location.state, storeToken, getToken]
   );
 
   // ==========================================
-  // REGISTER
+  // REGISTER - WITH REMEMBER ME SUPPORT
   // ==========================================
 
   const register = useCallback(
-    async (data: RegisterData) => {
+    async (data: RegisterData, rememberMe: boolean = true) => {
       try {
         isLoggingIn.current = true;
         setState((prev) => ({ ...prev, isLoading: true }));
 
-        addLog(`[Register] Starting for: ${data.email}`);
+        addLog(`[Register] Starting for: ${data.email} (rememberMe: ${rememberMe})`);
         
         const response = await authApi.register(data);
         const res = response.data as ApiResponse<AuthResponseData>;
@@ -343,7 +404,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw new Error('No access token received from server');
         }
 
-        localStorage.setItem('token', accessToken);
+        // FIXED: Store token based on remember me preference
+        storeToken(accessToken, rememberMe);
         addLog('[Register] Token saved');
 
         setState({
@@ -374,11 +436,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw err;
       }
     },
-    [connectSocket, navigate]
+    [connectSocket, navigate, storeToken]
   );
 
   // ==========================================
-  // LOGOUT
+  // LOGOUT - FIXED TO CLEAR ALL TOKENS
   // ==========================================
 
   const logout = useCallback(async () => {
@@ -390,8 +452,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     disconnectSocket();
     
-    addLog('[Logout] Clearing token');
-    localStorage.removeItem('token');
+    addLog('[Logout] Clearing all tokens');
+    clearTokens();
 
     setState({
       user: null,
@@ -404,7 +466,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     navigate("/login", { replace: true });
     toast.success("Logged out successfully");
-  }, [disconnectSocket, navigate]);
+  }, [disconnectSocket, navigate, clearTokens]);
 
   // ==========================================
   // HELPERS
@@ -427,7 +489,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error: any) {
       addLog(`[RefreshUser] Failed: ${error.message}`);
       if (error.response?.status === 401) {
-        localStorage.removeItem('token');
+        clearTokens();
         setState({
           user: null,
           token: null,
@@ -439,7 +501,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         navigate('/login');
       }
     }
-  }, [navigate]);
+  }, [navigate, clearTokens]);
 
   const updateUser = useCallback((data: Partial<User>) => {
     setState((prev) => ({

@@ -8,7 +8,7 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     // Enables importing TypeScript files with explicit extensions (experimental, may affect module resolution)
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
@@ -19,8 +19,6 @@
     "strict": true,
     "noUnusedLocals": true,
     "noFallthroughCasesInSwitch": true,
-    // 'baseUrl' is set for path mapping to enable absolute imports; useful for monorepos or custom import paths.
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }

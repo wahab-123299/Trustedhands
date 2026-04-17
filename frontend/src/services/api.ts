@@ -1,17 +1,14 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
-
 // Store logs for debugging after redirect
 const debugLogs: string[] = [];
 const addLog = (msg: string) => {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
   debugLogs.push(line);
   console.log(line);
-  // Keep only last 50 logs
   if (debugLogs.length > 50) debugLogs.shift();
 };
 
-// Expose to window for inspection
 if (typeof window !== 'undefined') {
   (window as any).getAuthLogs = () => {
     console.log('=== AUTH DEBUG LOGS ===\n' + debugLogs.join('\n'));
@@ -32,10 +29,73 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
-  timeout: 60000, // ⬆️ Increased to 60s for Render cold starts
+  timeout: 60000,
 });
 
 api.defaults.withCredentials = true;
+
+// ==========================================
+// TOKEN STORAGE HELPERS (Remember Me Support)
+// ==========================================
+
+/**
+ * Get token from storage (localStorage if remember me, else sessionStorage)
+ */
+const getToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  // Check localStorage first (remember me), then sessionStorage
+  return localStorage.getItem('token') || sessionStorage.getItem('token');
+};
+
+/**
+ * Get refresh token from storage
+ */
+const getRefreshToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
+};
+
+/**
+ * Store tokens based on remember me preference
+ */
+const storeTokens = (accessToken: string, refreshToken?: string, rememberMe?: boolean): void => {
+  if (typeof window === 'undefined') return;
+  
+  // Default to localStorage if rememberMe is not explicitly false
+  const useLocal = rememberMe !== false;
+  
+  if (useLocal) {
+    localStorage.setItem('token', accessToken);
+    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+    if (rememberMe) localStorage.setItem('rememberMe', 'true');
+  } else {
+    sessionStorage.setItem('token', accessToken);
+    if (refreshToken) sessionStorage.setItem('refreshToken', refreshToken);
+    localStorage.removeItem('rememberMe');
+  }
+};
+
+/**
+ * Clear all auth storage
+ */
+const clearTokens = (): void => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('rememberMe');
+  localStorage.removeItem('user');
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('refreshToken');
+  sessionStorage.removeItem('user');
+};
+
+/**
+ * Check if user wanted to be remembered
+ */
+const isRememberMe = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('rememberMe') === 'true';
+};
 
 // ==========================================
 // REFRESH TOKEN STATE
@@ -58,26 +118,19 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
 // ==========================================
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const token = getToken();
     
     if (token) {
       try {
-        // Validate token isn't expired before using
         const payload = JSON.parse(atob(token.split('.')[1]));
-        const expiryTime = payload.exp * 1000; // Convert to milliseconds
+        const expiryTime = payload.exp * 1000;
         const now = Date.now();
         
-        // ✅ FIXED: Add 60-second buffer for clock skew
-        // Don't clear token if it's just slightly expired (within 60s)
-        // Let the server validate and return 401 if truly expired
-        if (now >= expiryTime + 60000) { // 60 second grace period
-          addLog(`[Request] Token truly expired (${Math.floor((now - expiryTime)/1000)}s past), clearing`);
-          localStorage.removeItem('token');
-          // Don't set header - let it fail and trigger refresh
+        if (now >= expiryTime + 60000) {
+          addLog(`[Request] Token truly expired, clearing`);
+          clearTokens();
         } else if (now >= expiryTime) {
-          // Token appears expired but within grace period - still use it
-          // Server will reject if truly invalid
-          addLog(`[Request] Token appears expired but within grace period, using anyway`);
+          addLog(`[Request] Token in grace period, using anyway`);
           config.headers.Authorization = `Bearer ${token}`;
         } else {
           config.headers.Authorization = `Bearer ${token}`;
@@ -85,9 +138,8 @@ api.interceptors.request.use(
           addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - Token valid (${timeLeft}s left)`);
         }
       } catch (e) {
-        // Invalid token format
         addLog(`[Request] Invalid token format, clearing`);
-        localStorage.removeItem('token');
+        clearTokens();
       }
     } else {
       addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - NO TOKEN`);
@@ -109,17 +161,13 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _retryCount?: number };
 
-    // Handle network errors (no response) - RENDER COLD START
     if (!error.response) {
       addLog(`[Response] Network error: ${error.message}`);
       
-      // Retry network errors up to 2 times
       const retryCount = originalRequest._retryCount || 0;
       if (retryCount < 2 && error.code === 'ECONNABORTED') {
         addLog(`[Response] Retrying network error (${retryCount + 1}/2)...`);
         originalRequest._retryCount = retryCount + 1;
-        
-        // Wait 3 seconds before retry
         await new Promise(resolve => setTimeout(resolve, 3000));
         return api(originalRequest);
       }
@@ -137,18 +185,15 @@ api.interceptors.response.use(
 
     addLog(`[Response] ERROR ${status}: ${errorCode} - ${errorMessage}`);
 
-    // Handle 401 - Try to refresh token
     if (status === 401) {
       addLog('[Response] Got 401, checking if we should refresh...');
 
       if (originalRequest._retry || originalRequest.url?.includes('/auth/refresh')) {
         addLog('[Response] Already retried or is refresh request - clearing token');
-        localStorage.removeItem('token');
-        addLog('[Response] Token cleared, NOT redirecting (let ProtectedRoute handle it)');
+        clearTokens();
         return Promise.reject(error);
       }
 
-      // If already refreshing, wait for it
       if (isRefreshing && refreshPromise) {
         addLog('[Response] Token refresh in progress, queuing request');
         return new Promise((resolve) => {
@@ -159,23 +204,30 @@ api.interceptors.response.use(
         });
       }
 
-      // Start refresh
       isRefreshing = true;
       originalRequest._retry = true;
 
       refreshPromise = (async () => {
         try {
           addLog('[Response] Calling /auth/refresh...');
-          const response = await api.post('/auth/refresh');
+          const refreshToken = getRefreshToken();
+          
+          if (!refreshToken) {
+            throw new Error('No refresh token available');
+          }
+          
+          const response = await api.post('/auth/refresh', { refreshToken });
           const { accessToken } = response.data.data || response.data;
 
           addLog(`[Response] Token refreshed: ${accessToken.substring(0, 15)}...`);
-          localStorage.setItem('token', accessToken);
+          
+          // Store with same preference as before
+          storeTokens(accessToken, refreshToken, isRememberMe());
           onTokenRefreshed(accessToken);
           return accessToken;
         } catch (refreshError: any) {
           addLog(`[Response] Refresh failed: ${refreshError.message}`);
-          localStorage.removeItem('token');
+          clearTokens();
           throw refreshError;
         } finally {
           isRefreshing = false;
@@ -185,19 +237,16 @@ api.interceptors.response.use(
 
       try {
         const newToken = await refreshPromise;
-        // Update header with new token before retry
         originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
         return api(originalRequest);
       } catch (refreshError) {
-        addLog('[Response] Token cleared after failed refresh, NOT redirecting');
         return Promise.reject(refreshError);
       }
     }
 
-    // Handle 403
     if (status === 403) {
       if (errorCode === 'AUTH_UNAUTHORIZED' || errorCode === 'AUTH_TOKEN_EXPIRED') {
-        localStorage.removeItem('token');
+        clearTokens();
         addLog('[Response] 403 - Token cleared');
       }
       
@@ -217,12 +266,11 @@ api.interceptors.response.use(
 );
 
 // ==========================================
-// SERVER WAKE-UP HELPER (for Render cold starts)
+// SERVER WAKE-UP HELPER
 // ==========================================
 export const wakeUpServer = async (): Promise<boolean> => {
   try {
     addLog('[WakeUp] Pinging server...');
-    // Use a simple GET that doesn't require auth
     await axios.get(`${API_URL.replace('/api', '')}/health`, { 
       timeout: 10000,
       withCredentials: true 
@@ -230,7 +278,6 @@ export const wakeUpServer = async (): Promise<boolean> => {
     addLog('[WakeUp] Server is awake');
     return true;
   } catch (error: any) {
-    // Health endpoint might not exist, try root
     try {
       await axios.get(API_URL.replace('/api', ''), { 
         timeout: 10000,
@@ -246,7 +293,47 @@ export const wakeUpServer = async (): Promise<boolean> => {
 };
 
 // ==========================================
-// API INTERFACES & EXPORTS
+// NEW: OAUTH HELPERS
+// ==========================================
+
+/**
+ * Redirect to Google OAuth
+ */
+export const loginWithGoogle = (): void => {
+  const baseUrl = API_URL.replace('/api', '');
+  window.location.href = `${baseUrl}/auth/google`;
+};
+
+/**
+ * Redirect to Facebook OAuth
+ */
+export const loginWithFacebook = (): void => {
+  const baseUrl = API_URL.replace('/api', '');
+  window.location.href = `${baseUrl}/auth/facebook`;
+};
+
+/**
+ * Handle OAuth callback - call this from your AuthSuccessPage
+ */
+export const handleOAuthCallback = (accessToken: string, refreshToken: string, rememberMe = false): void => {
+  storeTokens(accessToken, refreshToken, rememberMe);
+  addLog(`[OAuth] Tokens stored (rememberMe: ${rememberMe})`);
+};
+
+// ==========================================
+// NEW: REMEMBER ME EXPORTS
+// ==========================================
+
+export const authStorage = {
+  getToken,
+  getRefreshToken,
+  storeTokens,
+  clearTokens,
+  isRememberMe,
+};
+
+// ==========================================
+// EXISTING API INTERFACES (UNCHANGED)
 // ==========================================
 
 export interface ApiResponse<T = any> {
@@ -290,35 +377,57 @@ export interface RegisterData {
   bio?: string;
 }
 
+// ==========================================
+// UPDATED: AUTH API WITH REMEMBER ME
+// ==========================================
+
 export const authApi = {
-  login: (data: LoginData) => 
-    api.post<ApiResponse<{ user: any; accessToken: string; dashboardRoute: string }>>('/auth/login', data),
+  login: (data: LoginData, rememberMe = false) => {
+    addLog(`[Auth] Login attempt (rememberMe: ${rememberMe})`);
+    return api.post<ApiResponse<{ user: any; accessToken: string; refreshToken: string; dashboardRoute: string }>>('/auth/login', data)
+      .then(response => {
+        const { accessToken, refreshToken } = response.data.data || response.data;
+        if (accessToken) {
+          storeTokens(accessToken, refreshToken, rememberMe);
+        }
+        return response;
+      });
+  },
   
-  register: (data: RegisterData) => 
-    api.post<ApiResponse<{ user: any; accessToken: string; dashboardRoute: string }>>('/auth/register', data),
+  register: (data: RegisterData, rememberMe = false) => {
+    addLog(`[Auth] Register attempt (rememberMe: ${rememberMe})`);
+    return api.post<ApiResponse<{ user: any; accessToken: string; refreshToken: string; dashboardRoute: string }>>('/auth/register', data)
+      .then(response => {
+        const { accessToken, refreshToken } = response.data.data || response.data;
+        if (accessToken) {
+          storeTokens(accessToken, refreshToken, rememberMe);
+        }
+        return response;
+      });
+  },
   
-  logout: () => 
-    api.post<ApiResponse<void>>('/auth/logout'),
+  logout: () => {
+    clearTokens();
+    return api.post<ApiResponse<void>>('/auth/logout');
+  },
   
-  refresh: () => 
-    api.post<ApiResponse<{ accessToken: string }>>('/auth/refresh'),
+  refresh: () => api.post<ApiResponse<{ accessToken: string }>>('/auth/refresh'),
   
-  verifyEmail: (token: string) => 
-    api.post<ApiResponse<void>>(`/auth/verify-email/${token}`),
+  verifyEmail: (token: string) => api.post<ApiResponse<void>>(`/auth/verify-email/${token}`),
   
-  resendVerification: (email: string) => 
-    api.post<ApiResponse<void>>('/auth/resend-verification', { email }),
+  resendVerification: (email: string) => api.post<ApiResponse<void>>('/auth/resend-verification', { email }),
   
-  forgotPassword: (email: string) => 
-    api.post<ApiResponse<void>>('/auth/forgot-password', { email }),
+  forgotPassword: (email: string) => api.post<ApiResponse<void>>('/auth/forgot-password', { email }),
   
-  resetPassword: (token: string, password: string) => 
-    api.post<ApiResponse<void>>(`/auth/reset-password/${token}`, { password }),
+  resetPassword: (token: string, password: string) => api.post<ApiResponse<void>>(`/auth/reset-password/${token}`, { password }),
 };
 
+// ==========================================
+// ALL OTHER APIS (UNCHANGED)
+// ==========================================
+
 export const userApi = {
-  getMe: () => 
-    api.get<ApiResponse<any>>('/users/me'),
+  getMe: () => api.get<ApiResponse<any>>('/users/me'),
   
   updateMe: (data: Partial<{ fullName: string; phone: string; location: any; profileImage: string }>) => 
     api.put<ApiResponse<any>>('/users/me', data),
@@ -336,8 +445,7 @@ export const userApi = {
     });
   },
   
-  deleteMe: () => 
-    api.delete<ApiResponse<void>>('/users/me'),
+  deleteMe: () => api.delete<ApiResponse<void>>('/users/me'),
 };
 
 export interface ArtisanProfileUpdate {
@@ -373,8 +481,7 @@ export const artisanApi = {
     page?: number;
     limit?: number;
     sortBy?: string;
-  }) => 
-    api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans', { params }),
+  }) => api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans', { params }),
   
   search: (query: string, params?: { page?: number; limit?: number }) => 
     api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/search', { params: { q: query, ...params } }),
@@ -384,20 +491,17 @@ export const artisanApi = {
       params: { lat, lng, radius, ...params } 
     }),
   
-  getById: (id: string) => 
-    api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`),
+  getById: (id: string) => api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`),
   
   getReviews: (id: string, params?: { page?: number; limit?: number }) => 
     api.get<ApiResponse<{ reviews: any[]; ratingStats: any[]; pagination: any }>>(`/artisans/${id}/reviews`, { params }),
   
-  updateProfile: (data: ArtisanProfileUpdate) => 
-    api.put<ApiResponse<{ artisan: any }>>('/artisans/profile', data),
+  updateProfile: (data: ArtisanProfileUpdate) => api.put<ApiResponse<{ artisan: any }>>('/artisans/profile', data),
   
   updateAvailability: (data: { status: 'available' | 'unavailable' | 'busy'; nextAvailableDate?: string }) => 
     api.put<ApiResponse<{ availability: any }>>('/artisans/availability', data),
   
-  updateBankDetails: (data: BankDetails) => 
-    api.put<ApiResponse<{ bankDetails: BankDetails }>>('/artisans/bank-details', data),
+  updateBankDetails: (data: BankDetails) => api.put<ApiResponse<{ bankDetails: BankDetails }>>('/artisans/bank-details', data),
   
   uploadPortfolioImages: (files: FileList | File[]) => {
     const formData = new FormData();
@@ -432,41 +536,31 @@ export interface ReviewData {
 }
 
 export const jobApi = {
-  create: (data: JobCreateData) => 
-    api.post<ApiResponse<{ job: any }>>('/jobs', data),
+  create: (data: JobCreateData) => api.post<ApiResponse<{ job: any }>>('/jobs', data),
   
   getMyJobs: (params?: { status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ jobs: any[]; pagination: any }>>('/jobs/my-jobs', { params }),
   
-  getById: (id: string) => 
-    api.get<ApiResponse<{ job: any }>>(`/jobs/${id}`),
+  getById: (id: string) => api.get<ApiResponse<{ job: any }>>(`/jobs/${id}`),
 
-  getJobApplications: (jobId: string) => 
-    api.get(`/jobs/${jobId}/applications`),
+  getJobApplications: (jobId: string) => api.get(`/jobs/${jobId}/applications`),
   
-  accept: (id: string) => 
-    api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/accept`),
+  accept: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/accept`),
 
-  acceptApplication: (applicationId: string) => 
-    api.post(`/applications/${applicationId}/accept`),
+  acceptApplication: (applicationId: string) => api.post(`/applications/${applicationId}/accept`),
   
-  start: (id: string) => 
-    api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/start`),
+  start: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/start`),
   
-  complete: (id: string) => 
-    api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/complete`),
+  complete: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/complete`),
   
   confirmCompletion: (id: string, data?: { rating?: number; comment?: string }) => 
     api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/confirm-completion`, data),
   
-  cancel: (id: string, reason?: string) => 
-    api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/cancel`, { reason }),
+  cancel: (id: string, reason?: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/cancel`, { reason }),
 
-  rejectApplication: (applicationId: string) => 
-    api.post(`/applications/${applicationId}/reject`),
+  rejectApplication: (applicationId: string) => api.post(`/applications/${applicationId}/reject`),
   
-  addReview: (id: string, data: ReviewData) => 
-    api.post<ApiResponse<{ review: any }>>(`/jobs/${id}/review`, data),
+  addReview: (id: string, data: ReviewData) => api.post<ApiResponse<{ review: any }>>(`/jobs/${id}/review`, data),
   
   getAll: (params?: { status?: string; category?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ jobs: any[]; pagination: any }>>('/jobs', { params }),
@@ -479,11 +573,9 @@ export const applicationsApi = {
   getMyApplications: (params?: { status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ applications: any[]; pagination: any }>>('/applications/my-applications', { params }),
   
-  getApplicationById: (id: string) => 
-    api.get<ApiResponse<{ application: any }>>(`/applications/${id}`),
+  getApplicationById: (id: string) => api.get<ApiResponse<{ application: any }>>(`/applications/${id}`),
   
-  withdrawApplication: (id: string) => 
-    api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
+  withdrawApplication: (id: string) => api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
 };
 
 export interface PaymentInitializeData {
@@ -496,34 +588,28 @@ export const walletApi = {
   getBalance: () => api.get('/payments/wallet'),
   initializeDeposit: (amount: number) => api.post('/payments/initialize', { amount }),
   withdraw: (amount: number) => api.post('/payments/withdraw', { amount }),
-  getTransactions: (params?: { page?: number; limit?: number }) => 
-    api.get('/payments/history', { params }),
+  getTransactions: (params?: { page?: number; limit?: number }) => api.get('/payments/history', { params }),
 };
 
 export const paymentApi = {
   initialize: (data: PaymentInitializeData) => 
     api.post<ApiResponse<{ authorization_url: string; reference: string; transactionId: string; amount: any }>>('/payments/initialize', data),
   
-  verify: (reference: string) => 
-    api.get<ApiResponse<{ transaction: any; paystackData: any }>>(`/payments/verify/${reference}`),
+  verify: (reference: string) => api.get<ApiResponse<{ transaction: any; paystackData: any }>>(`/payments/verify/${reference}`),
   
-  verifyPayment: (reference: string) => 
-    api.get(`/payments/verify/${reference}`),
+  verifyPayment: (reference: string) => api.get(`/payments/verify/${reference}`),
 
-  releasePayment: (jobId: string) => 
-    api.put<ApiResponse<{ transaction: any; job: any }>>(`/payments/release/${jobId}`),
+  releasePayment: (jobId: string) => api.put<ApiResponse<{ transaction: any; job: any }>>(`/payments/release/${jobId}`),
   
   getHistory: (params?: { type?: string; status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ transactions: any[]; summary: any; pagination: any }>>('/payments/history', { params }),
   
-  getWallet: () => 
-    api.get<ApiResponse<{ wallet: any; isNew: boolean }>>('/payments/wallet'),
+  getWallet: () => api.get<ApiResponse<{ wallet: any; isNew: boolean }>>('/payments/wallet'),
   
   requestWithdrawal: (amount: number) => 
     api.post<ApiResponse<{ transaction: any; withdrawal: any; wallet: any }>>('/payments/withdraw', { amount }),
   
-  getBanks: () => 
-    api.get<ApiResponse<{ banks: any[]; count: number }>>('/payments/banks'),
+  getBanks: () => api.get<ApiResponse<{ banks: any[]; count: number }>>('/payments/banks'),
   
   verifyAccount: (data: { accountNumber: string; bankCode: string }) => 
     api.post<ApiResponse<{ accountNumber: string; accountName: string; bankCode: string }>>('/payments/verify-account', data),
@@ -535,8 +621,7 @@ export interface CreateConversationData {
 }
 
 export const chatApi = {
-  getConversations: () => 
-    api.get<ApiResponse<{ conversations: any[] }>>('/chat/conversations'),
+  getConversations: () => api.get<ApiResponse<{ conversations: any[] }>>('/chat/conversations'),
   
   getMessages: (conversationId: string, params?: { page?: number; limit?: number; before?: string }) => 
     api.get<ApiResponse<{ messages: any[]; pagination: any }>>(`/chat/conversations/${conversationId}/messages`, { params }),
@@ -544,11 +629,9 @@ export const chatApi = {
   createConversation: (data: CreateConversationData) => 
     api.post<ApiResponse<{ conversation: any }>>('/chat/conversations', data),
   
-  deleteConversation: (id: string) => 
-    api.delete<ApiResponse<void>>(`/chat/conversations/${id}`),
+  deleteConversation: (id: string) => api.delete<ApiResponse<void>>(`/chat/conversations/${id}`),
   
-  markAsRead: (conversationId: string) => 
-    api.put<ApiResponse<void>>(`/chat/conversations/${conversationId}/read`),
+  markAsRead: (conversationId: string) => api.put<ApiResponse<void>>(`/chat/conversations/${conversationId}/read`),
 };
 
 export const handleApiError = (error: any): string => {
@@ -565,5 +648,6 @@ export const getErrorCode = (error: any): string => {
   return error.response?.data?.error?.code || error.code || 'UNKNOWN_ERROR';
 };
 
+// Legacy export for backward compatibility
 export { api };
 export default api;

@@ -14,7 +14,7 @@ const { errorHandler } = require('./middleware');
 
 const app = express();
 
-// ✅ FIXED: Trust proxy (required for Render to get client IP and secure cookies)
+// ✅ Trust proxy (required for Render)
 app.set('trust proxy', 1);
 
 // ==========================================
@@ -42,29 +42,33 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
+      'https://trustedhand.netlify.app',      // Your Netlify frontend
+      'https://trustedhands.onrender.com',   // No space!
       process.env.FRONTEND_URL,
-      'https://trustedhands.onrender.com',
-      undefined
+      undefined // Allow requests with no origin
     ].filter(Boolean);
     
     console.log('[CORS] Request from origin:', origin);
     console.log('[CORS] Allowed origins:', allowedOrigins);
     
-    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.some(allowed => allowed && origin?.includes(allowed))) {
-      console.log('[CORS] Allowed');
+    // Allow requests with no origin (like curl, Postman, or same-origin requests)
+    if (!origin) {
+      console.log('[CORS] Allowed (no origin)');
+      callback(null, true);
+    } else if (allowedOrigins.includes(origin)) {
+      console.log('[CORS] Allowed:', origin);
       callback(null, true);
     } else {
-      console.log('[CORS] Blocked');
-      callback(new Error('Not allowed by CORS'));
+      console.log('[CORS] Blocked:', origin);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
+    // ✅ REMOVED: Duplicate callback that was causing errors
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
-  maxAge: 86400,
-  preflightContinue: false,
-  optionsSuccessStatus: 204
+  maxAge: 86400
 };
 
 app.use(cors(corsOptions));
@@ -179,7 +183,7 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    uptime: process.uptime(),
+    uptime: process.env.uptime(),
     database: {
       status: dbStatus,
       connected: dbState === 1

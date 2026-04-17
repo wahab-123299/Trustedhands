@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import { Suspense, lazy } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { SocketProvider } from '@/contexts/SocketContext';
+import AuthSuccessPage from './pages/AuthSuccessPage';
 
 // Layouts
 import MainLayout from '@/components/layout/MainLayout';
@@ -90,6 +91,7 @@ function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/auth/success" element={<AuthSuccessPage />} />
                 <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
