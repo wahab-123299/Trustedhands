@@ -175,38 +175,26 @@ app.get('/health', (req, res) => {
     3: 'disconnecting'
   }[dbState] || 'unknown';
 
-  const isHealthy = dbState === 1;
-
-  res.status(isHealthy ? 200 : 503).json({
-    success: isHealthy,
+  // ✅ FIXED: Return 200 during startup (connecting), 503 only if disconnected
+  // Render accepts 200 or 503, but must respond quickly
+  const isResponding = dbState === 1 || dbState === 2; // connected or connecting
+  
+  res.status(isResponding ? 200 : 503).json({
+    success: dbState === 1,
+    status: isResponding ? 'healthy' : 'unhealthy',
     message: 'TrustedHand API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    uptime: process.env.uptime(),
+    uptime: process.uptime(), // ✅ FIXED: was process.env.uptime()
     database: {
       status: dbStatus,
-      connected: dbState === 1
+      connected: dbState === 1,
+      state: dbState
     },
     memory: {
       used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
       total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
-    }
-  });
-});
-
-app.get('/api', (req, res) => {
-  res.json({
-    success: true,
-    message: 'TrustedHand API v1.0.0',
-    endpoints: {
-      auth: '/api/auth',
-      users: '/api/users',
-      artisans: '/api/artisans',
-      jobs: '/api/jobs',
-      payments: '/api/payments',
-      chat: '/api/chat',
-      applications: '/api/applications'
     }
   });
 });

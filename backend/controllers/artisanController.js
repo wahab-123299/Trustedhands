@@ -1,7 +1,55 @@
-const mongoose = require('mongoose'); // ADDED: Missing import
+const mongoose = require('mongoose');
 const { User, ArtisanProfile, Job } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
+
+// ✅ HELPER: Transform artisan data to match frontend expectations
+const transformArtisan = (artisan) => {
+  if (!artisan || !artisan.userId) return null;
+
+  return {
+    id: artisan._id.toString(),
+    
+    // ✅ FIXED: Map Profession (capital P) to profession (lowercase)
+    profession: artisan.Profession,
+    skills: artisan.skills,
+    bio: artisan.bio,
+    experienceYears: artisan.experienceYears,
+    
+    // ✅ FIXED: Flatten nested rate object
+    hourlyRate: artisan.rate?.amount,
+    ratePeriod: artisan.rate?.period,
+    
+    // ✅ FIXED: Map availability to isAvailable boolean
+    isAvailable: artisan.availability?.status === 'available',
+    availabilityStatus: artisan.availability?.status,
+    nextAvailableDate: artisan.availability?.nextAvailableDate,
+    
+    workRadius: artisan.workRadius,
+    
+    // ✅ FIXED: Map rating fields to frontend names
+    rating: artisan.averageRating,
+    reviewCount: artisan.totalReviews,
+    completedJobs: artisan.completedJobs,
+    
+    // ✅ FIXED: Extract user data from populated userId
+    name: artisan.userId.fullName,
+    email: artisan.userId.email,
+    phone: artisan.userId.phone,
+    location: artisan.userId.location,
+    profileImage: artisan.userId.profileImage,
+    isVerified: artisan.userId.isVerified,
+    userId: artisan.userId._id.toString(),
+    
+    // Other fields
+    portfolioImages: artisan.portfolioImages || [],
+    idVerification: artisan.idVerification,
+    isCertified: artisan.isCertified,
+    canApplyForHighValueJobs: artisan.canApplyForHighValueJobs,
+    createdAt: artisan.createdAt,
+    updatedAt: artisan.updatedAt
+  };
+};
 
 // Get all artisans with filters
 exports.getArtisans = async (req, res, next) => {
@@ -42,12 +90,11 @@ exports.getArtisans = async (req, res, next) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // FIXED: Use aggregation to properly filter by user location fields
     let artisans = await ArtisanProfile.find(query)
       .populate({
         path: 'userId',
         model: 'User',
-        select: 'fullName location profileImage isVerified phone isActive',
+        select: 'fullName location profileImage isVerified phone isActive email',
         match: { isActive: true }
       })
       .sort(sort)
@@ -71,10 +118,15 @@ exports.getArtisans = async (req, res, next) => {
 
     const total = await ArtisanProfile.countDocuments(query);
 
+    // ✅ FIXED: Transform artisans before sending response
+    const formattedArtisans = artisans
+      .map(transformArtisan)
+      .filter(a => a !== null); // Remove any nulls from failed transforms
+
     res.json({
       success: true,
       data: {
-        artisans,
+        artisans: formattedArtisans,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -109,7 +161,6 @@ exports.searchArtisans = async (req, res, next) => {
 
     const userIds = users.map(u => u._id);
 
-    // FIXED: Proper skill search using aggregation for regex matching
     const exactSkillMatch = await ArtisanProfile.find({
       skills: { $in: [q.trim()] },
       'availability.status': { $ne: 'unavailable' }
@@ -128,7 +179,7 @@ exports.searchArtisans = async (req, res, next) => {
       $or: searchConditions,
       'availability.status': { $ne: 'unavailable' }
     })
-      .populate('userId', 'fullName location profileImage isVerified phone')
+      .populate('userId', 'fullName location profileImage isVerified phone email')
       .sort({ averageRating: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -140,10 +191,15 @@ exports.searchArtisans = async (req, res, next) => {
       'availability.status': { $ne: 'unavailable' }
     });
 
+    // ✅ FIXED: Transform artisans
+    const formattedArtisans = activeArtisans
+      .map(transformArtisan)
+      .filter(a => a !== null);
+
     res.json({
       success: true,
       data: {
-        artisans: activeArtisans,
+        artisans: formattedArtisans,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -174,8 +230,6 @@ exports.getNearbyArtisans = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'Invalid coordinates or radius.');
     }
 
-    // FIXED: Query User collection first for geospatial search, then get artisan profiles
-    // This requires the User schema to have a 2dsphere index on location.coordinates
     const nearbyUsers = await User.find({
       role: 'artisan',
       isActive: true,
@@ -197,7 +251,7 @@ exports.getNearbyArtisans = async (req, res, next) => {
       userId: { $in: userIds },
       'availability.status': 'available'
     })
-      .populate('userId', 'fullName location profileImage isVerified phone')
+      .populate('userId', 'fullName location profileImage isVerified phone email')
       .sort({ averageRating: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -207,10 +261,15 @@ exports.getNearbyArtisans = async (req, res, next) => {
       'availability.status': 'available'
     });
 
+    // ✅ FIXED: Transform artisans
+    const formattedArtisans = artisans
+      .map(transformArtisan)
+      .filter(a => a !== null);
+
     res.json({
       success: true,
       data: {
-        artisans,
+        artisans: formattedArtisans,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -229,7 +288,6 @@ exports.getArtisanById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // ADDED: Validate ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('VALIDATION_ERROR', 'Invalid artisan ID format.');
     }
@@ -252,16 +310,30 @@ exports.getArtisanById = async (req, res, next) => {
       .sort({ completedAt: -1 })
       .limit(10);
 
+    // ✅ FIXED: Transform artisan and format reviews
+    const formattedArtisan = transformArtisan(artisan);
+    
+    const formattedReviews = reviews.map(job => ({
+      rating: job.review.rating,
+      comment: job.review.comment,
+      customerName: job.customerId?.fullName,
+      customerImage: job.customerId?.profileImage,
+      completedAt: job.completedAt
+    }));
+
     res.json({
       success: true,
-      data: { artisan, reviews }
+      data: { 
+        artisan: formattedArtisan, 
+        reviews: formattedReviews 
+      }
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Get artisan reviews
+// Get artisan reviews (unchanged - already returns proper format)
 exports.getArtisanReviews = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -290,7 +362,6 @@ exports.getArtisanReviews = async (req, res, next) => {
       'review.rating': { $exists: true }
     });
 
-    // Calculate rating distribution
     const ratingStats = await Job.aggregate([
       { 
         $match: { 
@@ -332,7 +403,6 @@ exports.updateProfile = async (req, res, next) => {
       throw new AppError('ARTISAN_NOT_FOUND', 'Artisan profile not found.');
     }
 
-    // ADDED: Validation for skills array
     if (skills) {
       if (!Array.isArray(skills) || skills.length === 0) {
         throw new AppError('VALIDATION_ERROR', 'At least one skill is required.');
@@ -340,7 +410,6 @@ exports.updateProfile = async (req, res, next) => {
       artisan.skills = skills;
     }
 
-    // ADDED: Validation for rate object
     if (rate) {
       if (rate.amount !== undefined) {
         if (rate.amount < 500) {
@@ -363,10 +432,14 @@ exports.updateProfile = async (req, res, next) => {
 
     await artisan.save();
 
+    // ✅ FIXED: Return transformed artisan
+    const updatedArtisan = await ArtisanProfile.findById(artisan._id)
+      .populate('userId', 'fullName location profileImage isVerified phone email');
+
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      data: { artisan }
+      data: { artisan: transformArtisan(updatedArtisan) }
     });
   } catch (error) {
     next(error);
@@ -379,7 +452,6 @@ exports.updateAvailability = async (req, res, next) => {
     const userId = req.user._id;
     const { status, nextAvailableDate } = req.body;
 
-    // ADDED: Status validation
     const validStatuses = ['available', 'unavailable', 'busy'];
     if (!validStatuses.includes(status)) {
       throw new AppError('VALIDATION_ERROR', 'Invalid availability status.');
@@ -404,25 +476,29 @@ exports.updateAvailability = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Availability updated successfully',
-      data: { availability: artisan.availability }
+      data: { 
+        availability: {
+          status: artisan.availability.status,
+          nextAvailableDate: artisan.availability.nextAvailableDate,
+          isAvailable: artisan.availability.status === 'available'
+        }
+      }
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Update bank details (artisan only)
+// Update bank details (artisan only) - unchanged
 exports.updateBankDetails = async (req, res, next) => {
   try {
     const userId = req.user._id;
     const { bankName, accountNumber, accountName, bankCode } = req.body;
 
-    // ADDED: Validation
     if (!bankName || !accountNumber || !accountName) {
       throw new AppError('VALIDATION_ERROR', 'Bank name, account number, and account name are required.');
     }
 
-    // ADDED: Nigerian account number validation (10 digits)
     const accountNumberRegex = /^\d{10}$/;
     if (!accountNumberRegex.test(accountNumber)) {
       throw new AppError('VALIDATION_ERROR', 'Account number must be 10 digits.');
@@ -443,7 +519,6 @@ exports.updateBankDetails = async (req, res, next) => {
 
     await artisan.save();
 
-    // Update wallet bank details too
     const { Wallet } = require('../models');
     await Wallet.findOneAndUpdate(
       { artisanId: userId },

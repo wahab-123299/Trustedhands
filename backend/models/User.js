@@ -12,7 +12,10 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
+    required: function() {
+      // Only require password for non-OAuth users
+      return !this.googleId && !this.facebookId;
+    },
     minlength: [8, 'Password must be at least 8 characters'],
     select: false
   },
@@ -32,8 +35,12 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
+    required: function() {
+      // Phone required only for non-OAuth users
+      return !this.googleId && !this.facebookId;
+    },
     unique: true,
+    sparse: true, // Allows null/undefined for OAuth users
     match: [/^(0[7-9][0-1]\d{8}|\+234[7-9][0-1]\d{8})$/, 'Please enter a valid Nigerian phone number (e.g., 08012345678 or +2348012345678)']
   },
   isPhoneVerified: {
@@ -43,7 +50,9 @@ const userSchema = new mongoose.Schema({
   location: {
     state: {
       type: String,
-      required: [true, 'State is required'],
+      required: function() {
+        return !this.googleId && !this.facebookId;
+      },
       trim: true,
       enum: {
         values: [
@@ -58,7 +67,9 @@ const userSchema = new mongoose.Schema({
     },
     city: {
       type: String,
-      required: [true, 'City is required'],
+      required: function() {
+        return !this.googleId && !this.facebookId;
+      },
       trim: true
     },
     address: {
@@ -133,7 +144,23 @@ const userSchema = new mongoose.Schema({
       default: Date.now,
       expires: '30d'
     }
-  }]
+  }],
+  
+  // ==========================================
+  // OAUTH FIELDS (NEW)
+  // ==========================================
+  googleId: {
+    type: String,
+    sparse: true,
+    unique: true,
+    index: true
+  },
+  facebookId: {
+    type: String,
+    sparse: true,
+    unique: true,
+    index: true
+  }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -163,7 +190,8 @@ userSchema.virtual('artisanProfile', {
 // ==========================================
 
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  // Skip password hashing for OAuth users without password
+  if (!this.isModified('password') || !this.password) return next();
   
   if (this.password.length < 8) {
     throw new Error('Password must be at least 8 characters');
@@ -178,6 +206,8 @@ userSchema.pre('save', async function(next) {
 // ==========================================
 
 userSchema.methods.comparePassword = async function(candidatePassword) {
+  // OAuth users without password can't use password login
+  if (!this.password) return false;
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
@@ -231,6 +261,44 @@ userSchema.statics.findArtisansByLocation = function(state, city, options = {}) 
     .limit(options.limit || 20);
 };
 
+// Find or create OAuth user
+userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
+  const email = profile.emails?.[0]?.value;
+  if (!email) throw new Error('Email not provided by OAuth provider');
+
+  let user = await this.findOne({ email });
+
+  if (user) {
+    // Link OAuth ID if not already linked
+    if (provider === 'google' && !user.googleId) {
+      user.googleId = profile.id;
+      await user.save();
+    } else if (provider === 'facebook' && !user.facebookId) {
+      user.facebookId = profile.id;
+      await user.save();
+    }
+    return user;
+  }
+
+  // Create new OAuth user
+  const userData = {
+    email: email,
+    fullName: profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim(),
+    profileImage: profile.photos?.[0]?.value || '/default-avatar.png',
+    role: 'customer',
+    isActive: true,
+    isEmailVerified: true, // OAuth providers verify email
+  };
+
+  if (provider === 'google') {
+    userData.googleId = profile.id;
+  } else if (provider === 'facebook') {
+    userData.facebookId = profile.id;
+  }
+
+  return await this.create(userData);
+};
+
 // ==========================================
 // TOJSON TRANSFORM
 // ==========================================
@@ -246,7 +314,9 @@ userSchema.methods.toJSON = function() {
     'emailVerificationExpires',
     'passwordResetToken',
     'passwordResetExpires',
-    'socketId'
+    'socketId',
+    'googleId',
+    'facebookId'
   ];
   
   sensitiveFields.forEach(field => delete obj[field]);
