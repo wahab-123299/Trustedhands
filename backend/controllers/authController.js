@@ -10,7 +10,6 @@ const { AppError } = require('../utils/errorHandler');
 // ==========================================
 
 const generateTokens = (userId) => {
-  // Debug log
   console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
   console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
   
@@ -88,15 +87,14 @@ const registerValidation = [
 const getCookieOptions = (maxAge) => {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
   
-  // Debug log
   console.log('[Cookies] Environment:', isProduction ? 'production' : 'development');
   console.log('[Cookies] Setting secure:', isProduction);
   console.log('[Cookies] Setting sameSite:', isProduction ? 'none' : 'lax');
   
   return {
     httpOnly: true,
-    secure: isProduction,        // true for production (HTTPS)
-    sameSite: isProduction ? 'none' : 'lax',  // 'none' for cross-origin, 'lax' for same-origin
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
     maxAge,
     path: '/',
   };
@@ -212,9 +210,11 @@ exports.register = [
           throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
         }
 
+        // ✅ FIXED: Added profession field
         const artisanProfile = await ArtisanProfile.create({
           userId: user._id,
-          skills,                                    // Fixed: removed undefined 'Profession'
+          profession: skills?.[0] || 'General Service', // ✅ ADDED
+          skills,
           experienceYears: experienceYears || '0-1',
           rate: {
             amount: parseFloat(rate.amount),

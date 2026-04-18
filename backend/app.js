@@ -8,6 +8,7 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
+const verificationRoutes = require('./routes/verificationRoutes');
 const mongoose = require('mongoose');
 
 const { errorHandler } = require('./middleware');
@@ -210,6 +211,7 @@ app.use('/api/jobs', require('./routes/jobRoutes'));
 app.use('/api/applications', require('./routes/applicationRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/verification', verificationRoutes);
 
 // ==========================================
 // ERROR HANDLING
