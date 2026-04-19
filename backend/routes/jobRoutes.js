@@ -25,7 +25,10 @@ router.put('/:id/status', authenticate, jobController.updateJobStatus);
 router.post('/:id/accept', authenticate, authorize('artisan'), jobController.acceptJob);
 router.post('/:id/start', authenticate, authorize('artisan'), jobController.startJob);
 router.post('/:id/complete', authenticate, jobController.completeJob);
-router.post('/:id/cancel', authenticate, jobController.cancelJob);
+
+// ✅ FIXED: Changed from POST to PUT to match frontend
+router.put('/:id/cancel', authenticate, jobController.cancelJob);
+
 router.post('/:id/review', authenticate, authorize('customer'), jobController.addReview);
 
 // ESCROW & DISPUTES
