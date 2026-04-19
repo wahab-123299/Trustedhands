@@ -1,10 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, MapPin, Star, Filter, X } from 'lucide-react';
+import { Search, MapPin, Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -13,13 +12,38 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { artisanApi } from '@/services/api';
-import { ArtisanProfile, NIGERIAN_STATES, SKILL_CATEGORIES } from '@/types';
-import { formatCurrency } from '@/lib/utils';
+import { NIGERIAN_STATES, SKILL_CATEGORIES } from '@/types';
 import ArtisanCard from '@/components/artisans/ArtisanCard';
+
+// ✅ Define the expected shape after API transformation
+interface TransformedArtisan {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  profileImage?: string;
+  location?: {
+    city?: string;
+    state?: string;
+  };
+  profession?: string;
+  skills?: string[];
+  hourlyRate?: number;
+  ratePeriod?: string;
+  isAvailable?: boolean;
+  availabilityStatus?: string;
+  rating?: number;
+  reviewCount?: number;
+  completedJobs?: number;
+  isVerified?: boolean;
+  userId?: string;
+  _id?: string; // Fallback from backend
+}
 
 const ArtisansPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
+  // ✅ Use TransformedArtisan instead of ArtisanProfile
+  const [artisans, setArtisans] = useState<TransformedArtisan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [pagination, setPagination] = useState({
@@ -29,7 +53,6 @@ const ArtisansPage = () => {
     pages: 0,
   });
 
-  // Filter states - Changed defaults from '' to 'all'
   const [filters, setFilters] = useState({
     q: searchParams.get('q') || '',
     state: searchParams.get('state') || 'all',
@@ -51,7 +74,6 @@ const ArtisansPage = () => {
         sortBy: filters.sortBy,
       };
 
-      // Changed checks from '' to 'all'
       if (filters.state && filters.state !== 'all') params.state = filters.state;
       if (filters.skills && filters.skills !== 'all') params.skills = filters.skills;
       if (filters.availability && filters.availability !== 'all') params.availability = filters.availability;
@@ -61,12 +83,13 @@ const ArtisansPage = () => {
 
       let response;
       if (filters.q) {
-        // ✅ FIXED: Changed from searchArtisans to search
         response = await artisanApi.search(filters.q, params);
       } else {
-        // ✅ FIXED: Changed from getArtisans to getAll
         response = await artisanApi.getAll(params);
       }
+
+      // ✅ Debug log to see what data we get
+      console.log('API Response:', response.data.data.artisans);
 
       setArtisans(response.data.data.artisans);
       setPagination(response.data.data.pagination);
@@ -101,7 +124,6 @@ const ArtisansPage = () => {
     setSearchParams({});
   };
 
-  // Updated check for active filters
   const hasActiveFilters = Object.entries(filters).some(([key, v]) => {
     if (key === 'sortBy') return false;
     return v !== '' && v !== 'all' && v !== 'rating';
@@ -131,7 +153,7 @@ const ArtisansPage = () => {
               />
             </div>
 
-            {/* Location Filter - FIXED empty value */}
+            {/* Location Filter */}
             <div className="lg:w-48">
               <Select value={filters.state} onValueChange={(value) => handleFilterChange('state', value)}>
                 <SelectTrigger>
@@ -149,7 +171,7 @@ const ArtisansPage = () => {
               </Select>
             </div>
 
-            {/* Skills Filter - FIXED empty value */}
+            {/* Skills Filter */}
             <div className="lg:w-48">
               <Select value={filters.skills} onValueChange={(value) => handleFilterChange('skills', value)}>
                 <SelectTrigger>
@@ -200,7 +222,7 @@ const ArtisansPage = () => {
           {/* Advanced Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {/* Min Rating - FIXED empty value */}
+              {/* Min Rating */}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Min Rating</label>
                 <Select value={filters.minRating} onValueChange={(value) => handleFilterChange('minRating', value)}>
@@ -216,7 +238,7 @@ const ArtisansPage = () => {
                 </Select>
               </div>
 
-              {/* Max Rate - FIXED empty value */}
+              {/* Max Rate */}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Max Rate</label>
                 <Select value={filters.maxRate} onValueChange={(value) => handleFilterChange('maxRate', value)}>
@@ -233,7 +255,7 @@ const ArtisansPage = () => {
                 </Select>
               </div>
 
-              {/* Experience - FIXED empty value */}
+              {/* Experience */}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Experience</label>
                 <Select value={filters.experienceYears} onValueChange={(value) => handleFilterChange('experienceYears', value)}>
@@ -251,7 +273,7 @@ const ArtisansPage = () => {
                 </Select>
               </div>
 
-              {/* Availability - FIXED empty value */}
+              {/* Availability */}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Availability</label>
                 <Select value={filters.availability} onValueChange={(value) => handleFilterChange('availability', value)}>
@@ -283,7 +305,7 @@ const ArtisansPage = () => {
           Showing {artisans.length} of {pagination.total} artisans
         </div>
 
-        {/* Artisans Grid */}
+        {/* ✅ FIXED: Artisans Grid with proper null checks */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[...Array(8)].map((_, i) => (
@@ -311,8 +333,12 @@ const ArtisansPage = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {artisans.map((artisan) => (
-              <ArtisanCard key={artisan._id} artisan={artisan} />
+            {artisans.map((artisan, index) => (
+              // ✅ FIXED: Use artisan.id with fallback to _id or index
+              <ArtisanCard 
+                key={artisan.id || artisan._id || `artisan-${index}`} 
+                artisan={artisan} 
+              />
             ))}
           </div>
         )}

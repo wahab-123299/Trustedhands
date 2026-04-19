@@ -15,12 +15,13 @@ import {
   Filter,
   Search,
   MoreVertical,
-  CalendarDays
+  CalendarDays,
+  ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DropdownMenu,
@@ -37,7 +38,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { useAuth } from '@/contexts/AuthContext';
 import { jobApi } from '@/services/api';
 import { Job } from '@/types';
 
@@ -80,7 +80,6 @@ const statusConfig: Record<string, { color: string; label: string; icon: React.R
 
 const CustomerBookings: React.FC = () => {
   const navigate = useNavigate();
-  const {} = useAuth();
   
   const [bookings, setBookings] = useState<BookingWithArtisan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,15 +95,14 @@ const CustomerBookings: React.FC = () => {
   const fetchBookings = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await jobApi.getMyJobs({ status: 'accepted,in_progress,completed' });
-      const jobs = response.data.data.jobs || [];
+      const response = await jobApi.getMyJobs({ status: 'pending,accepted,in_progress,completed,cancelled' });
+      const jobs = response.data?.data?.jobs || [];
       
-      // Enrich with artisan details
       const enrichedJobs = jobs.map((job: Job) => ({
         ...job,
         artisanDetails: typeof job.artisanId === 'object' ? {
-          fullName: job.artisanId.fullName,
-          phone: job.artisanId.phone,
+          fullName: job.artisanId.fullName || 'Unknown',
+          phone: job.artisanId.phone || '',
           profileImage: job.artisanId.profileImage,
           averageRating: job.artisanId.averageRating,
         } : undefined,
@@ -125,17 +123,18 @@ const CustomerBookings: React.FC = () => {
 
   const filteredBookings = bookings.filter((booking) => {
     const matchesSearch = 
-      booking.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.artisanDetails?.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.category.toLowerCase().includes(searchTerm.toLowerCase());
+      booking.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      booking.artisanDetails?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      booking.category?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const scheduledDate = new Date(booking.scheduledDate);
     
     switch (activeTab) {
       case 'upcoming':
         return matchesSearch && 
-          ['accepted', 'in_progress'].includes(booking.status) && 
+          ['pending', 'accepted', 'in_progress'].includes(booking.status) && 
           scheduledDate >= today;
       case 'past':
         return matchesSearch && 
@@ -233,13 +232,27 @@ const CustomerBookings: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-6xl mx-auto p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
+          <Button 
+            variant="ghost" 
+            className="mb-2 -ml-2"
+            onClick={() => navigate('/dashboard')}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
           <h1 className="text-2xl font-bold text-gray-900">My Bookings</h1>
           <p className="text-gray-600">Manage your scheduled services</p>
         </div>
+        <Button 
+          onClick={() => navigate('/artisans')}
+          className="bg-emerald-600 hover:bg-emerald-700"
+        >
+          Book New Service
+        </Button>
       </div>
 
       {/* Search */}
@@ -263,10 +276,14 @@ const CustomerBookings: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
           <TabsTrigger value="upcoming">
-            Upcoming ({bookings.filter(b => ['accepted', 'in_progress'].includes(b.status)).length})
+            Upcoming ({bookings.filter(b => ['pending', 'accepted', 'in_progress'].includes(b.status)).length})
           </TabsTrigger>
-          <TabsTrigger value="past">Past</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+          <TabsTrigger value="past">
+            Past ({bookings.filter(b => b.status === 'completed').length})
+          </TabsTrigger>
+          <TabsTrigger value="cancelled">
+            Cancelled ({bookings.filter(b => b.status === 'cancelled').length})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab} className="mt-6">
@@ -290,19 +307,25 @@ const CustomerBookings: React.FC = () => {
             <div className="space-y-4">
               {filteredBookings.map((booking) => {
                 const { date, time } = formatDateTime(booking.scheduledDate);
-                const status = statusConfig[booking.status];
+                const status = statusConfig[booking.status] || statusConfig.pending;
                 
                 return (
-                  <Card key={booking._id} className="overflow-hidden">
+                  <Card key={booking._id} className="overflow-hidden hover:shadow-md transition-shadow">
                     <CardContent className="p-0">
                       <div className="flex flex-col lg:flex-row">
                         {/* Date Column */}
                         <div className="bg-emerald-50 p-6 lg:w-48 flex flex-row lg:flex-col items-center lg:justify-center gap-4 lg:gap-2 border-b lg:border-b-0 lg:border-r border-emerald-100">
                           <Calendar className="w-8 h-8 text-emerald-600 lg:hidden" />
                           <div className="text-center lg:text-left">
-                            <p className="text-2xl font-bold text-emerald-700">{date.split(' ')[2]}</p>
-                            <p className="text-sm text-emerald-600 uppercase font-medium">{date.split(' ')[1]}</p>
-                            <p className="text-xs text-emerald-500">{date.split(' ')[0]}</p>
+                            <p className="text-2xl font-bold text-emerald-700">
+                              {date.split(' ')[2]}
+                            </p>
+                            <p className="text-sm text-emerald-600 uppercase font-medium">
+                              {date.split(' ')[1]}
+                            </p>
+                            <p className="text-xs text-emerald-500">
+                              {date.split(' ')[0]}
+                            </p>
                           </div>
                           <div className="lg:hidden flex-1 text-right">
                             <Badge className={status.color}>
@@ -325,7 +348,7 @@ const CustomerBookings: React.FC = () => {
                                     {status.label}
                                   </span>
                                 </Badge>
-                                {['accepted', 'in_progress'].includes(booking.status) && (
+                                {['pending', 'accepted', 'in_progress'].includes(booking.status) && (
                                   <span className="text-sm text-orange-600 font-medium">
                                     {getDaysUntil(booking.scheduledDate)}
                                   </span>
@@ -340,12 +363,12 @@ const CustomerBookings: React.FC = () => {
                               {/* Artisan Info */}
                               {booking.artisanDetails && (
                                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-semibold">
+                                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-semibold overflow-hidden">
                                     {booking.artisanDetails.profileImage ? (
                                       <img 
                                         src={booking.artisanDetails.profileImage} 
                                         alt={booking.artisanDetails.fullName}
-                                        className="w-full h-full rounded-full object-cover"
+                                        className="w-full h-full object-cover"
                                       />
                                     ) : (
                                       booking.artisanDetails.fullName.charAt(0)
@@ -357,7 +380,7 @@ const CustomerBookings: React.FC = () => {
                                     </p>
                                     <div className="flex items-center gap-2 text-xs text-gray-500">
                                       <Phone className="w-3 h-3" />
-                                      {booking.artisanDetails.phone}
+                                      {booking.artisanDetails.phone || 'No phone'}
                                     </div>
                                   </div>
                                   {booking.artisanDetails.averageRating && (
@@ -383,13 +406,13 @@ const CustomerBookings: React.FC = () => {
                                 </DropdownMenuItem>
                                 
                                 {booking.artisanDetails && (
-                                  <DropdownMenuItem onClick={() => navigate(`/customer/messages?artisanId=${booking.artisanId}`)}>
+                                  <DropdownMenuItem onClick={() => navigate(`/messages?artisanId=${booking.artisanId}`)}>
                                     <MessageSquare className="w-4 h-4 mr-2" />
                                     Message Artisan
                                   </DropdownMenuItem>
                                 )}
                                 
-                                {['accepted', 'in_progress'].includes(booking.status) && (
+                                {['pending', 'accepted', 'in_progress'].includes(booking.status) && (
                                   <DropdownMenuItem 
                                     className="text-red-600"
                                     onClick={() => {
@@ -423,11 +446,11 @@ const CustomerBookings: React.FC = () => {
                             </span>
                             <span className="flex items-center gap-1">
                               <MapPin className="w-4 h-4" />
-                              {booking.location?.city}
+                              {booking.location?.city || 'Unknown'}
                             </span>
                             <span className="flex items-center gap-1">
                               <DollarSign className="w-4 h-4" />
-                              ₦{booking.budget?.toLocaleString()}
+                              ₦{booking.budget?.toLocaleString() || '0'}
                             </span>
                           </div>
                         </div>
@@ -455,7 +478,7 @@ const CustomerBookings: React.FC = () => {
             <Textarea
               placeholder="Please provide a reason..."
               value={cancelReason}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCancelReason(e.target.value)}
+              onChange={(e) => setCancelReason(e.target.value)}
             />
           </div>
           <DialogFooter>
@@ -492,7 +515,7 @@ const CustomerBookings: React.FC = () => {
               <Textarea
                 placeholder="Share your experience..."
                 value={reviewData.comment}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setReviewData({ ...reviewData, comment: e.target.value })}
+                onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })}
               />
               <p className="text-xs text-gray-500 mt-1">{reviewData.comment.length}/500</p>
             </div>

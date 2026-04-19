@@ -63,6 +63,7 @@ interface AuthContextType {
   updateUser: (data: Partial<User>) => void;
   updateArtisanProfile: (data: Partial<ArtisanProfile>) => void;
   refreshUser: () => Promise<void>;
+  updateUserFromOAuth: (user: User, token: string) => void; // ✅ ADDED
   socket: Socket | null;
   socketConnected: boolean;
 }
@@ -141,11 +142,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     sessionStorage.removeItem('user');
   }, []);
 
-  const isRememberMe = useCallback((): boolean => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('rememberMe') === 'true';
-  }, []);
-
   // ==========================================
   // SOCKET - FIXED WITH TOKEN & RECONNECTION
   // ==========================================
@@ -169,7 +165,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const socketInstance = io(SOCKET_URL, {
       withCredentials: true,
-      transports: ["polling", "websocket"], // Polling first, then upgrade to WebSocket
+      transports: ["polling", "websocket"],
       auth: { 
         userId,
         token: currentToken
@@ -192,18 +188,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSocketConnected(false);
     });
 
-    // FIXED: Handle connection errors including JWT expiry
     socketInstance.on("connect_error", (err) => {
       addLog(`[Socket] Connection error: ${err.message}`);
       
-      // Handle auth errors - redirect to login if token expired
       if (err.message.includes('jwt expired') || 
           err.message.includes('AUTH_TOKEN_REQUIRED') ||
           err.message.includes('invalid token')) {
         addLog('[Socket] Token invalid/expired - logging out');
         disconnectSocket();
         clearTokens();
-        // Clear state and redirect
         setState({
           user: null,
           token: null,
@@ -226,7 +219,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [disconnectSocket, SOCKET_URL, navigate, clearTokens]);
 
   // ==========================================
-  // INIT AUTH - WITH REMEMBER ME SUPPORT
+  // INIT AUTH
   // ==========================================
 
   useEffect(() => {
@@ -287,7 +280,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Init] Status: ${error.response?.status}`);
         addLog(`[Init] Error data: ${JSON.stringify(error.response?.data)}`);
         
-        // FIXED: Also check for socket/auth related errors
         if (error.response?.status === 401 || 
             error.message?.includes('jwt expired')) {
           addLog('[Init] Clearing token (401/expired)');
@@ -341,7 +333,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw new Error('No access token received from server');
         }
 
-        // FIXED: Store token based on remember me preference
         storeToken(accessToken, rememberMe);
         
         const savedToken = getToken();
@@ -404,7 +395,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw new Error('No access token received from server');
         }
 
-        // FIXED: Store token based on remember me preference
         storeToken(accessToken, rememberMe);
         addLog('[Register] Token saved');
 
@@ -440,7 +430,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   // ==========================================
-  // LOGOUT - FIXED TO CLEAR ALL TOKENS
+  // LOGOUT
   // ==========================================
 
   const logout = useCallback(async () => {
@@ -467,6 +457,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     navigate("/login", { replace: true });
     toast.success("Logged out successfully");
   }, [disconnectSocket, navigate, clearTokens]);
+
+  // ==========================================
+  // UPDATE USER FROM OAUTH (NEW - FOR GOOGLE/FACEBOOK LOGIN)
+  // ==========================================
+
+  const updateUserFromOAuth = useCallback((user: User, token: string) => {
+    addLog(`[OAuth] Updating user from OAuth: ${user.email}`);
+    
+    // Store token in localStorage (OAuth always uses remember me)
+    localStorage.setItem('token', token);
+    localStorage.setItem('rememberMe', 'true');
+    
+    setState({
+      user,
+      token,
+      artisanProfile: null, // OAuth users need to complete artisan profile separately
+      isAuthenticated: true,
+      isLoading: false,
+      isInitialized: true,
+    });
+    
+    connectSocket(user._id, token);
+    addLog('[OAuth] User updated and socket connected');
+  }, [connectSocket]);
 
   // ==========================================
   // HELPERS
@@ -534,6 +548,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     updateUser,
     updateArtisanProfile,
     refreshUser,
+    updateUserFromOAuth, // ✅ ADDED
     socket,
     socketConnected,
   };

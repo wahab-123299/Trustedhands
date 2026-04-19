@@ -4,7 +4,6 @@ import { Toaster } from 'sonner';
 import { Suspense, lazy } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { SocketProvider } from '@/contexts/SocketContext';
-import AuthSuccessPage from './pages/AuthSuccessPage';
 
 // Layouts
 import MainLayout from '@/components/layout/MainLayout';
@@ -15,12 +14,16 @@ import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
+import AuthSuccessPage from './pages/AuthSuccessPage';
+import OAuthCallback from './pages/OAuthCallback';
+import BookArtisan from '@/pages/BookArtisan';
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import ArtisansPage from '@/pages/ArtisansPage';
 import ArtisanProfilePage from '@/pages/ArtisanProfilePage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailsPage from '@/pages/JobDetailsPage';
+
 
 // Lazy loaded dashboard pages for better performance
 const CustomerDashboard = lazy(() => import('@/pages/customer/Dashboard'));
@@ -30,6 +33,7 @@ const CustomerBookings = lazy(() => import('@/pages/customer/Bookings'));
 const CustomerMessages = lazy(() => import('@/pages/customer/Messages'));
 const CustomerProfile = lazy(() => import('@/pages/customer/Profile'));
 const PostJobPage = lazy(() => import('@/pages/customer/PostJob'));
+const CustomerVerificationPage = lazy(() => import('@/pages/customer/Verification'));
 
 const ArtisanDashboard = lazy(() => import('@/pages/artisan/Dashboard'));
 const ArtisanJobs = lazy(() => import('@/pages/artisan/Jobs'));
@@ -38,6 +42,7 @@ const ArtisanApplications = lazy(() => import('@/pages/artisan/Applications'));
 const ArtisanMessages = lazy(() => import('@/pages/artisan/Messages'));
 const ArtisanProfile = lazy(() => import('@/pages/artisan/Profile'));
 const ArtisanWallet = lazy(() => import('@/pages/artisan/Wallet'));
+const ArtisanVerificationPage = lazy(() => import('@/pages/artisan/Verification'));
 
 // Shared Pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
@@ -47,6 +52,8 @@ import NotFoundPage from '@/pages/NotFoundPage';
 // Auth Components
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import RoleRoute from '@/components/auth/RoleRoute';
+import { TierGate } from '@/components/auth/TierGate';
+
 
 // ==========================================
 // LOADING COMPONENT
@@ -92,15 +99,13 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/auth/success" element={<AuthSuccessPage />} />
+                <Route path="/oauth/callback" element={<OAuthCallback />} />
+                <Route path="/book/:artisanId" element={<BookArtisan />} />
                 <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
                 <Route path="/artisans" element={<ArtisansPage />} />
-                <Route path="/artisans/:id" element={<ArtisanProfilePage />} />
-                
-                {/* ✅ REMOVED: Customer routes moved to protected section only */}
-                {/* <Route path="/customer/jobs" element={<CustomerJobs />} /> */}
-                {/* <Route path="/customer/post-job" element={<PostJobPage />} /> */}
+                <Route path="/artisans/:artisanId" element={<ArtisanProfilePage />} />
                 
                 {/* Public job browsing */}
                 <Route path="/jobs" element={<JobsPage />} />
@@ -125,8 +130,27 @@ function App() {
                     <Route path="/customer/messages" element={<CustomerMessages />} />
                     <Route path="/customer/messages/:conversationId" element={<ChatPage />} />
                     <Route path="/customer/profile" element={<CustomerProfile />} />
-                    <Route path="/customer/post-job" element={<PostJobPage />} />
-                    <Route path="/customer/post-job/:artisanId" element={<PostJobPage />} />
+                    
+                    {/* Tier-gated job posting */}
+                    <Route 
+                      path="/customer/post-job" 
+                      element={
+                        <TierGate maxAmount={10000}>
+                          <PostJobPage />
+                        </TierGate>
+                      } 
+                    />
+                    <Route 
+                      path="/customer/post-job/:artisanId" 
+                      element={
+                        <TierGate maxAmount={10000}>
+                          <PostJobPage />
+                        </TierGate>
+                      } 
+                    />
+                    
+                    {/* Verification upgrade page */}
+                    <Route path="/customer/verify" element={<CustomerVerificationPage />} />
                   </Route>
                 </Route>
               </Route>
@@ -145,6 +169,7 @@ function App() {
                     <Route path="/artisan/messages/:conversationId" element={<ChatPage />} />
                     <Route path="/artisan/profile" element={<ArtisanProfile />} />
                     <Route path="/artisan/wallet" element={<ArtisanWallet />} />
+                    <Route path="/artisan/verify" element={<ArtisanVerificationPage />} />
                   </Route>
                 </Route>
               </Route>
@@ -154,7 +179,6 @@ function App() {
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/chat/:conversationId" element={<ChatPage />} />
-                {/* Generic messages route - redirects to role-specific */}
                 <Route path="/messages" element={<NavigateToMessages />} />
               </Route>
 
@@ -218,7 +242,6 @@ function NavigateToWallet() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   
-  // Only artisans have wallets
   if (user.role !== 'artisan') {
     return <Navigate to="/customer/dashboard" replace />;
   }

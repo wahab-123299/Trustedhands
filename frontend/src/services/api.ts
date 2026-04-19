@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
-// Store logs for debugging after redirect
+// Debug logs setup
 const debugLogs: string[] = [];
 const addLog = (msg: string) => {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -34,34 +34,20 @@ const api = axios.create({
 
 api.defaults.withCredentials = true;
 
-// ==========================================
-// TOKEN STORAGE HELPERS (Remember Me Support)
-// ==========================================
-
-/**
- * Get token from storage (localStorage if remember me, else sessionStorage)
- */
+// Token storage helpers
 const getToken = (): string | null => {
   if (typeof window === 'undefined') return null;
-  // Check localStorage first (remember me), then sessionStorage
   return localStorage.getItem('token') || sessionStorage.getItem('token');
 };
 
-/**
- * Get refresh token from storage
- */
 const getRefreshToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
 };
 
-/**
- * Store tokens based on remember me preference
- */
 const storeTokens = (accessToken: string, refreshToken?: string, rememberMe?: boolean): void => {
   if (typeof window === 'undefined') return;
   
-  // Default to localStorage if rememberMe is not explicitly false
   const useLocal = rememberMe !== false;
   
   if (useLocal) {
@@ -75,9 +61,6 @@ const storeTokens = (accessToken: string, refreshToken?: string, rememberMe?: bo
   }
 };
 
-/**
- * Clear all auth storage
- */
 const clearTokens = (): void => {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('token');
@@ -89,17 +72,12 @@ const clearTokens = (): void => {
   sessionStorage.removeItem('user');
 };
 
-/**
- * Check if user wanted to be remembered
- */
 const isRememberMe = (): boolean => {
   if (typeof window === 'undefined') return false;
   return localStorage.getItem('rememberMe') === 'true';
 };
 
-// ==========================================
-// REFRESH TOKEN STATE
-// ==========================================
+// Refresh token state
 let isRefreshing = false;
 let refreshSubscribers: ((token: string) => void)[] = [];
 let refreshPromise: Promise<string> | null = null;
@@ -113,9 +91,7 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
   refreshSubscribers.push(callback);
 };
 
-// ==========================================
-// REQUEST INTERCEPTOR
-// ==========================================
+// Request interceptor
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = getToken();
@@ -150,9 +126,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ==========================================
-// RESPONSE INTERCEPTOR - WITH RETRY LOGIC
-// ==========================================
+// Response interceptor
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     addLog(`[Response] ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
@@ -221,7 +195,6 @@ api.interceptors.response.use(
 
           addLog(`[Response] Token refreshed: ${accessToken.substring(0, 15)}...`);
           
-          // Store with same preference as before
           storeTokens(accessToken, refreshToken, isRememberMe());
           onTokenRefreshed(accessToken);
           return accessToken;
@@ -265,9 +238,7 @@ api.interceptors.response.use(
   }
 );
 
-// ==========================================
-// SERVER WAKE-UP HELPER
-// ==========================================
+// Server wake-up helper
 export const wakeUpServer = async (): Promise<boolean> => {
   try {
     addLog('[WakeUp] Pinging server...');
@@ -292,38 +263,23 @@ export const wakeUpServer = async (): Promise<boolean> => {
   }
 };
 
-// ==========================================
-// NEW: OAUTH HELPERS
-// ==========================================
-
-/**
- * Redirect to Google OAuth
- */
+// OAuth helpers
 export const loginWithGoogle = (): void => {
   const baseUrl = API_URL.replace('/api', '');
   window.location.href = `${baseUrl}/auth/google`;
 };
 
-/**
- * Redirect to Facebook OAuth
- */
 export const loginWithFacebook = (): void => {
   const baseUrl = API_URL.replace('/api', '');
   window.location.href = `${baseUrl}/auth/facebook`;
 };
 
-/**
- * Handle OAuth callback - call this from your AuthSuccessPage
- */
 export const handleOAuthCallback = (accessToken: string, refreshToken: string, rememberMe = false): void => {
   storeTokens(accessToken, refreshToken, rememberMe);
   addLog(`[OAuth] Tokens stored (rememberMe: ${rememberMe})`);
 };
 
-// ==========================================
-// NEW: REMEMBER ME EXPORTS
-// ==========================================
-
+// Auth storage exports
 export const authStorage = {
   getToken,
   getRefreshToken,
@@ -332,10 +288,7 @@ export const authStorage = {
   isRememberMe,
 };
 
-// ==========================================
-// EXISTING API INTERFACES (UNCHANGED)
-// ==========================================
-
+// API Interfaces
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;
@@ -377,10 +330,44 @@ export interface RegisterData {
   bio?: string;
 }
 
-// ==========================================
-// UPDATED: AUTH API WITH REMEMBER ME
-// ==========================================
+// Artisan data transformer - handles backend/frontend field name mismatches
+const transformArtisanData = (artisan: any): any | null => {
+  if (!artisan) return null;
+  
+  const userData = artisan.userId || artisan.user;
+  
+  return {
+    id: artisan.id || artisan._id,
+    profession: artisan.profession || artisan.Profession,
+    name: artisan.name || userData?.fullName,
+    email: artisan.email || userData?.email,
+    phone: artisan.phone || userData?.phone,
+    location: artisan.location || userData?.location,
+    profileImage: artisan.profileImage || userData?.profileImage,
+    isVerified: artisan.isVerified || userData?.isVerified,
+    userId: userData?._id || userData,
+    skills: artisan.skills || [],
+    bio: artisan.bio,
+    experienceYears: artisan.experienceYears,
+    hourlyRate: artisan.hourlyRate || artisan.rate?.amount,
+    ratePeriod: artisan.ratePeriod || artisan.rate?.period,
+    isAvailable: artisan.isAvailable || artisan.availability?.status === 'available',
+    availabilityStatus: artisan.availabilityStatus || artisan.availability?.status,
+    nextAvailableDate: artisan.availability?.nextAvailableDate,
+    workRadius: artisan.workRadius,
+    rating: artisan.rating || artisan.averageRating,
+    reviewCount: artisan.reviewCount || artisan.totalReviews,
+    completedJobs: artisan.completedJobs,
+    portfolioImages: artisan.portfolioImages || [],
+    idVerification: artisan.idVerification,
+    isCertified: artisan.isCertified,
+    canApplyForHighValueJobs: artisan.canApplyForHighValueJobs,
+    createdAt: artisan.createdAt,
+    updatedAt: artisan.updatedAt,
+  };
+};
 
+// Auth API
 export const authApi = {
   login: (data: LoginData, rememberMe = false) => {
     addLog(`[Auth] Login attempt (rememberMe: ${rememberMe})`);
@@ -422,10 +409,7 @@ export const authApi = {
   resetPassword: (token: string, password: string) => api.post<ApiResponse<void>>(`/auth/reset-password/${token}`, { password }),
 };
 
-// ==========================================
-// ALL OTHER APIS (UNCHANGED)
-// ==========================================
-
+// User API
 export const userApi = {
   getMe: () => api.get<ApiResponse<any>>('/users/me'),
   
@@ -448,6 +432,7 @@ export const userApi = {
   deleteMe: () => api.delete<ApiResponse<void>>('/users/me'),
 };
 
+// Artisan interfaces
 export interface ArtisanProfileUpdate {
   skills?: string[];
   experienceYears?: '0-1' | '1-3' | '3-5' | '5-10' | '10+';
@@ -470,8 +455,9 @@ export interface BankDetails {
   bankCode: string;
 }
 
+// Artisan API with transformed responses
 export const artisanApi = {
-  getAll: (params?: { 
+  getAll: async (params?: { 
     state?: string; 
     city?: string; 
     skills?: string; 
@@ -481,17 +467,55 @@ export const artisanApi = {
     page?: number;
     limit?: number;
     sortBy?: string;
-  }) => api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans', { params }),
+  }) => {
+    const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans', { params });
+    
+    if (response.data?.data?.artisans) {
+      response.data.data.artisans = response.data.data.artisans
+        .map(transformArtisanData)
+        .filter(Boolean);
+    }
+    
+    return response;
+  },
   
-  search: (query: string, params?: { page?: number; limit?: number }) => 
-    api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/search', { params: { q: query, ...params } }),
+  search: async (query: string, params?: { page?: number; limit?: number }) => {
+    const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/search', { 
+      params: { q: query, ...params } 
+    });
+    
+    if (response.data?.data?.artisans) {
+      response.data.data.artisans = response.data.data.artisans
+        .map(transformArtisanData)
+        .filter(Boolean);
+    }
+    
+    return response;
+  },
   
-  getNearby: (lat: number, lng: number, radius?: number, params?: any) => 
-    api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/nearby', { 
+  getNearby: async (lat: number, lng: number, radius?: number, params?: any) => {
+    const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/nearby', { 
       params: { lat, lng, radius, ...params } 
-    }),
+    });
+    
+    if (response.data?.data?.artisans) {
+      response.data.data.artisans = response.data.data.artisans
+        .map(transformArtisanData)
+        .filter(Boolean);
+    }
+    
+    return response;
+  },
   
-  getById: (id: string) => api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`),
+  getById: async (id: string) => {
+    const response = await api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`);
+    
+    if (response.data?.data?.artisan) {
+      response.data.data.artisan = transformArtisanData(response.data.data.artisan);
+    }
+    
+    return response;
+  },
   
   getReviews: (id: string, params?: { page?: number; limit?: number }) => 
     api.get<ApiResponse<{ reviews: any[]; ratingStats: any[]; pagination: any }>>(`/artisans/${id}/reviews`, { params }),
@@ -515,6 +539,7 @@ export const artisanApi = {
     api.delete<ApiResponse<{ portfolioImages: string[] }>>('/artisans/portfolio', { data: { imageUrl } }),
 };
 
+// Job interfaces and API
 export interface JobCreateData {
   title: string;
   description: string;
@@ -547,7 +572,7 @@ export const jobApi = {
   
   accept: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/accept`),
 
-  acceptApplication: (applicationId: string) => api.post(`/applications/${applicationId}/accept`),
+  acceptApplication: (applicationId: string) => api.post(`/jobs/applications/${applicationId}/accept`),
   
   start: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/start`),
   
@@ -558,7 +583,7 @@ export const jobApi = {
   
   cancel: (id: string, reason?: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/cancel`, { reason }),
 
-  rejectApplication: (applicationId: string) => api.post(`/applications/${applicationId}/reject`),
+  rejectApplication: (applicationId: string) => api.post(`/jobs/applications/${applicationId}/reject`),
   
   addReview: (id: string, data: ReviewData) => api.post<ApiResponse<{ review: any }>>(`/jobs/${id}/review`, data),
   
@@ -569,6 +594,7 @@ export const jobApi = {
     api.post<ApiResponse<void>>(`/jobs/${id}/apply`, data),
 };
 
+// Applications API
 export const applicationsApi = {
   getMyApplications: (params?: { status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ applications: any[]; pagination: any }>>('/applications/my-applications', { params }),
@@ -578,6 +604,7 @@ export const applicationsApi = {
   withdrawApplication: (id: string) => api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
 };
 
+// Payment interfaces and API
 export interface PaymentInitializeData {
   jobId: string;
   email?: string;
@@ -615,6 +642,7 @@ export const paymentApi = {
     api.post<ApiResponse<{ accountNumber: string; accountName: string; bankCode: string }>>('/payments/verify-account', data),
 };
 
+// Chat interfaces and API
 export interface CreateConversationData {
   participantId: string;
   jobId?: string;
@@ -634,6 +662,7 @@ export const chatApi = {
   markAsRead: (conversationId: string) => api.put<ApiResponse<void>>(`/chat/conversations/${conversationId}/read`),
 };
 
+// Error handlers
 export const handleApiError = (error: any): string => {
   if (error.response?.data?.error?.message) {
     return error.response.data.error.message;
@@ -647,7 +676,177 @@ export const handleApiError = (error: any): string => {
 export const getErrorCode = (error: any): string => {
   return error.response?.data?.error?.code || error.code || 'UNKNOWN_ERROR';
 };
+// ==========================================
+// VERIFICATION API
+// ==========================================
 
-// Legacy export for backward compatibility
+export const verificationApi = {
+  getStatus: () => api.get('/verify/status'),
+  
+  checkJobValue: (jobValue: number) => api.get(`/verify/check-job/${jobValue}`),
+  
+  verifyNIN: (nin: string) => api.post('/verify/nin', { nin }),
+  
+  verifyBVN: (bvn: string) => api.post('/verify/bvn', { bvn }),
+  
+  verifyPhoto: (photoFile: File) => {
+    const formData = new FormData();
+    formData.append('photo', photoFile);
+    return api.post('/verify/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  
+  verifyCAC: (cacNumber: string, businessName: string) => 
+    api.post('/verify/cac', { cacNumber, businessName }),
+  
+  verifyShopLocation: (gps: { lat: number; lng: number }) => 
+    api.post('/verify/shop-location', { gps }),
+    
+  confirmShopLocation: () => api.post('/verify/confirm-shop-location'),
+};
+
+// ==========================================
+// JOB API WITH FRAUD & ESCROW
+// ==========================================
+
+// Interfaces for jobFraudApi
+export interface FraudJobCreateData {
+  title: string;
+  description: string;
+  category: string;
+  location: {
+    state: string;
+    city: string;
+    address?: string;
+    coordinates?: { lat: number; lng: number };
+  };
+  budget: number;
+  budgetType?: string;
+  scheduledDate: string;
+  requiresVerifiedArtisan?: boolean;
+}
+
+export interface FraudJobParams {
+  status?: string;
+  category?: string;
+  page?: number;
+  limit?: number;
+  [key: string]: any;
+}
+
+export interface FraudJob {
+  id: string;
+  title: string;
+  description: string;
+  // ...add other relevant fields as needed
+}
+
+export interface FraudJobApplicationData {
+  coverLetter?: string;
+  proposedRate?: number;
+}
+
+export interface FraudJobReviewData {
+  rating: number;
+  comment?: string;
+}
+
+export interface FraudJobDisputeData {
+  milestoneIndex: number;
+  issueType: 'incomplete' | 'quality' | 'delay' | 'no_show' | 'other';
+  description: string;
+  desiredOutcome: 'full_refund' | 'partial' | 'continue';
+  partialAmount?: number;
+}
+
+export const jobFraudApi = {
+  // Create job with fraud detection
+  createJob: (data: FraudJobCreateData) =>
+    api.post<ApiResponse<{ job: FraudJob }>>('/jobs', data),
+
+  // Get all jobs
+  getJobs: (params?: FraudJobParams) =>
+    api.get<ApiResponse<{ jobs: FraudJob[]; pagination: any }>>('/jobs', { params }),
+
+  // Get job by ID (includes disputes)
+  getJobById: (id: string) =>
+    api.get<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}`),
+
+  // Get my jobs
+  getMyJobs: (params?: FraudJobParams) =>
+    api.get<ApiResponse<{ jobs: FraudJob[]; pagination: any }>>('/jobs/my-jobs', { params }),
+
+  // Update job
+  updateJob: (id: string, data: Partial<FraudJobCreateData>) =>
+    api.put<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}`, data),
+
+  // Delete job
+  deleteJob: (id: string) =>
+    api.delete<ApiResponse<void>>(`/jobs/${id}`),
+
+  // Apply for job
+  applyForJob: (id: string, data?: FraudJobApplicationData) =>
+    api.post<ApiResponse<void>>(`/jobs/${id}/apply`, data),
+
+  // Accept application
+  acceptApplication: (applicationId: string) =>
+    api.post<ApiResponse<void>>(`/jobs/applications/${applicationId}/accept`),
+
+  // Reject application
+  rejectApplication: (applicationId: string) =>
+    api.post<ApiResponse<void>>(`/jobs/applications/${applicationId}/reject`),
+
+  // Get applications
+  getApplications: (id: string) =>
+    api.get<ApiResponse<{ applications: any[] }>>(`/jobs/${id}/applications`),
+
+  // Job status actions
+  acceptJob: (id: string) =>
+    api.post<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}/accept`),
+
+  startJob: (id: string) =>
+    api.post<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}/start`),
+
+  completeJob: (id: string) =>
+    api.post<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}/complete`),
+
+  cancelJob: (id: string, reason?: string) =>
+    api.post<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}/cancel`, { reason }),
+
+  addReview: (id: string, data: FraudJobReviewData) =>
+    api.post<ApiResponse<{ review: any }>>(`/jobs/${id}/review`, data),
+};
+
+// ==========================================
+// DISPUTE API
+// ==========================================
+
+export const disputeApi = {
+  // File a dispute
+  fileDispute: (jobId: string, data: {
+    milestoneIndex: number;
+    issueType: 'incomplete' | 'quality' | 'delay' | 'no_show' | 'other';
+    description: string;
+    desiredOutcome: 'full_refund' | 'partial' | 'continue';
+    partialAmount?: number;
+  }) => api.post(`/jobs/${jobId}/disputes`, data),
+  
+  // Get disputes for a job
+  getJobDisputes: (jobId: string) => api.get(`/jobs/${jobId}/disputes`),
+  
+  // Approve milestone (release payment)
+  approveMilestone: (jobId: string, milestoneIndex: number) => 
+    api.put(`/jobs/${jobId}/milestones/${milestoneIndex}/approve`),
+  
+  // Admin only
+  getAllDisputes: (params?: { status?: string; page?: number }) => 
+    api.get('/jobs/admin/disputes', { params }),
+    
+  resolveDispute: (disputeId: string, resolution: any) => 
+    api.put(`/jobs/admin/disputes/${disputeId}/resolve`, resolution),
+};
+
+// Export all APIs
 export { api };
 export default api;

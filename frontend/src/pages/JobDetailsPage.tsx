@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { jobApi } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { CancelJobButton } from "@/components/CancelJobButton"; // ✅ ADDED IMPORT
 
 // ==============================
 // TYPES
@@ -18,7 +19,7 @@ interface Job {
     city: string;
     address?: string;
   };
-  status: "pending" | "accepted" | "in_progress" | "completed" | "cancelled" | "open";
+  status: "pending" | "accepted" | "in_progress" | "completed" | "cancelled" | "open" | "assigned";
   createdAt: string;
   customerId: string | {
     _id: string;
@@ -38,19 +39,16 @@ interface Job {
 // HELPER FUNCTIONS
 // ==============================
 
-// Helper to safely get ID from populated or unpopulated field
 const getId = (field: string | { _id: string } | undefined | null): string | undefined => {
   if (!field) return undefined;
   if (typeof field === 'string') return field;
   return field._id;
 };
 
-// Helper to safely get name from populated field
 const getName = (field: { fullName?: string } | undefined | null): string => {
   return field?.fullName || 'Unknown';
 };
 
-// Helper to check if field is populated object
 const isPopulated = (field: any): field is { _id: string; fullName: string } => {
   return field && typeof field === 'object' && '_id' in field;
 };
@@ -67,10 +65,6 @@ const JobDetailsPage = () => {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-
-  // ==============================
-  // FETCH JOB
-  // ==============================
 
   const fetchJob = useCallback(async () => {
     if (!id) return;
@@ -90,10 +84,6 @@ const JobDetailsPage = () => {
   useEffect(() => {
     if (id) fetchJob();
   }, [id, fetchJob]);
-
-  // ==============================
-  // APPLY / ACCEPT JOB
-  // ==============================
 
   const handleApply = async () => {
     if (!id) return;
@@ -125,10 +115,6 @@ const JobDetailsPage = () => {
     }
   };
 
-  // ==============================
-  // CHAT
-  // ==============================
-
   const goToChat = () => {
     if (!job) return;
 
@@ -138,10 +124,8 @@ const JobDetailsPage = () => {
     let otherUserId: string | undefined;
     
     if (user?._id === customerId) {
-      // I'm the customer, chat with artisan
       otherUserId = artisanId;
     } else {
-      // I'm the artisan, chat with customer
       otherUserId = customerId;
     }
 
@@ -152,10 +136,6 @@ const JobDetailsPage = () => {
 
     navigate(`/chat/${otherUserId}`);
   };
-
-  // ==============================
-  // UI STATES
-  // ==============================
 
   if (loading) {
     return (
@@ -181,10 +161,6 @@ const JobDetailsPage = () => {
     );
   }
 
-  // ==============================
-  // DERIVED VALUES
-  // ==============================
-
   const customerId = getId(job.customerId);
   const artisanId = getId(job.artisanId);
   
@@ -194,7 +170,6 @@ const JobDetailsPage = () => {
   const isPending = job.status === "pending" || job.status === "open";
   const isAccepted = job.status === "accepted" || job.status === "in_progress";
 
-  // Get display names
   const customerName = isPopulated(job.customerId) 
     ? job.customerId.fullName 
     : 'Customer';
@@ -202,10 +177,6 @@ const JobDetailsPage = () => {
   const artisanName = isPopulated(job.artisanId) 
     ? job.artisanId.fullName 
     : (isAssigned ? 'Artisan assigned' : 'Not assigned');
-
-  // ==============================
-  // UI
-  // ==============================
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -378,14 +349,13 @@ const JobDetailsPage = () => {
             </button>
           )}
 
-          {/* Cancel Job (for owner when pending) */}
-          {isOwner && isPending && (
-            <button
-              onClick={() => {/* handle cancel */}}
-              className="border border-red-300 text-red-600 px-6 py-3 rounded-lg font-medium hover:bg-red-50 transition-colors"
-            >
-              Cancel Job
-            </button>
+          {/* ✅ FIXED: Cancel Job using CancelJobButton component */}
+          {isOwner && (isPending || job.status === 'assigned') && (
+            <CancelJobButton 
+              jobId={job._id} 
+              jobStatus={job.status}
+              onCancelSuccess={fetchJob}
+            />
           )}
         </div>
 
