@@ -135,6 +135,59 @@ const jobSchema = new mongoose.Schema({
     }
   }],
   
+  // ✅ NEW: FULL DISPUTE SYSTEM (matches disputeController)
+  dispute: {
+    filedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    filedByRole: {
+      type: String,
+      enum: ['customer', 'artisan']
+    },
+    reason: String,
+    description: String,
+    evidence: [{
+      url: String,
+      uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      uploadedAt: Date
+    }],
+    status: {
+      type: String,
+      enum: ['pending', 'under_review', 'resolved'],
+      default: null
+    },
+    filedAt: Date,
+    resolution: {
+      type: {
+        type: String,
+        enum: ['customer_favor', 'artisan_favor', 'compromise', 'dismissed']
+      },
+      refundAmount: Number,
+      refundTo: String,
+      notes: String,
+      resolvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      resolvedAt: Date
+    }
+  },
+
+  // ✅ NEW: CANCELLATION FIELDS (enhanced)
+  cancelledAt: Date,
+  cancellationReason: {
+    type: String,
+    maxlength: [500, 'Cancellation reason cannot exceed 500 characters']
+  },
+  cancelledBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
   applications: [{
     artisanId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -159,17 +212,11 @@ const jobSchema = new mongoose.Schema({
       default: 'pending'
     }
   }],
+  
   startedAt: Date,
   completedAt: Date,
-  cancelledAt: Date,
-  cancellationReason: {
-    type: String,
-    maxlength: [500, 'Cancellation reason cannot exceed 500 characters']
-  },
-  cancelledBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
+  
+  // Legacy dispute fields (keep for backward compatibility)
   disputeReason: {
     type: String,
     maxlength: [1000, 'Dispute reason cannot exceed 1000 characters']
@@ -177,6 +224,7 @@ const jobSchema = new mongoose.Schema({
   disputeRaisedAt: Date,
   disputeResolvedAt: Date,
   disputeResolution: String,
+  
   review: {
     rating: {
       type: Number,
@@ -215,6 +263,7 @@ jobSchema.index({ budget: 1, status: 1 });
 jobSchema.index({ createdAt: -1 });
 jobSchema.index({ scheduledDate: 1 });
 jobSchema.index({ tier: 1, trustScore: -1 });
+jobSchema.index({ 'dispute.status': 1 }); // ✅ NEW: For dispute queries
 
 // Virtuals
 jobSchema.virtual('duration').get(function() {
@@ -235,9 +284,16 @@ jobSchema.virtual('confirmationStatus').get(function() {
   return 'pending_confirmation';
 });
 
+// ✅ NEW: Virtual for dispute status
+jobSchema.virtual('hasActiveDispute').get(function() {
+  return this.dispute && this.dispute.status === 'pending';
+});
+
 // Methods
 jobSchema.methods.canBeCancelled = function() {
-  return ['pending', 'accepted'].includes(this.status) && this.paymentStatus !== 'released';
+  return ['pending', 'accepted', 'assigned'].includes(this.status) && 
+         this.paymentStatus !== 'released' &&
+         (!this.dispute || this.dispute.status !== 'pending');
 };
 
 jobSchema.methods.canBeStarted = function() {
@@ -324,6 +380,21 @@ jobSchema.methods.acceptApplication = async function(applicationIndex) {
   return await this.save();
 };
 
+// ✅ NEW: Method to check if dispute can be filed
+jobSchema.methods.canFileDispute = function(userId) {
+  const isCustomer = this.customerId.toString() === userId.toString();
+  const isArtisan = this.artisanId?.toString() === userId.toString();
+  
+  if (!isCustomer && !isArtisan) return false;
+  
+  const disputableStatuses = ['in_progress', 'completed', 'assigned', 'accepted'];
+  if (!disputableStatuses.includes(this.status)) return false;
+  
+  if (this.dispute && this.dispute.status === 'pending') return false;
+  
+  return true;
+};
+
 // Pre-save middleware
 jobSchema.pre('save', function(next) {
   if (this.isModified('status')) {
@@ -337,6 +408,9 @@ jobSchema.pre('save', function(next) {
     }
     if (this.status === 'cancelled' && !this.cancelledAt) {
       this.cancelledAt = now;
+    }
+    if (this.status === 'disputed' && this.dispute && !this.dispute.filedAt) {
+      this.dispute.filedAt = now;
     }
   }
   
