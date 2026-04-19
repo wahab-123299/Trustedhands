@@ -10,7 +10,7 @@ const jobSchema = new mongoose.Schema({
   artisanId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false,  // ← CHANGED: Made optional since job is posted before artisan is assigned
+    required: false,
     default: null
   },
   title: {
@@ -28,7 +28,6 @@ const jobSchema = new mongoose.Schema({
   category: {
     type: String,
     required: [true, 'Category is required'],
-    // Removed strict enum to allow custom categories
     validate: {
       validator: function(v) {
         return v && v.length >= 2 && v.length <= 50;
@@ -76,13 +75,66 @@ const jobSchema = new mongoose.Schema({
   },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'released', 'refunded'],
+    enum: ['pending', 'paid', 'released', 'refunded', 'partially_released'],
     default: 'pending'
   },
   transactionId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Transaction'
   },
+  
+  // FRAUD & TIER FIELDS
+  trustScore: {
+    type: Number,
+    default: 100,
+    min: 0,
+    max: 100
+  },
+  fraudFlags: [{
+    type: {
+      type: String,
+      enum: ['warning', 'error']
+    },
+    code: String,
+    message: String,
+    requiresUpgrade: Boolean
+  }],
+  tier: {
+    type: String,
+    enum: ['bronze', 'silver', 'gold'],
+    default: 'bronze'
+  },
+  requiresVerifiedArtisan: {
+    type: Boolean,
+    default: false
+  },
+  
+  // ESCROW MILESTONES
+  escrowMilestones: [{
+    name: String,
+    percent: Number,
+    amount: Number,
+    status: {
+      type: String,
+      enum: ['pending', 'disputed', 'approved', 'released', 'refunded', 'partially_released'],
+      default: 'pending'
+    },
+    approvedAt: Date,
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    dispute: {
+      filedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      filedAt: Date,
+      issueType: String,
+      description: String
+    }
+  }],
+  
   applications: [{
     artisanId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -153,7 +205,7 @@ const jobSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Indexes - OPTIMIZED
+// Indexes
 jobSchema.index({ customerId: 1, status: 1 });
 jobSchema.index({ artisanId: 1, status: 1 });
 jobSchema.index({ status: 1, createdAt: -1 });
@@ -162,8 +214,9 @@ jobSchema.index({ 'location.state': 1, 'location.city': 1, status: 1 });
 jobSchema.index({ budget: 1, status: 1 });
 jobSchema.index({ createdAt: -1 });
 jobSchema.index({ scheduledDate: 1 });
+jobSchema.index({ tier: 1, trustScore: -1 });
 
-// Virtual for job duration in hours
+// Virtuals
 jobSchema.virtual('duration').get(function() {
   if (this.startedAt && this.completedAt) {
     return Math.round((this.completedAt - this.startedAt) / (1000 * 60 * 60));
@@ -171,12 +224,10 @@ jobSchema.virtual('duration').get(function() {
   return null;
 });
 
-// Virtual for application count
 jobSchema.virtual('applicationCount').get(function() {
   return this.applications?.length || 0;
 });
 
-// Virtual for confirmation status
 jobSchema.virtual('confirmationStatus').get(function() {
   if (this.customerConfirmed && this.artisanConfirmed) return 'both_confirmed';
   if (this.customerConfirmed) return 'customer_confirmed';
@@ -184,27 +235,23 @@ jobSchema.virtual('confirmationStatus').get(function() {
   return 'pending_confirmation';
 });
 
-// Method to check if job can be cancelled
+// Methods
 jobSchema.methods.canBeCancelled = function() {
   return ['pending', 'accepted'].includes(this.status) && this.paymentStatus !== 'released';
 };
 
-// Method to check if job can be started
 jobSchema.methods.canBeStarted = function() {
   return this.status === 'accepted' && this.paymentStatus === 'paid';
 };
 
-// Method to check if job can be completed
 jobSchema.methods.canBeCompleted = function() {
   return this.status === 'in_progress';
 };
 
-// Method to check if both parties confirmed
 jobSchema.methods.isFullyConfirmed = function() {
   return this.customerConfirmed && this.artisanConfirmed;
 };
 
-// Method to confirm by customer
 jobSchema.methods.confirmByCustomer = async function() {
   if (this.customerConfirmed) {
     throw new Error('Customer has already confirmed');
@@ -220,7 +267,6 @@ jobSchema.methods.confirmByCustomer = async function() {
   return await this.save();
 };
 
-// Method to confirm by artisan
 jobSchema.methods.confirmByArtisan = async function() {
   if (this.artisanConfirmed) {
     throw new Error('Artisan has already confirmed');
@@ -236,7 +282,6 @@ jobSchema.methods.confirmByArtisan = async function() {
   return await this.save();
 };
 
-// Method to add application
 jobSchema.methods.addApplication = async function(artisanId, message, proposedAmount) {
   const existing = this.applications?.find(
     app => app.artisanId.toString() === artisanId.toString()
@@ -261,7 +306,6 @@ jobSchema.methods.addApplication = async function(artisanId, message, proposedAm
   return await this.save();
 };
 
-// Method to accept application
 jobSchema.methods.acceptApplication = async function(applicationIndex) {
   if (!this.applications || !this.applications[applicationIndex]) {
     throw new Error('Application not found');
@@ -271,7 +315,6 @@ jobSchema.methods.acceptApplication = async function(applicationIndex) {
   this.status = 'accepted';
   this.artisanId = this.applications[applicationIndex].artisanId;
   
-  // Reject other applications
   this.applications.forEach((app, idx) => {
     if (idx !== applicationIndex && app.status === 'pending') {
       app.status = 'rejected';
@@ -281,7 +324,7 @@ jobSchema.methods.acceptApplication = async function(applicationIndex) {
   return await this.save();
 };
 
-// Pre-save middleware to update timestamps
+// Pre-save middleware
 jobSchema.pre('save', function(next) {
   if (this.isModified('status')) {
     const now = new Date();
@@ -297,7 +340,6 @@ jobSchema.pre('save', function(next) {
     }
   }
   
-  // Trim string fields
   if (this.title) this.title = this.title.trim();
   if (this.description) this.description = this.description.trim();
   if (this.cancellationReason) this.cancellationReason = this.cancellationReason.trim();

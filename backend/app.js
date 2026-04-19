@@ -18,6 +18,9 @@ const app = express();
 // ✅ Trust proxy (required for Render)
 app.set('trust proxy', 1);
 
+
+
+require('./cron/autoRelease');
 // ==========================================
 // SECURITY MIDDLEWARE
 // ==========================================
@@ -228,5 +231,7 @@ app.use((req, res, next) => {
 });
 
 app.use(errorHandler);
+
+
 
 module.exports = app;
