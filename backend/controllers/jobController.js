@@ -953,3 +953,17 @@ exports.addReview = async (req, res) => {
     });
   }
 };
+
+// ==========================================
+// APPROVE MILESTONE (placeholder)
+// ==========================================
+exports.approveMilestone = async (req, res) => {
+  res.status(501).json({
+    success: false,
+    message: 'Milestone approval not yet implemented'
+  });
+};
+
+// Debug exports
+console.log('Exported functions:', Object.keys(exports));
+console.log('cancelJob exists:', typeof exports.cancelJob);

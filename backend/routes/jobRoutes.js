@@ -26,8 +26,7 @@ router.post('/:id/accept', authenticate, authorize('artisan'), jobController.acc
 router.post('/:id/start', authenticate, authorize('artisan'), jobController.startJob);
 router.post('/:id/complete', authenticate, jobController.completeJob);
 
-// ✅ FIXED: Changed from POST to PUT to match frontend
-router.put('/:id/cancel', authenticate, jobController.cancelJob);
+
 
 router.post('/:id/review', authenticate, authorize('customer'), jobController.addReview);
 
@@ -36,8 +35,10 @@ router.post('/:id/disputes', authenticate, disputeController.fileDispute);
 router.get('/:id/disputes', authenticate, disputeController.getJobDisputes);
 router.put('/:id/milestones/:milestoneIndex/approve', authenticate, jobController.approveMilestone);
 
+router.put('/:id/cancel', authenticate, jobController.cancelJob);
 // Admin routes
 router.get('/admin/disputes', authenticate, authorize('admin'), disputeController.getAllDisputes);
 router.put('/admin/disputes/:disputeId/resolve', authenticate, authorize('admin'), disputeController.resolveDispute);
+
 
 module.exports = router;
