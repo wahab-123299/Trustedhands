@@ -1,23 +1,7 @@
 [build]
-publish = "C:\\Users\\hp\\OneDrive\\Desktop\\trustedhand\\frontend\\dist"
-publishOrigin = "ui"
-commandOrigin = "ui"
-base = "C:\\Users\\hp\\OneDrive\\Desktop\\trustedhand\\frontend"
+publish = "frontend/dist"
 command = "npm run build"
-
-[build.environment]
-
-[build.processing]
-
-[build.processing.css]
-
-[build.processing.html]
-
-[build.processing.images]
-
-[build.processing.js]
-
-[build.services]
+base = "frontend"
 
 [[redirects]]
 from = "/*"
