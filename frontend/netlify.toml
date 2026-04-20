@@ -1,0 +1,25 @@
+[build]
+publish = "C:\\Users\\hp\\OneDrive\\Desktop\\trustedhand\\frontend\\dist"
+publishOrigin = "ui"
+commandOrigin = "ui"
+base = "C:\\Users\\hp\\OneDrive\\Desktop\\trustedhand\\frontend"
+command = "npm run build"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
