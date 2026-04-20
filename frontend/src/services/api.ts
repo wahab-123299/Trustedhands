@@ -570,6 +570,9 @@ export const jobApi = {
 
   getJobApplications: (jobId: string) => api.get(`/jobs/${jobId}/applications`),
   
+  // ✅ ADDED: Delete job permanently
+  deleteJob: (id: string) => api.delete<ApiResponse<void>>(`/jobs/${id}`),
+  
   accept: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/accept`),
 
   acceptApplication: (applicationId: string) => api.post(`/jobs/applications/${applicationId}/accept`),

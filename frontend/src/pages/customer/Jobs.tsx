@@ -12,7 +12,8 @@ import {
   Plus,
   XCircle,
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,35 +28,30 @@ const CustomerJobs: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   
-  // ✅ FIXED: Only show customer's own jobs
-  const [myPostedJobs, setMyPostedJobs] = useState<Job[]>([]); // Jobs I posted (pending/open)
-  const [myActiveJobs, setMyActiveJobs] = useState<Job[]>([]); // Jobs I posted (in progress/completed)
-  const [availableArtisans, setAvailableArtisans] = useState<any[]>([]); // Available artisans to book
+  const [myPostedJobs, setMyPostedJobs] = useState<Job[]>([]);
+  const [myActiveJobs, setMyActiveJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('posted');
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMyJobs();
   }, []);
 
-  // ✅ FIXED: Fetch only MY jobs (where I'm the customer)
   const fetchMyJobs = async () => {
     try {
       setIsLoading(true);
       
-      // Fetch ONLY my jobs (where I'm the customer)
       const myJobsRes = await jobApi.getMyJobs();
       const allMyJobs = myJobsRes.data.data.jobs || [];
       
-      // ✅ Filter to ensure only MY jobs (customerId matches my user ID)
       const myJobsOnly = allMyJobs.filter((j: Job) => {
         const jobCustomerId = typeof j.customerId === 'string' ? j.customerId : j.customerId?._id;
         return jobCustomerId === user?._id;
       });
       
-      // Separate by status
       setMyPostedJobs(myJobsOnly.filter((j: Job) => 
         ['pending', 'open', 'assigned'].includes(j.status)
       ));
@@ -72,17 +68,32 @@ const CustomerJobs: React.FC = () => {
     }
   };
 
-  // ✅ Cancel job - only for jobs I posted
   const handleCancelJob = async (jobId: string) => {
     try {
       setCancellingJobId(jobId);
       await jobApi.cancel(jobId, 'Cancelled by customer');
       toast.success('Job cancelled successfully');
-      fetchMyJobs(); // Refresh
+      fetchMyJobs();
     } catch (error: any) {
       toast.error(error.response?.data?.error?.message || 'Failed to cancel job');
     } finally {
       setCancellingJobId(null);
+    }
+  };
+
+  // ✅ NEW: Handle permanent delete
+  const handleDeleteJob = async (jobId: string) => {
+    if (!window.confirm('Are you sure? This will permanently delete this job from public listings.')) return;
+    
+    try {
+      setDeletingJobId(jobId);
+      await jobApi.deleteJob(jobId);
+      toast.success('Job deleted successfully');
+      fetchMyJobs();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.message || 'Failed to delete job');
+    } finally {
+      setDeletingJobId(null);
     }
   };
 
@@ -128,7 +139,7 @@ const CustomerJobs: React.FC = () => {
         </Button>
       </div>
 
-      {/* Stats Cards - Only MY jobs */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
@@ -161,7 +172,7 @@ const CustomerJobs: React.FC = () => {
           </TabsTrigger>
         </TabsList>
 
-        {/* My Posted Jobs - Can Cancel These */}
+        {/* My Posted Jobs */}
         <TabsContent value="posted" className="mt-6">
           {myPostedJobs.length === 0 ? (
             <Card className="text-center py-16">
@@ -228,7 +239,6 @@ const CustomerJobs: React.FC = () => {
                             View Details
                           </Button>
                           
-                          {/* ✅ CANCEL BUTTON - Only for my posted jobs that can be cancelled */}
                           {['pending', 'open', 'assigned'].includes(job.status) && (
                             <Button 
                               variant="destructive"
@@ -247,6 +257,23 @@ const CustomerJobs: React.FC = () => {
                             </Button>
                           )}
                         </div>
+
+                        {/* ✅ DELETE BUTTON - Only for pending jobs with no applications */}
+                        {job.status === 'pending' && (job.applications?.length || 0) === 0 && (
+                          <Button 
+                            variant="ghost"
+                            className="w-full text-red-600 hover:text-red-800 hover:bg-red-50"
+                            disabled={deletingJobId === job._id}
+                            onClick={() => handleDeleteJob(job._id)}
+                          >
+                            {deletingJobId === job._id ? (
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : (
+                              <Trash2 className="w-4 h-4 mr-2" />
+                            )}
+                            Delete Permanently
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -256,7 +283,7 @@ const CustomerJobs: React.FC = () => {
           )}
         </TabsContent>
 
-        {/* Active/Completed Jobs - Cannot Cancel These */}
+        {/* Active/Completed Jobs */}
         <TabsContent value="active" className="mt-6">
           {myActiveJobs.length === 0 ? (
             <Card className="text-center py-16">
