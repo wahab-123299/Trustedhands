@@ -10,7 +10,7 @@ router.get('/:id', jobController.getJobById);
 
 // Protected - Customer
 router.post('/', authenticate, authorize('customer'), jobController.createJob);
-router.get('/my/jobs', authenticate, jobController.getMyJobs);
+router.get('/my-jobs', authenticate, jobController.getMyJobs);
 router.put('/:id', authenticate, authorize('customer'), jobController.updateJob);
 router.delete('/:id', authenticate, authorize('customer'), jobController.deleteJob);
 

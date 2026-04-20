@@ -183,6 +183,8 @@ exports.getMyJobs = async (req, res) => {
     const userId = req.user._id;
     const userRole = req.user.role;
 
+    console.log('[getMyJobs] userId:', userId, 'userRole:', userRole);
+
     let query = {};
 
     if (userRole === 'customer') {
@@ -192,6 +194,8 @@ exports.getMyJobs = async (req, res) => {
     }
 
     if (status) query.status = status;
+
+    console.log('[getMyJobs] query:', JSON.stringify(query));
 
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
@@ -219,12 +223,13 @@ exports.getMyJobs = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get my jobs error:', error);
+    console.error('[getMyJobs] ACTUAL ERROR:', error.message);
+    console.error('[getMyJobs] STACK:', error.stack);
     res.status(500).json({
       success: false,
       error: {
         code: 'SERVER_ERROR',
-        message: 'Failed to fetch jobs'
+        message: error.message || 'Failed to fetch jobs'
       }
     });
   }
