@@ -18,55 +18,60 @@ const app = express();
 // ✅ Trust proxy (required for Render)
 app.set('trust proxy', 1);
 
-
-
 require('./cron/autoRelease');
+
 // ==========================================
 // SECURITY MIDDLEWARE
 // ==========================================
+
+// FIXED: Helmet CSP - Allow WebSocket connections and all frontend origins
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://trustedhand.netlify.app',
+  'https://trustedhands.onrender.com',
+  process.env.FRONTEND_URL
+].filter(Boolean);
 
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173', 'https://trustedhands.onrender.com', 'http://localhost:5173', 'http://localhost:3000']
+      styleSrc: ["'self'", "'unsafe-inline'", "https:", "http:"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
+      connectSrc: ["'self'", ...allowedOrigins, "wss:", "ws:", "https:", "http:"],
+      fontSrc: ["'self'", "https:", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'", "https:", "http:"],
+      frameSrc: ["'none'"],
+      upgradeInsecureRequests: []
     }
   },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // ==========================================
-// CORS CONFIGURATION - FIXED
+// CORS CONFIGURATION - FIXED FOR RENDER/PROXY
 // ==========================================
 const corsOptions = {
   origin: function (origin, callback) {
-    const allowedOrigins = [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'https://trustedhand.netlify.app',      // Your Netlify frontend
-      'https://trustedhands.onrender.com',   // No space!
-      process.env.FRONTEND_URL,
-      undefined // Allow requests with no origin
-    ].filter(Boolean);
+    // FIXED: Better logging and handling
+    console.log('[CORS] Request from origin:', origin || 'none (same-origin/server)');
     
-    console.log('[CORS] Request from origin:', origin);
-    console.log('[CORS] Allowed origins:', allowedOrigins);
-    
-    // Allow requests with no origin (like curl, Postman, or same-origin requests)
+    // Allow requests with no origin (curl, Postman, server-to-server, or proxies)
     if (!origin) {
-      console.log('[CORS] Allowed (no origin)');
-      callback(null, true);
-    } else if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
       console.log('[CORS] Allowed:', origin);
       callback(null, true);
     } else {
       console.log('[CORS] Blocked:', origin);
       callback(new Error(`Not allowed by CORS: ${origin}`));
     }
-    // ✅ REMOVED: Duplicate callback that was causing errors
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -179,9 +184,7 @@ app.get('/health', (req, res) => {
     3: 'disconnecting'
   }[dbState] || 'unknown';
 
-  // ✅ FIXED: Return 200 during startup (connecting), 503 only if disconnected
-  // Render accepts 200 or 503, but must respond quickly
-  const isResponding = dbState === 1 || dbState === 2; // connected or connecting
+  const isResponding = dbState === 1 || dbState === 2;
   
   res.status(isResponding ? 200 : 503).json({
     success: dbState === 1,
@@ -190,7 +193,7 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    uptime: process.uptime(), // ✅ FIXED: was process.env.uptime()
+    uptime: process.uptime(),
     database: {
       status: dbStatus,
       connected: dbState === 1,
@@ -230,8 +233,7 @@ app.use((req, res, next) => {
   });
 });
 
+// Global error handler middleware: catches all errors and sends a consistent error response format
 app.use(errorHandler);
-
-
 
 module.exports = app;

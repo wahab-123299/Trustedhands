@@ -77,15 +77,19 @@ exports.getAllJobs = async (req, res) => {
 exports.getJobById = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // FIXED: Defensive populate with strictPopulate: false
     const job = await Job.findById(id)
       .populate('customerId', 'fullName profileImage phone')
-      .populate('artisanId', 'fullName profileImage')
       .populate({
-        path: 'applications',
-        populate: {
-          path: 'artisanId',
-          select: 'fullName profileImage artisanProfile'
-        }
+        path: 'artisanId',
+        select: 'fullName profileImage',
+        options: { strictPopulate: false }
+      })
+      .populate({
+        path: 'applications.artisanId',
+        select: 'fullName profileImage artisanProfile',
+        options: { strictPopulate: false }
       });
 
     if (!job) {
@@ -152,7 +156,7 @@ exports.createJob = async (req, res) => {
       scheduledDate: new Date(scheduledDate),
       customerId: req.user._id,
       artisanId: artisanId || null,
-      status: artisanId ? 'assigned' : 'pending'
+      status: artisanId ? 'accepted' : 'pending' // FIXED: Use 'accepted' not 'assigned'
     });
 
     await job.populate('customerId', 'fullName profileImage');
@@ -175,7 +179,7 @@ exports.createJob = async (req, res) => {
 };
 
 // ==========================================
-// GET MY JOBS (Customer/Artisan)
+// GET MY JOBS (Customer/Artisan) - FIXED
 // ==========================================
 exports.getMyJobs = async (req, res) => {
   try {
@@ -184,6 +188,19 @@ exports.getMyJobs = async (req, res) => {
     const userRole = req.user.role;
 
     console.log('[getMyJobs] userId:', userId, 'userRole:', userRole);
+    console.log('[getMyJobs] userId type:', typeof userId, 'isValidObjectId:', require('mongoose').isValidObjectId(userId));
+
+    // FIXED: Validate userId is valid ObjectId
+    if (!require('mongoose').isValidObjectId(userId)) {
+      console.error('[getMyJobs] Invalid userId:', userId);
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_USER_ID',
+          message: 'Invalid user ID format'
+        }
+      });
+    }
 
     let query = {};
 
@@ -191,6 +208,15 @@ exports.getMyJobs = async (req, res) => {
       query.customerId = userId;
     } else if (userRole === 'artisan') {
       query.artisanId = userId;
+    } else {
+      console.error('[getMyJobs] Unknown role:', userRole);
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ROLE',
+          message: 'Invalid user role'
+        }
+      });
     }
 
     if (status) query.status = status;
@@ -201,19 +227,42 @@ exports.getMyJobs = async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    const jobs = await Job.find(query)
-      .populate('customerId', 'fullName profileImage')
-      .populate('artisanId', 'fullName profileImage')
+    // FIXED: Defensive populate - handle null refs gracefully
+    let jobsQuery = Job.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum);
+
+    // FIXED: Only populate if field exists, with strictPopulate: false
+    jobsQuery = jobsQuery.populate({
+      path: 'customerId',
+      select: 'fullName profileImage',
+      options: { strictPopulate: false }
+    });
+
+    jobsQuery = jobsQuery.populate({
+      path: 'artisanId',
+      select: 'fullName profileImage',
+      options: { strictPopulate: false }
+    });
+
+    const jobs = await jobsQuery.lean(); // FIXED: Use lean() for plain objects
+
+    console.log('[getMyJobs] Found jobs count:', jobs?.length || 0);
+
+    // FIXED: Handle null populated fields gracefully
+    const sanitizedJobs = jobs.map(job => ({
+      ...job,
+      customerId: job.customerId || { fullName: 'Unknown', profileImage: null },
+      artisanId: job.artisanId || null
+    }));
 
     const total = await Job.countDocuments(query);
 
     res.status(200).json({
       success: true,
       data: {
-        jobs,
+        jobs: sanitizedJobs,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -223,13 +272,16 @@ exports.getMyJobs = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('[getMyJobs] ACTUAL ERROR:', error.message);
+    // FIXED: Detailed error logging
+    console.error('[getMyJobs] CRITICAL ERROR:', error.message);
     console.error('[getMyJobs] STACK:', error.stack);
+    console.error('[getMyJobs] REQUEST USER:', req.user);
+    
     res.status(500).json({
       success: false,
       error: {
         code: 'SERVER_ERROR',
-        message: error.message || 'Failed to fetch jobs'
+        message: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch jobs'
       }
     });
   }
@@ -246,7 +298,7 @@ exports.updateJob = async (req, res) => {
     const job = await Job.findOne({
       _id: id,
       customerId: req.user._id,
-      status: { $in: ['pending', 'assigned'] }
+      status: { $in: ['pending', 'accepted'] } // FIXED: 'accepted' not 'assigned'
     });
 
     if (!job) {
@@ -436,7 +488,7 @@ exports.acceptApplication = async (req, res) => {
     const job = await Job.findByIdAndUpdate(
       application.jobId._id,
       {
-        status: 'assigned',
+        status: 'accepted', // FIXED: Use 'accepted' per schema enum
         artisanId: application.artisanId
       },
       { new: true }
@@ -524,7 +576,8 @@ exports.updateJobStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    const validStatuses = ['pending', 'assigned', 'in-progress', 'completed', 'cancelled'];
+    // FIXED: Match schema enum values
+    const validStatuses = ['pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'disputed'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -658,7 +711,7 @@ exports.acceptJob = async (req, res) => {
       });
     }
 
-    job.status = 'in-progress';
+    job.status = 'in_progress';
     job.startedAt = new Date();
     await job.save();
 
@@ -707,12 +760,12 @@ exports.startJob = async (req, res) => {
       });
     }
 
-    if (job.status !== 'assigned') {
+    if (job.status !== 'accepted') {
       return res.status(400).json({
         success: false,
         error: {
           code: 'INVALID_STATUS',
-          message: 'Job must be assigned before starting'
+          message: 'Job must be accepted before starting'
         }
       });
     }
