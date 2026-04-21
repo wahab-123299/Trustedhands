@@ -14,7 +14,7 @@ import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
-import AuthSuccessPage from './pages/AuthSuccessPage';
+import AuthSuccessPage from './pages/AuthSuccesspage.tsx';
 import OAuthCallback from './pages/OAuthCallback';
 import BookArtisan from '@/pages/BookArtisan';
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
