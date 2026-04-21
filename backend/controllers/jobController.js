@@ -4,23 +4,15 @@ const Application = require('../models/Application');
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 
-exports.getMyJobs = async (req, res) => {
+// ==========================================
+// GET ALL JOBS (Public - with filters)
+// ==========================================
+exports.getAllJobs = async (req, res) => {
   try {
-    const { status, page = 1, limit = 10 } = req.query;
-    const userId = req.user._id; // Now guaranteed to be a string
-    const userRole = req.user.role;
-
-    console.log('[getMyJobs] userId:', userId, 'role:', userRole);
-
+    const { status, category, location, page = 1, limit = 10, search } = req.query;
+    
     let query = {};
 
-    if (userRole === 'customer') {
-      query.customerId = new mongoose.Types.ObjectId(userId);
-    } else if (userRole === 'artisan') {
-      query.artisanId = new mongoose.Types.ObjectId(userId);
-    }
-
-    // Handle status array
     if (status) {
       const statusStr = String(status);
       if (statusStr.includes(',')) {
@@ -30,11 +22,19 @@ exports.getMyJobs = async (req, res) => {
       }
     }
 
+    if (category) query.category = category;
+    if (location) query['location.city'] = { $regex: location, $options: 'i' };
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
 
-    
     const jobs = await Job.find(query)
       .populate('customerId', 'fullName profileImage')
       .populate('artisanId', 'fullName profileImage')
@@ -58,7 +58,7 @@ exports.getMyJobs = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('[getMyJobs] ERROR:', error.message);
+    console.error('[getAllJobs] ERROR:', error.message);
     res.status(500).json({
       success: false,
       error: {
@@ -69,12 +69,121 @@ exports.getMyJobs = async (req, res) => {
   }
 };
 
+// ==========================================
+// GET JOB BY ID (Public)
+// ==========================================
+exports.getJobById = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid job ID format'
+        }
+      });
+    }
+
+    const job = await Job.findById(id)
+      .populate('customerId', 'fullName profileImage phone')
+      .populate('artisanId', 'fullName profileImage phone')
+      .lean();
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Job not found'
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: { job }
+    });
+  } catch (error) {
+    console.error('[getJobById] ERROR:', error.message);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'SERVER_ERROR',
+        message: 'Failed to fetch job'
+      }
+    });
+  }
+};
+
+// ==========================================
+// CREATE JOB (Customer only)
+// ==========================================
+exports.createJob = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Validation failed',
+          details: errors.array()
+        }
+      });
+    }
+
+    const {
+      title,
+      description,
+      category,
+      budget,
+      scheduledDate,
+      location,
+      images,
+      tags
+    } = req.body;
+
+    const job = await Job.create({
+      customerId: req.user._id,
+      title,
+      description,
+      category,
+      budget: budget ? parseFloat(budget) : null,
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+      location,
+      images: images || [],
+      tags: tags || [],
+      status: 'pending'
+    });
+
+    await job.populate('customerId', 'fullName profileImage');
+
+    res.status(201).json({
+      success: true,
+      message: 'Job created successfully',
+      data: { job }
+    });
+  } catch (error) {
+    console.error('[createJob] ERROR:', error.message);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'SERVER_ERROR',
+        message: 'Failed to create job'
+      }
+    });
+  }
+};
+
+// ==========================================
+// GET MY JOBS (Customer or Artisan)
+// ==========================================
 exports.getMyJobs = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
     
-    // DEFENSIVE: Handle _id whether it's string, ObjectId, or anything else
     const userIdStr = req.user._id?.toString?.() || String(req.user._id);
     const userId = new mongoose.Types.ObjectId(userIdStr);
     const userRole = req.user.role;
@@ -89,7 +198,6 @@ exports.getMyJobs = async (req, res) => {
       query.artisanId = userId;
     }
 
-    // Handle status array
     if (status) {
       const statusStr = String(status);
       if (statusStr.includes(',')) {
@@ -128,7 +236,6 @@ exports.getMyJobs = async (req, res) => {
   } catch (error) {
     console.error('[getMyJobs] ERROR:', error.name, error.message);
     console.error('[getMyJobs] STACK:', error.stack);
-
 
     res.status(500).json({
       success: false,
