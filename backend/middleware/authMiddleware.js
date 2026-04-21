@@ -73,9 +73,7 @@ exports.authenticate = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Access denied. No token provided.');
     }
 
-
     const decoded = verifyToken(token);
-
 
     console.log('[Auth Middleware] Finding user:', decoded.userId);
     
@@ -124,7 +122,43 @@ exports.authenticate = async (req, res, next) => {
   }
 };
 
+// ==========================================
+// GENERIC ROLE AUTHORIZATION (NEW - ADD THIS)
+// ==========================================
 
+/**
+ * Authorize by role(s)
+ * @param {...String} roles - Allowed roles (e.g., 'customer', 'artisan', 'admin')
+ * @returns {Function} Express middleware
+ * 
+ * Usage:
+ *   authorize('customer')           // single role
+ *   authorize('customer', 'admin')  // multiple roles
+ *   authorize(['customer', 'admin']) // array of roles
+ */
+exports.authorize = (...roles) => {
+  return (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError('AUTH_UNAUTHORIZED', 'Authentication required.');
+      }
+
+      // Flatten roles array (handle both authorize('a', 'b') and authorize(['a', 'b']))
+      const allowedRoles = roles.flat();
+
+      if (!allowedRoles.includes(req.user.role)) {
+        throw new AppError(
+          'AUTH_FORBIDDEN', 
+          `Access denied. Required role: ${allowedRoles.join(' or ')}. Your role: ${req.user.role}`
+        );
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
 
 // ==========================================
 // ARTISAN-SPECIFIC AUTHORIZATION
