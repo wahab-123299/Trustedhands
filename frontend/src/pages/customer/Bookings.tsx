@@ -100,7 +100,7 @@ const CustomerBookings: React.FC = () => {
       
       const enrichedJobs = jobs.map((job: Job) => ({
         ...job,
-        artisanDetails: typeof job.artisanId === 'object' ? {
+        artisanDetails: job.artisanId && typeof job.artisanId === 'object' ? {
           fullName: job.artisanId.fullName || 'Unknown',
           phone: job.artisanId.phone || '',
           profileImage: job.artisanId.profileImage,
@@ -360,8 +360,8 @@ const CustomerBookings: React.FC = () => {
                               </h3>
                               <p className="text-sm text-gray-600 mb-3">{booking.category}</p>
 
-                              {/* Artisan Info */}
-                              {booking.artisanDetails && (
+                              {/* Artisan Info - FIXED: Added null checks */}
+                              {booking.artisanDetails ? (
                                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                                   <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-semibold overflow-hidden">
                                     {booking.artisanDetails.profileImage ? (
@@ -371,24 +371,35 @@ const CustomerBookings: React.FC = () => {
                                         className="w-full h-full object-cover"
                                       />
                                     ) : (
-                                      booking.artisanDetails.fullName.charAt(0)
+                                      booking.artisanDetails.fullName?.charAt(0) || '?'
                                     )}
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <p className="font-medium text-sm truncate">
-                                      {booking.artisanDetails.fullName}
+                                      {booking.artisanDetails.fullName || 'Unknown Artisan'}
                                     </p>
                                     <div className="flex items-center gap-2 text-xs text-gray-500">
                                       <Phone className="w-3 h-3" />
                                       {booking.artisanDetails.phone || 'No phone'}
                                     </div>
                                   </div>
-                                  {booking.artisanDetails.averageRating && (
+                                  {booking.artisanDetails.averageRating ? (
                                     <div className="flex items-center gap-1 text-sm">
                                       <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                                       {booking.artisanDetails.averageRating.toFixed(1)}
                                     </div>
-                                  )}
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                  <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-semibold">
+                                    ?
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="font-medium text-sm text-gray-600">
+                                      Awaiting artisan assignment
+                                    </p>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -503,7 +514,7 @@ const CustomerBookings: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Rate Your Experience</DialogTitle>
             <DialogDescription>
-              How was your service with {selectedBooking?.artisanDetails?.fullName}?
+              How was your service with {selectedBooking?.artisanDetails?.fullName || 'the artisan'}?
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">

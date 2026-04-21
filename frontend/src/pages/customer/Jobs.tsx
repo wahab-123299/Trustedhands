@@ -310,7 +310,7 @@ const CustomerJobs: React.FC = () => {
                         <h3 className="font-semibold mt-2">{job.title}</h3>
                         <p className="text-sm text-gray-600">₦{job.budget?.toLocaleString()}</p>
                         <p className="text-sm text-gray-500 mt-1">
-                          Artisan: {typeof job.artisanId === 'object' ? job.artisanId?.fullName || 'Assigned' : 'Assigned'}
+                          Artisan: {typeof job.artisanId === 'object' && job.artisanId?job.artisanId.fullName || 'Assigned' : 'not assigned'}
                         </p>
                       </div>
                       <ChevronRight className="w-5 h-5 text-gray-400" />
