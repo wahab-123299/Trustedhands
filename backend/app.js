@@ -15,16 +15,26 @@ const { errorHandler } = require('./middleware');
 
 const app = express();
 
-// ✅ Trust proxy (required for Render)
 app.set('trust proxy', 1);
 
 require('./cron/autoRelease');
 
-// ==========================================
-// SECURITY MIDDLEWARE
-// ==========================================
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173', 'https://trustedhands.onrender.com', 'http://localhost:5173', 'http://localhost:3000', 'wss://trustedhands.onrender.com']
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
 
-// FIXED: Helmet CSP - Allow WebSocket connections and all frontend origins
+// ==========================================
+// CORS — FIXED FOR RENDER/NETLIFY PROXY
+// ==========================================
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
@@ -33,51 +43,31 @@ const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https:", "http:"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
-      connectSrc: ["'self'", ...allowedOrigins, "wss:", "ws:", "https:", "http:"],
-      fontSrc: ["'self'", "https:", "data:"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'", "https:", "http:"],
-      frameSrc: ["'none'"],
-      upgradeInsecureRequests: []
-    }
-  },
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-
-// ==========================================
-// CORS CONFIGURATION - FIXED FOR RENDER/PROXY
-// ==========================================
 const corsOptions = {
   origin: function (origin, callback) {
-    // FIXED: Better logging and handling
-    console.log('[CORS] Request from origin:', origin || 'none (same-origin/server)');
+    console.log('[CORS] Request from origin:', origin || 'undefined');
     
-    // Allow requests with no origin (curl, Postman, server-to-server, or proxies)
+    // FIXED: Allow requests with no origin (Render proxy, curl, mobile apps)
     if (!origin) {
+      console.log('[CORS] Allowed (no origin)');
       return callback(null, true);
     }
     
     if (allowedOrigins.includes(origin)) {
       console.log('[CORS] Allowed:', origin);
-      callback(null, true);
-    } else {
-      console.log('[CORS] Blocked:', origin);
-      callback(new Error(`Not allowed by CORS: ${origin}`));
+      return callback(null, true);
     }
+    
+    console.log('[CORS] Blocked:', origin);
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
-  maxAge: 86400
+  maxAge: 86400,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
@@ -233,7 +223,6 @@ app.use((req, res, next) => {
   });
 });
 
-// Global error handler middleware: catches all errors and sends a consistent error response format
 app.use(errorHandler);
 
 module.exports = app;

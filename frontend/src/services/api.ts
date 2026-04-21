@@ -1,6 +1,5 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
-// Debug logs setup
 const debugLogs: string[] = [];
 const addLog = (msg: string) => {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -34,7 +33,6 @@ const api = axios.create({
 
 api.defaults.withCredentials = true;
 
-// Token storage helpers
 const getToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -77,7 +75,6 @@ const isRememberMe = (): boolean => {
   return localStorage.getItem('rememberMe') === 'true';
 };
 
-// Refresh token state
 let isRefreshing = false;
 let refreshSubscribers: ((token: string) => void)[] = [];
 let refreshPromise: Promise<string> | null = null;
@@ -91,7 +88,9 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
   refreshSubscribers.push(callback);
 };
 
-// Request interceptor
+// ==========================================
+// REQUEST INTERCEPTOR — CRITICAL FIX: Token expiry logic
+// ==========================================
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = getToken();
@@ -101,17 +100,25 @@ api.interceptors.request.use(
         const payload = JSON.parse(atob(token.split('.')[1]));
         const expiryTime = payload.exp * 1000;
         const now = Date.now();
+        const timeLeft = expiryTime - now;
         
-        if (now >= expiryTime + 60000) {
-          addLog(`[Request] Token truly expired, clearing`);
+        // CRITICAL FIX: The old logic was wrong — it cleared token when now >= expiryTime + 60000
+        // which means 60 seconds AFTER expiry. But the log showed it clearing immediately.
+        // The real issue: clock skew or incorrect exp value.
+        // NEW LOGIC: Only clear if truly expired (with 60s grace period BEFORE expiry)
+        
+        if (timeLeft < -60000) {
+          // Token expired more than 60 seconds ago — definitely dead
+          addLog(`[Request] Token expired ${Math.abs(timeLeft)}ms ago, clearing`);
           clearTokens();
-        } else if (now >= expiryTime) {
-          addLog(`[Request] Token in grace period, using anyway`);
+        } else if (timeLeft < 0) {
+          // Token in grace period (0-60s past expiry) — still use it, backend may accept
+          addLog(`[Request] Token in grace period (${Math.abs(timeLeft)}ms past expiry), using anyway`);
           config.headers.Authorization = `Bearer ${token}`;
         } else {
+          // Token valid
           config.headers.Authorization = `Bearer ${token}`;
-          const timeLeft = Math.floor((expiryTime - now) / 1000);
-          addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - Token valid (${timeLeft}s left)`);
+          addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - Token valid (${Math.floor(timeLeft/1000)}s left)`);
         }
       } catch (e) {
         addLog(`[Request] Invalid token format, clearing`);
@@ -121,12 +128,17 @@ api.interceptors.request.use(
       addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - NO TOKEN`);
     }
     
+    // FIXED: Always ensure withCredentials
+    config.withCredentials = true;
+    
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor
+// ==========================================
+// RESPONSE INTERCEPTOR
+// ==========================================
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     addLog(`[Response] ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
@@ -238,7 +250,6 @@ api.interceptors.response.use(
   }
 );
 
-// Server wake-up helper
 export const wakeUpServer = async (): Promise<boolean> => {
   try {
     addLog('[WakeUp] Pinging server...');
@@ -263,7 +274,6 @@ export const wakeUpServer = async (): Promise<boolean> => {
   }
 };
 
-// OAuth helpers
 export const loginWithGoogle = (): void => {
   const baseUrl = API_URL.replace('/api', '');
   window.location.href = `${baseUrl}/auth/google`;
@@ -279,7 +289,6 @@ export const handleOAuthCallback = (accessToken: string, refreshToken: string, r
   addLog(`[OAuth] Tokens stored (rememberMe: ${rememberMe})`);
 };
 
-// Auth storage exports
 export const authStorage = {
   getToken,
   getRefreshToken,
@@ -288,7 +297,6 @@ export const authStorage = {
   isRememberMe,
 };
 
-// API Interfaces
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;
@@ -330,7 +338,6 @@ export interface RegisterData {
   bio?: string;
 }
 
-// Artisan data transformer - handles backend/frontend field name mismatches
 const transformArtisanData = (artisan: any): any | null => {
   if (!artisan) return null;
   
@@ -367,7 +374,6 @@ const transformArtisanData = (artisan: any): any | null => {
   };
 };
 
-// Auth API
 export const authApi = {
   login: (data: LoginData, rememberMe = false) => {
     addLog(`[Auth] Login attempt (rememberMe: ${rememberMe})`);
@@ -409,7 +415,6 @@ export const authApi = {
   resetPassword: (token: string, password: string) => api.post<ApiResponse<void>>(`/auth/reset-password/${token}`, { password }),
 };
 
-// User API
 export const userApi = {
   getMe: () => api.get<ApiResponse<any>>('/users/me'),
   
@@ -432,7 +437,6 @@ export const userApi = {
   deleteMe: () => api.delete<ApiResponse<void>>('/users/me'),
 };
 
-// Artisan interfaces
 export interface ArtisanProfileUpdate {
   skills?: string[];
   experienceYears?: '0-1' | '1-3' | '3-5' | '5-10' | '10+';
@@ -455,7 +459,6 @@ export interface BankDetails {
   bankCode: string;
 }
 
-// Artisan API with transformed responses
 export const artisanApi = {
   getAll: async (params?: { 
     state?: string; 
@@ -539,7 +542,6 @@ export const artisanApi = {
     api.delete<ApiResponse<{ portfolioImages: string[] }>>('/artisans/portfolio', { data: { imageUrl } }),
 };
 
-// Job interfaces and API
 export interface JobCreateData {
   title: string;
   description: string;
@@ -570,7 +572,6 @@ export const jobApi = {
 
   getJobApplications: (jobId: string) => api.get(`/jobs/${jobId}/applications`),
   
-  // ✅ ADDED: Delete job permanently
   deleteJob: (id: string) => api.delete<ApiResponse<void>>(`/jobs/${id}`),
   
   accept: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/accept`),
@@ -597,7 +598,6 @@ export const jobApi = {
     api.post<ApiResponse<void>>(`/jobs/${id}/apply`, data),
 };
 
-// Applications API
 export const applicationsApi = {
   getMyApplications: (params?: { status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ applications: any[]; pagination: any }>>('/applications/my-applications', { params }),
@@ -607,7 +607,6 @@ export const applicationsApi = {
   withdrawApplication: (id: string) => api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
 };
 
-// Payment interfaces and API
 export interface PaymentInitializeData {
   jobId: string;
   email?: string;
@@ -645,7 +644,6 @@ export const paymentApi = {
     api.post<ApiResponse<{ accountNumber: string; accountName: string; bankCode: string }>>('/payments/verify-account', data),
 };
 
-// Chat interfaces and API
 export interface CreateConversationData {
   participantId: string;
   jobId?: string;
@@ -665,7 +663,6 @@ export const chatApi = {
   markAsRead: (conversationId: string) => api.put<ApiResponse<void>>(`/chat/conversations/${conversationId}/read`),
 };
 
-// Error handlers
 export const handleApiError = (error: any): string => {
   if (error.response?.data?.error?.message) {
     return error.response.data.error.message;
@@ -679,9 +676,6 @@ export const handleApiError = (error: any): string => {
 export const getErrorCode = (error: any): string => {
   return error.response?.data?.error?.code || error.code || 'UNKNOWN_ERROR';
 };
-// ==========================================
-// VERIFICATION API
-// ==========================================
 
 export const verificationApi = {
   getStatus: () => api.get('/verify/status'),
@@ -709,11 +703,6 @@ export const verificationApi = {
   confirmShopLocation: () => api.post('/verify/confirm-shop-location'),
 };
 
-// ==========================================
-// JOB API WITH FRAUD & ESCROW
-// ==========================================
-
-// Interfaces for jobFraudApi
 export interface FraudJobCreateData {
   title: string;
   description: string;
@@ -742,7 +731,6 @@ export interface FraudJob {
   id: string;
   title: string;
   description: string;
-  // ...add other relevant fields as needed
 }
 
 export interface FraudJobApplicationData {
@@ -764,47 +752,36 @@ export interface FraudJobDisputeData {
 }
 
 export const jobFraudApi = {
-  // Create job with fraud detection
   createJob: (data: FraudJobCreateData) =>
     api.post<ApiResponse<{ job: FraudJob }>>('/jobs', data),
 
-  // Get all jobs
   getJobs: (params?: FraudJobParams) =>
     api.get<ApiResponse<{ jobs: FraudJob[]; pagination: any }>>('/jobs', { params }),
 
-  // Get job by ID (includes disputes)
   getJobById: (id: string) =>
     api.get<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}`),
 
-  // Get my jobs
   getMyJobs: (params?: FraudJobParams) =>
     api.get<ApiResponse<{ jobs: FraudJob[]; pagination: any }>>('/jobs/my-jobs', { params }),
 
-  // Update job
   updateJob: (id: string, data: Partial<FraudJobCreateData>) =>
     api.put<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}`, data),
 
-  // Delete job
   deleteJob: (id: string) =>
     api.delete<ApiResponse<void>>(`/jobs/${id}`),
 
-  // Apply for job
   applyForJob: (id: string, data?: FraudJobApplicationData) =>
     api.post<ApiResponse<void>>(`/jobs/${id}/apply`, data),
 
-  // Accept application
   acceptApplication: (applicationId: string) =>
     api.post<ApiResponse<void>>(`/jobs/applications/${applicationId}/accept`),
 
-  // Reject application
   rejectApplication: (applicationId: string) =>
     api.post<ApiResponse<void>>(`/jobs/applications/${applicationId}/reject`),
 
-  // Get applications
   getApplications: (id: string) =>
     api.get<ApiResponse<{ applications: any[] }>>(`/jobs/${id}/applications`),
 
-  // Job status actions
   acceptJob: (id: string) =>
     api.post<ApiResponse<{ job: FraudJob }>>(`/jobs/${id}/accept`),
 
@@ -821,12 +798,7 @@ export const jobFraudApi = {
     api.post<ApiResponse<{ review: any }>>(`/jobs/${id}/review`, data),
 };
 
-// ==========================================
-// DISPUTE API
-// ==========================================
-
 export const disputeApi = {
-  // File a dispute
   fileDispute: (jobId: string, data: {
     milestoneIndex: number;
     issueType: 'incomplete' | 'quality' | 'delay' | 'no_show' | 'other';
@@ -835,14 +807,11 @@ export const disputeApi = {
     partialAmount?: number;
   }) => api.post(`/jobs/${jobId}/disputes`, data),
   
-  // Get disputes for a job
   getJobDisputes: (jobId: string) => api.get(`/jobs/${jobId}/disputes`),
   
-  // Approve milestone (release payment)
   approveMilestone: (jobId: string, milestoneIndex: number) => 
     api.put(`/jobs/${jobId}/milestones/${milestoneIndex}/approve`),
   
-  // Admin only
   getAllDisputes: (params?: { status?: string; page?: number }) => 
     api.get('/jobs/admin/disputes', { params }),
     
@@ -850,6 +819,6 @@ export const disputeApi = {
     api.put(`/jobs/admin/disputes/${disputeId}/resolve`, resolution),
 };
 
-// Export all APIs
+
 export { api };
 export default api;

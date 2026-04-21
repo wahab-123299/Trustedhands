@@ -2,48 +2,46 @@ const Job = require('../models/Job');
 const User = require('../models/User');
 const Application = require('../models/Application');
 const { validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 
-// ==========================================
-// GET ALL JOBS (Public)
-// ==========================================
-exports.getAllJobs = async (req, res) => {
+exports.getMyJobs = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      status = 'pending',
-      category,
-      state,
-      city,
-      minBudget,
-      maxBudget,
-      sortBy = 'createdAt'
-    } = req.query;
+    const { status, page = 1, limit = 10 } = req.query;
+    const userId = req.user._id; // Now guaranteed to be a string
+    const userRole = req.user.role;
 
-    const query = { status };
-    if (category) query.category = category;
-    if (state) query['location.state'] = state;
-    if (city) query['location.city'] = city;
-    if (minBudget || maxBudget) {
-      query.budget = {};
-      if (minBudget) query.budget.$gte = parseInt(minBudget);
-      if (maxBudget) query.budget.$lte = parseInt(maxBudget);
+    console.log('[getMyJobs] userId:', userId, 'role:', userRole);
+
+    let query = {};
+
+    if (userRole === 'customer') {
+      query.customerId = new mongoose.Types.ObjectId(userId);
+    } else if (userRole === 'artisan') {
+      query.artisanId = new mongoose.Types.ObjectId(userId);
     }
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    // Handle status array
+    if (status) {
+      const statusStr = String(status);
+      if (statusStr.includes(',')) {
+        query.status = { $in: statusStr.split(',').map(s => s.trim()) };
+      } else {
+        query.status = statusStr.trim();
+      }
+    }
+
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
 
-    const sortOptions = {};
-    if (sortBy === 'budget') sortOptions.budget = -1;
-    else if (sortBy === 'date') sortOptions.createdAt = -1;
-    else sortOptions.createdAt = -1;
-
+    
     const jobs = await Job.find(query)
       .populate('customerId', 'fullName profileImage')
-      .sort(sortOptions)
+      .populate('artisanId', 'fullName profileImage')
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
 
     const total = await Job.countDocuments(query);
 
@@ -60,7 +58,7 @@ exports.getAllJobs = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get all jobs error:', error);
+    console.error('[getMyJobs] ERROR:', error.message);
     res.status(500).json({
       success: false,
       error: {
@@ -71,136 +69,17 @@ exports.getAllJobs = async (req, res) => {
   }
 };
 
-// ==========================================
-// GET JOB BY ID (Public)
-// ==========================================
-exports.getJobById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // FIXED: Defensive populate with strictPopulate: false
-    const job = await Job.findById(id)
-      .populate('customerId', 'fullName profileImage phone')
-      .populate({
-        path: 'artisanId',
-        select: 'fullName profileImage',
-        options: { strictPopulate: false }
-      })
-      .populate({
-        path: 'applications.artisanId',
-        select: 'fullName profileImage artisanProfile',
-        options: { strictPopulate: false }
-      });
 
-    if (!job) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Job not found'
-        }
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: { job }
-    });
-  } catch (error) {
-    console.error('Get job by id error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'SERVER_ERROR',
-        message: 'Failed to fetch job'
-      }
-    });
-  }
-};
-
-// ==========================================
-// CREATE JOB (Customer only)
-// ==========================================
-exports.createJob = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Validation failed',
-          details: errors.array()
-        }
-      });
-    }
-
-    const {
-      title,
-      description,
-      category,
-      location,
-      budget,
-      budgetType = 'fixed',
-      scheduledDate,
-      artisanId
-    } = req.body;
-
-    const job = await Job.create({
-      title,
-      description,
-      category,
-      location,
-      budget: parseInt(budget),
-      budgetType,
-      scheduledDate: new Date(scheduledDate),
-      customerId: req.user._id,
-      artisanId: artisanId || null,
-      status: artisanId ? 'accepted' : 'pending' // FIXED: Use 'accepted' not 'assigned'
-    });
-
-    await job.populate('customerId', 'fullName profileImage');
-
-    res.status(201).json({
-      success: true,
-      message: 'Job created successfully',
-      data: { job }
-    });
-  } catch (error) {
-    console.error('Create job error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'SERVER_ERROR',
-        message: 'Failed to create job'
-      }
-    });
-  }
-};
-
-// ==========================================
-// GET MY JOBS (Customer/Artisan) - FIXED
-// ==========================================
 exports.getMyJobs = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const userId = req.user._id;
+    
+    // DEFENSIVE: Handle _id whether it's string, ObjectId, or anything else
+    const userIdStr = req.user._id?.toString?.() || String(req.user._id);
+    const userId = new mongoose.Types.ObjectId(userIdStr);
     const userRole = req.user.role;
 
-    console.log('[getMyJobs] userId:', userId, 'userRole:', userRole);
-    console.log('[getMyJobs] userId type:', typeof userId, 'isValidObjectId:', require('mongoose').isValidObjectId(userId));
-
-    // FIXED: Validate userId is valid ObjectId
-    if (!require('mongoose').isValidObjectId(userId)) {
-      console.error('[getMyJobs] Invalid userId:', userId);
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_USER_ID',
-          message: 'Invalid user ID format'
-        }
-      });
-    }
+    console.log('[getMyJobs] userId:', userIdStr, 'role:', userRole);
 
     let query = {};
 
@@ -208,61 +87,36 @@ exports.getMyJobs = async (req, res) => {
       query.customerId = userId;
     } else if (userRole === 'artisan') {
       query.artisanId = userId;
-    } else {
-      console.error('[getMyJobs] Unknown role:', userRole);
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ROLE',
-          message: 'Invalid user role'
-        }
-      });
     }
 
-    if (status) query.status = status;
+    // Handle status array
+    if (status) {
+      const statusStr = String(status);
+      if (statusStr.includes(',')) {
+        query.status = { $in: statusStr.split(',').map(s => s.trim()) };
+      } else {
+        query.status = statusStr.trim();
+      }
+    }
 
-    console.log('[getMyJobs] query:', JSON.stringify(query));
-
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
 
-    // FIXED: Defensive populate - handle null refs gracefully
-    let jobsQuery = Job.find(query)
+    const jobs = await Job.find(query)
+      .populate('customerId', 'fullName profileImage')
+      .populate('artisanId', 'fullName profileImage')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limitNum);
-
-    // FIXED: Only populate if field exists, with strictPopulate: false
-    jobsQuery = jobsQuery.populate({
-      path: 'customerId',
-      select: 'fullName profileImage',
-      options: { strictPopulate: false }
-    });
-
-    jobsQuery = jobsQuery.populate({
-      path: 'artisanId',
-      select: 'fullName profileImage',
-      options: { strictPopulate: false }
-    });
-
-    const jobs = await jobsQuery.lean(); // FIXED: Use lean() for plain objects
-
-    console.log('[getMyJobs] Found jobs count:', jobs?.length || 0);
-
-    // FIXED: Handle null populated fields gracefully
-    const sanitizedJobs = jobs.map(job => ({
-      ...job,
-      customerId: job.customerId || { fullName: 'Unknown', profileImage: null },
-      artisanId: job.artisanId || null
-    }));
+      .limit(limitNum)
+      .lean();
 
     const total = await Job.countDocuments(query);
 
     res.status(200).json({
       success: true,
       data: {
-        jobs: sanitizedJobs,
+        jobs,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -272,16 +126,15 @@ exports.getMyJobs = async (req, res) => {
       }
     });
   } catch (error) {
-    // FIXED: Detailed error logging
-    console.error('[getMyJobs] CRITICAL ERROR:', error.message);
+    console.error('[getMyJobs] ERROR:', error.name, error.message);
     console.error('[getMyJobs] STACK:', error.stack);
-    console.error('[getMyJobs] REQUEST USER:', req.user);
-    
+
+
     res.status(500).json({
       success: false,
       error: {
         code: 'SERVER_ERROR',
-        message: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch jobs'
+        message: process.env.NODE_ENV === 'development' ? `${error.name}: ${error.message}` : 'Failed to fetch jobs'
       }
     });
   }
@@ -298,7 +151,7 @@ exports.updateJob = async (req, res) => {
     const job = await Job.findOne({
       _id: id,
       customerId: req.user._id,
-      status: { $in: ['pending', 'accepted'] } // FIXED: 'accepted' not 'assigned'
+      status: { $in: ['pending', 'assigned'] }
     });
 
     if (!job) {
@@ -488,7 +341,7 @@ exports.acceptApplication = async (req, res) => {
     const job = await Job.findByIdAndUpdate(
       application.jobId._id,
       {
-        status: 'accepted', // FIXED: Use 'accepted' per schema enum
+        status: 'assigned',
         artisanId: application.artisanId
       },
       { new: true }
@@ -576,8 +429,7 @@ exports.updateJobStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    // FIXED: Match schema enum values
-    const validStatuses = ['pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'disputed'];
+    const validStatuses = ['pending', 'assigned', 'in-progress', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -711,7 +563,7 @@ exports.acceptJob = async (req, res) => {
       });
     }
 
-    job.status = 'in_progress';
+    job.status = 'in-progress';
     job.startedAt = new Date();
     await job.save();
 
@@ -760,12 +612,12 @@ exports.startJob = async (req, res) => {
       });
     }
 
-    if (job.status !== 'accepted') {
+    if (job.status !== 'assigned') {
       return res.status(400).json({
         success: false,
         error: {
           code: 'INVALID_STATUS',
-          message: 'Job must be accepted before starting'
+          message: 'Job must be assigned before starting'
         }
       });
     }

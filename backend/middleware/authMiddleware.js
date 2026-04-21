@@ -73,13 +73,16 @@ exports.authenticate = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Access denied. No token provided.');
     }
 
-    // Verify token signature and expiration
+
     const decoded = verifyToken(token);
 
-    // Find user
+
     console.log('[Auth Middleware] Finding user:', decoded.userId);
+    
+    // FIXED: Use .lean() to get plain object, not Mongoose document
     const user = await User.findById(decoded.userId)
-      .select('_id email role fullName phone isActive profileImage location');
+      .select('_id email role fullName phone isActive profileImage location')
+      .lean();
 
     if (!user) {
       console.log('[Auth Middleware] User not found:', decoded.userId);
@@ -91,10 +94,11 @@ exports.authenticate = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated. Contact support.');
     }
 
-    // Check if token is blacklisted
+    // Check blacklist
     console.log('[Auth Middleware] Checking blacklist...');
     const userWithTokens = await User.findById(decoded.userId)
-      .select('blacklistedTokens');
+      .select('blacklistedTokens')
+      .lean();
     
     const isBlacklisted = userWithTokens.blacklistedTokens?.some(
       bt => bt.token === token
@@ -105,11 +109,14 @@ exports.authenticate = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please login again.');
     }
 
-    // Attach user and token to request for downstream use
+    // CRITICAL FIX: Ensure _id is a string for downstream controllers
+    user._id = user._id.toString();
+    
     req.user = user;
     req.token = token;
     
     console.log('[Auth Middleware] === AUTHENTICATION SUCCESS ===');
+    console.log('[Auth Middleware] req.user._id:', req.user._id, 'type:', typeof req.user._id);
     next();
   } catch (error) {
     console.error('[Auth Middleware] === AUTHENTICATION FAILED ===', error.message);
@@ -117,31 +124,7 @@ exports.authenticate = async (req, res, next) => {
   }
 };
 
-// ==========================================
-// ROLE-BASED AUTHORIZATION
-// ==========================================
 
-/**
- * Authorize by role(s)
- * @param  {...String} roles - Allowed roles ('customer', 'artisan', 'admin')
- * @returns {Function} Express middleware
- */
-exports.authorize = (...roles) => {
-  return (req, res, next) => {
-    if (!req.user) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required.'));
-    }
-    
-    if (!roles.includes(req.user.role)) {
-      return next(new AppError(
-        'AUTH_UNAUTHORIZED', 
-        `Access denied. Required role: ${roles.join(' or ')}. Your role: ${req.user.role}.`
-      ));
-    }
-    
-    next();
-  };
-};
 
 // ==========================================
 // ARTISAN-SPECIFIC AUTHORIZATION

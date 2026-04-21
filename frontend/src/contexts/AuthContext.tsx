@@ -13,7 +13,6 @@ import { io, Socket } from "socket.io-client";
 import { authApi, userApi, RegisterData } from "@/services/api";
 import { User, ArtisanProfile } from "@/types";
 
-// Store logs for debugging
 const debugLogs: string[] = [];
 const addLog = (msg: string) => {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -22,7 +21,6 @@ const addLog = (msg: string) => {
   if (debugLogs.length > 100) debugLogs.shift();
 };
 
-// Expose to window
 if (typeof window !== 'undefined') {
   (window as any).getAuthLogs = () => {
     console.log('=== AUTH CONTEXT LOGS ===\n' + debugLogs.join('\n'));
@@ -32,10 +30,6 @@ if (typeof window !== 'undefined') {
     debugLogs.length = 0;
   };
 }
-
-// ==========================================
-// TYPES
-// ==========================================
 
 interface AuthResponseData {
   user: User;
@@ -63,7 +57,7 @@ interface AuthContextType {
   updateUser: (data: Partial<User>) => void;
   updateArtisanProfile: (data: Partial<ArtisanProfile>) => void;
   refreshUser: () => Promise<void>;
-  updateUserFromOAuth: (user: User, token: string) => void; // ✅ ADDED
+  updateUserFromOAuth: (user: User, token: string) => void;
   socket: Socket | null;
   socketConnected: boolean;
 }
@@ -77,15 +71,7 @@ interface AuthState {
   isInitialized: boolean;
 }
 
-// ==========================================
-// CONTEXT
-// ==========================================
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// ==========================================
-// PROVIDER
-// ==========================================
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<AuthState>({
@@ -110,9 +96,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const API_URL = import.meta.env.VITE_API_URL || "https://trustedhands.onrender.com/api";
   const SOCKET_URL = API_URL.replace("/api", "");
 
-  // ==========================================
-  // TOKEN STORAGE HELPERS (Remember Me Support)
-  // ==========================================
 
   const getToken = useCallback((): string | null => {
     if (typeof window === 'undefined') return null;
@@ -142,9 +125,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     sessionStorage.removeItem('user');
   }, []);
 
-  // ==========================================
-  // SOCKET - FIXED WITH TOKEN & RECONNECTION
-  // ==========================================
 
   const disconnectSocket = useCallback(() => {
     if (socketRef.current) {
@@ -163,18 +143,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     addLog(`[Socket] Connecting to: ${SOCKET_URL}`);
     addLog(`[Socket] Token present: ${!!currentToken}`);
 
+    // FIXED: WebSocket first, polling fallback — critical for Render
     const socketInstance = io(SOCKET_URL, {
       withCredentials: true,
-      transports: ["polling", "websocket"],
+      transports: ["websocket", "polling"], // FIXED: websocket first
       auth: { 
         userId,
         token: currentToken
       },
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+      timeout: 30000,
+      forceNew: true,
+      autoConnect: true,
     });
 
     socketInstance.on("connect", () => {
@@ -186,6 +169,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     socketInstance.on("disconnect", (reason) => {
       addLog(`[Socket] Disconnected: ${reason}`);
       setSocketConnected(false);
+      
+      if (reason === 'io server disconnect') {
+        addLog('[Socket] Server disconnected, will reconnect...');
+        setTimeout(() => socketInstance.connect(), 2000);
+      }
     });
 
     socketInstance.on("connect_error", (err) => {
@@ -214,13 +202,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       addLog(`[Socket] Server error: ${err.message || err}`);
     });
 
+    socketInstance.io.on("reconnect", (attempt) => {
+      addLog(`[Socket] Reconnected after ${attempt} attempts`);
+      setSocketConnected(true);
+      socketInstance.emit("join_personal", { userId });
+    });
+
+    socketInstance.io.on("reconnect_attempt", (attempt) => {
+      addLog(`[Socket] Reconnect attempt ${attempt}`);
+    });
+
+    socketInstance.io.on("reconnect_error", (err) => {
+      addLog(`[Socket] Reconnect error: ${err.message}`);
+    });
+
     socketRef.current = socketInstance;
     setSocket(socketInstance);
   }, [disconnectSocket, SOCKET_URL, navigate, clearTokens]);
 
-  // ==========================================
-  // INIT AUTH
-  // ==========================================
 
   useEffect(() => {
     if (hasInitialized.current) {
@@ -306,10 +305,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       disconnectSocket();
     };
   }, [connectSocket, disconnectSocket, getToken, clearTokens]);
-
-  // ==========================================
-  // LOGIN - WITH REMEMBER ME SUPPORT
-  // ==========================================
+  
 
   const login = useCallback(
     async (email: string, password: string, rememberMe: boolean = true) => {
@@ -372,9 +368,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [connectSocket, navigate, location.state, storeToken, getToken]
   );
 
-  // ==========================================
-  // REGISTER - WITH REMEMBER ME SUPPORT
-  // ==========================================
 
   const register = useCallback(
     async (data: RegisterData, rememberMe: boolean = true) => {
@@ -429,9 +422,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [connectSocket, navigate, storeToken]
   );
 
-  // ==========================================
-  // LOGOUT
-  // ==========================================
 
   const logout = useCallback(async () => {
     try {
@@ -458,21 +448,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     toast.success("Logged out successfully");
   }, [disconnectSocket, navigate, clearTokens]);
 
-  // ==========================================
-  // UPDATE USER FROM OAUTH (NEW - FOR GOOGLE/FACEBOOK LOGIN)
-  // ==========================================
 
   const updateUserFromOAuth = useCallback((user: User, token: string) => {
     addLog(`[OAuth] Updating user from OAuth: ${user.email}`);
+
     
-    // Store token in localStorage (OAuth always uses remember me)
     localStorage.setItem('token', token);
     localStorage.setItem('rememberMe', 'true');
     
     setState({
       user,
       token,
-      artisanProfile: null, // OAuth users need to complete artisan profile separately
+      artisanProfile: null,
       isAuthenticated: true,
       isLoading: false,
       isInitialized: true,
@@ -482,9 +469,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     addLog('[OAuth] User updated and socket connected');
   }, [connectSocket]);
 
-  // ==========================================
-  // HELPERS
-  // ==========================================
 
   const refreshUser = useCallback(async () => {
     try {
@@ -536,9 +520,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     []
   );
 
-  // ==========================================
-  // VALUE
-  // ==========================================
 
   const value: AuthContextType = {
     ...state,
@@ -548,7 +529,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     updateUser,
     updateArtisanProfile,
     refreshUser,
-    updateUserFromOAuth, // ✅ ADDED
+    updateUserFromOAuth,
     socket,
     socketConnected,
   };
@@ -556,9 +537,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// ==========================================
-// HOOK
-// ==========================================
+
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
