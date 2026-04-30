@@ -12,7 +12,7 @@ const { AppError } = require('../utils/errorHandler');
 const generateTokens = (userId) => {
   console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
   console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
-  
+
   const accessToken = jwt.sign(
     { userId },
     process.env.JWT_SECRET,
@@ -86,11 +86,11 @@ const registerValidation = [
 
 const getCookieOptions = (maxAge) => {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-  
+
   console.log('[Cookies] Environment:', isProduction ? 'production' : 'development');
   console.log('[Cookies] Setting secure:', isProduction);
   console.log('[Cookies] Setting sameSite:', isProduction ? 'none' : 'lax');
-  
+
   return {
     httpOnly: true,
     secure: isProduction,
@@ -210,10 +210,9 @@ exports.register = [
           throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
         }
 
-        // ✅ FIXED: Added profession field
         const artisanProfile = await ArtisanProfile.create({
           userId: user._id,
-          profession: skills?.[0] || 'General Service', // ✅ ADDED
+          profession: skills?.[0] || 'General Service',
           skills,
           experienceYears: experienceYears || '0-1',
           rate: {
@@ -300,7 +299,7 @@ exports.register = [
 ];
 
 // ==========================================
-// LOGIN
+// LOGIN - WITH DEBUG LOGGING
 // ==========================================
 
 exports.login = async (req, res, next) => {
@@ -317,9 +316,9 @@ exports.login = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-    
+
     console.log('User found:', !!user);
-    
+
     if (!user) {
       console.log('User not found in database');
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
@@ -341,7 +340,7 @@ exports.login = async (req, res, next) => {
     console.log('Testing bcrypt.compare...');
     const isPasswordValid = await bcrypt.compare(password, user.password);
     console.log('bcrypt.compare result:', isPasswordValid);
-    
+
     // Also test the model method
     const isModelValid = await user.comparePassword(password);
     console.log('user.comparePassword result:', isModelValid);
@@ -356,7 +355,6 @@ exports.login = async (req, res, next) => {
     const { accessToken, refreshToken } = generateTokens(user._id);
     await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100));
 
-    
     let unreadCount = 0;
     try {
       const { Conversation } = require('../models');
@@ -366,7 +364,6 @@ exports.login = async (req, res, next) => {
     } catch (e) {
       unreadCount = 0;
     }
-
 
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
@@ -461,13 +458,13 @@ exports.refresh = async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.userId).select('+refreshTokens');
-    
+
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found.');
     }
 
     const tokenExists = user.refreshTokens?.some(rt => rt.token === refreshToken);
-    
+
     if (!tokenExists) {
       user.refreshTokens = [];
       await user.save();
@@ -476,7 +473,6 @@ exports.refresh = async (req, res, next) => {
 
     const tokens = generateTokens(user._id);
 
-    // Replace old token
     await User.findByIdAndUpdate(user._id, {
       $pull: { refreshTokens: { token: refreshToken } },
       $push: { 
@@ -549,7 +545,7 @@ exports.resendVerification = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() });
-    
+
     if (!user || user.isEmailVerified) {
       return res.json({
         success: true,
@@ -611,7 +607,7 @@ exports.forgotPassword = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() });
-    
+
     if (!user) {
       return res.json({
         success: true,

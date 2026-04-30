@@ -18,7 +18,7 @@ const startServer = async () => {
 
     const server = http.createServer(app);
 
-    // FIXED: Multiple origins for CORS + proper transports
+    // FIXED: Removed trailing spaces from origins
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
@@ -34,7 +34,7 @@ const startServer = async () => {
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type', 'Authorization']
       },
-      transports: ['websocket', 'polling'], // FIXED: websocket first, polling fallback
+      transports: ['websocket', 'polling'],
       pingTimeout: 60000,
       pingInterval: 25000,
       maxHttpBufferSize: 1e6,
