@@ -89,7 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const socketRef = useRef<Socket | null>(null);
-  
+
   const hasInitialized = useRef(false);
   const isLoggingIn = useRef(false);
 
@@ -104,7 +104,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const storeToken = useCallback((token: string, rememberMe: boolean = true): void => {
     if (typeof window === 'undefined') return;
-    
+
     if (rememberMe) {
       localStorage.setItem('token', token);
       localStorage.setItem('rememberMe', 'true');
@@ -143,10 +143,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     addLog(`[Socket] Connecting to: ${SOCKET_URL}`);
     addLog(`[Socket] Token present: ${!!currentToken}`);
 
-    // FIXED: WebSocket first, polling fallback — critical for Render
     const socketInstance = io(SOCKET_URL, {
       withCredentials: true,
-      transports: ["websocket", "polling"], // FIXED: websocket first
+      transports: ["websocket", "polling"],
       auth: { 
         userId,
         token: currentToken
@@ -169,7 +168,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     socketInstance.on("disconnect", (reason) => {
       addLog(`[Socket] Disconnected: ${reason}`);
       setSocketConnected(false);
-      
+
       if (reason === 'io server disconnect') {
         addLog('[Socket] Server disconnected, will reconnect...');
         setTimeout(() => socketInstance.connect(), 2000);
@@ -178,7 +177,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     socketInstance.on("connect_error", (err) => {
       addLog(`[Socket] Connection error: ${err.message}`);
-      
+
       if (err.message.includes('jwt expired') || 
           err.message.includes('AUTH_TOKEN_REQUIRED') ||
           err.message.includes('invalid token')) {
@@ -233,14 +232,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog('[Init] Login in progress, skipping init');
         return;
       }
-      
+
       try {
         addLog('[Init] === STARTING AUTH INITIALIZATION ===');
         setState((prev) => ({ ...prev, isLoading: true }));
-        
+
         const token = getToken();
         addLog(`[Init] Token from storage: ${token ? 'EXISTS (' + token.substring(0, 20) + '...)' : 'NULL'}`);
-        
+
         if (!token) {
           addLog('[Init] No token, setting unauthenticated');
           setState({
@@ -253,10 +252,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           });
           return;
         }
-        
+
         addLog('[Init] Calling userApi.getMe()...');
         const response = await userApi.getMe();
-        
+
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 100)}...`);
         const res = response.data as ApiResponse<AuthResponseData>;
         const { user, artisanProfile } = res.data;
@@ -278,13 +277,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Init] FAILED: ${error.message}`);
         addLog(`[Init] Status: ${error.response?.status}`);
         addLog(`[Init] Error data: ${JSON.stringify(error.response?.data)}`);
-        
+
         if (error.response?.status === 401 || 
             error.message?.includes('jwt expired')) {
           addLog('[Init] Clearing token (401/expired)');
           clearTokens();
         }
-        
+
         setState({
           user: null,
           token: null,
@@ -293,19 +292,79 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           isLoading: false,
           isInitialized: true,
         });
-        
+
         addLog('[Init] === AUTH INITIALIZATION FAILED ===');
       }
     };
 
     const timer = setTimeout(initAuth, 100);
-    
+
     return () => {
       clearTimeout(timer);
       disconnectSocket();
     };
   }, [connectSocket, disconnectSocket, getToken, clearTokens]);
-  
+
+
+  // ==========================================
+  // CRITICAL FIX: Extract real error message from API error
+  // Handles both original errors AND refresh-token-red-herring errors
+  // ==========================================
+  const extractErrorMessage = useCallback((err: any): string => {
+    addLog(`[extractErrorMessage] Extracting from error: ${JSON.stringify({
+      message: err?.message,
+      status: err?.response?.status,
+      code: err?.response?.data?.error?.code,
+      serverMessage: err?.response?.data?.error?.message,
+    })}`);
+
+    // Priority 1: Server error response message (most specific)
+    if (err?.response?.data?.error?.message) {
+      addLog(`[extractErrorMessage] Found server message: "${err.response.data.error.message}"`);
+      return err.response.data.error.message;
+    }
+
+    // Priority 2: Server error response code mapped to user-friendly message
+    if (err?.response?.data?.error?.code) {
+      const code = err.response.data.error.code;
+      const codeMap: Record<string, string> = {
+        'AUTH_INVALID_CREDENTIALS': 'Email or password is incorrect',
+        'AUTH_USER_NOT_FOUND': 'No account found with this email',
+        'AUTH_ACCOUNT_LOCKED': 'Account temporarily locked. Try again later',
+        'AUTH_EMAIL_NOT_VERIFIED': 'Please verify your email before logging in',
+        'AUTH_TOO_MANY_ATTEMPTS': 'Too many attempts. Please try again later',
+        'AUTH_TOKEN_EXPIRED': 'Session expired. Please log in again.',
+        'AUTH_UNAUTHORIZED': 'Access denied. Please log in again.',
+      };
+      const mapped = codeMap[code];
+      if (mapped) {
+        addLog(`[extractErrorMessage] Mapped code "${code}" to: "${mapped}"`);
+        return mapped;
+      }
+    }
+
+    // Priority 3: If it's a 401 with no specific message, give a helpful hint
+    if (err?.response?.status === 401) {
+      addLog(`[extractErrorMessage] Generic 401 - suggesting credentials issue`);
+      return 'Email or password is incorrect';
+    }
+
+    // Priority 4: Direct message property (filter out the refresh token red herring)
+    if (err?.message && !err.message.toLowerCase().includes('refresh token')) {
+      addLog(`[extractErrorMessage] Using error.message: "${err.message}"`);
+      return err.message;
+    }
+
+    // Priority 5: Response status text
+    if (err?.response?.statusText) {
+      addLog(`[extractErrorMessage] Using statusText: "${err.response.statusText}"`);
+      return `Error ${err.response.status}: ${err.response.statusText}`;
+    }
+
+    addLog(`[extractErrorMessage] Fallback message`);
+    return 'Login failed. Please try again.';
+  }, []);
+
 
   const login = useCallback(
     async (email: string, password: string, rememberMe: boolean = true) => {
@@ -314,7 +373,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setState((prev) => ({ ...prev, isLoading: true }));
 
         addLog(`[Login] Starting login for: ${email} (rememberMe: ${rememberMe})`);
-        
+
         const response = await authApi.login({ email, password });
         const res = response.data as ApiResponse<AuthResponseData>;
 
@@ -330,7 +389,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         storeToken(accessToken, rememberMe);
-        
+
         const savedToken = getToken();
         addLog(`[Login] Token saved to storage: ${!!savedToken}`);
         addLog(`[Login] Saved token matches: ${savedToken === accessToken}`);
@@ -351,21 +410,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Login] Destination: ${destination}`);
 
         await new Promise(r => setTimeout(r, 500));
-        
+
         addLog('[Login] Navigating now...');
         isLoggingIn.current = false;
         navigate(destination, { replace: true });
 
       } catch (err: any) {
-        addLog(`[Login] FAILED: ${err.message}`);
-        addLog(`[Login] Error response: ${JSON.stringify(err.response?.data)}`);
+        // CRITICAL FIX: Extract the REAL error message, not the refresh token red herring
+        const message = extractErrorMessage(err);
+
+        addLog(`[Login] FAILED: ${message}`);
+        addLog(`[Login] Raw error message: ${err?.message || 'N/A'}`);
+        addLog(`[Login] Error response status: ${err?.response?.status || 'N/A'}`);
+        addLog(`[Login] Error response data: ${JSON.stringify(err?.response?.data || {})}`);
+
         isLoggingIn.current = false;
         setState((prev) => ({ ...prev, isLoading: false }));
-        toast.error(err?.message || "Login failed");
-        throw err;
+
+        // Show the real error to user via toast
+        toast.error(message);
+
+        // Re-throw with clean message for UI components
+        throw new Error(message);
       }
     },
-    [connectSocket, navigate, location.state, storeToken, getToken]
+    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage]
   );
 
 
@@ -376,7 +445,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setState((prev) => ({ ...prev, isLoading: true }));
 
         addLog(`[Register] Starting for: ${data.email} (rememberMe: ${rememberMe})`);
-        
+
         const response = await authApi.register(data);
         const res = response.data as ApiResponse<AuthResponseData>;
 
@@ -404,22 +473,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         toast.success("Registration successful");
 
         const destination = dashboardRoute || '/';
-        
+
         await new Promise(r => setTimeout(r, 500));
-        
+
         isLoggingIn.current = false;
         navigate(destination, { replace: true });
 
       } catch (err: any) {
-        addLog(`[Register] FAILED: ${err.message}`);
+        const message = extractErrorMessage(err);
+
+        addLog(`[Register] FAILED: ${message}`);
+        addLog(`[Register] Raw error: ${err.message}`);
         addLog(`[Register] Error response: ${JSON.stringify(err.response?.data)}`);
+
         isLoggingIn.current = false;
         setState((prev) => ({ ...prev, isLoading: false }));
-        toast.error(err?.message || "Registration failed");
-        throw err;
+
+        toast.error(message);
+        throw new Error(message);
       }
     },
-    [connectSocket, navigate, storeToken]
+    [connectSocket, navigate, storeToken, extractErrorMessage]
   );
 
 
@@ -431,7 +505,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     disconnectSocket();
-    
+
     addLog('[Logout] Clearing all tokens');
     clearTokens();
 
@@ -452,10 +526,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const updateUserFromOAuth = useCallback((user: User, token: string) => {
     addLog(`[OAuth] Updating user from OAuth: ${user.email}`);
 
-    
+
     localStorage.setItem('token', token);
     localStorage.setItem('rememberMe', 'true');
-    
+
     setState({
       user,
       token,
@@ -464,7 +538,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isLoading: false,
       isInitialized: true,
     });
-    
+
     connectSocket(user._id, token);
     addLog('[OAuth] User updated and socket connected');
   }, [connectSocket]);

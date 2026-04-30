@@ -45,9 +45,9 @@ const getRefreshToken = (): string | null => {
 
 const storeTokens = (accessToken: string, refreshToken?: string, rememberMe?: boolean): void => {
   if (typeof window === 'undefined') return;
-  
+
   const useLocal = rememberMe !== false;
-  
+
   if (useLocal) {
     localStorage.setItem('token', accessToken);
     if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
@@ -89,34 +89,80 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
 };
 
 // ==========================================
-// REQUEST INTERCEPTOR — CRITICAL FIX: Token expiry logic
+// CRITICAL FIX: ENDPOINTS THAT SHOULD NEVER TRIGGER REFRESH
+// ==========================================
+const NO_REFRESH_ENDPOINTS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/verify-email',
+  '/auth/resend-verification',
+  '/auth/refresh',  // Also never refresh on refresh itself
+];
+
+// CRITICAL FIX: More robust auth endpoint detection
+// Handles full URLs, relative paths, with/without leading slash
+const isAuthEndpoint = (url?: string): boolean => {
+  if (!url) {
+    addLog('[isAuthEndpoint] URL is empty/undefined');
+    return false;
+  }
+
+  addLog(`[isAuthEndpoint] Checking URL: "${url}"`);
+
+  // Extract pathname from full URL or relative path
+  let pathname = url;
+  try {
+    // If it's a full URL, extract pathname
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      pathname = new URL(url).pathname;
+      addLog(`[isAuthEndpoint] Extracted pathname: "${pathname}"`);
+    }
+  } catch {
+    // Not a valid full URL, use as-is
+  }
+
+  // Normalize: ensure leading slash
+  const normalizedPath = pathname.startsWith('/') ? pathname : '/' + pathname;
+  addLog(`[isAuthEndpoint] Normalized path: "${normalizedPath}"`);
+
+  // Check against endpoints (also normalize endpoints for safety)
+  const isMatch = NO_REFRESH_ENDPOINTS.some(endpoint => {
+    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+    const match = normalizedPath === normalizedEndpoint || 
+                  normalizedPath.startsWith(normalizedEndpoint + '/');
+    if (match) {
+      addLog(`[isAuthEndpoint] MATCHED endpoint: "${endpoint}"`);
+    }
+    return match;
+  });
+
+  addLog(`[isAuthEndpoint] Result: ${isMatch}`);
+  return isMatch;
+};
+
+// ==========================================
+// REQUEST INTERCEPTOR
 // ==========================================
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = getToken();
-    
+
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         const expiryTime = payload.exp * 1000;
         const now = Date.now();
         const timeLeft = expiryTime - now;
-        
-        // CRITICAL FIX: The old logic was wrong — it cleared token when now >= expiryTime + 60000
-        // which means 60 seconds AFTER expiry. But the log showed it clearing immediately.
-        // The real issue: clock skew or incorrect exp value.
-        // NEW LOGIC: Only clear if truly expired (with 60s grace period BEFORE expiry)
-        
+
         if (timeLeft < -60000) {
-          // Token expired more than 60 seconds ago — definitely dead
           addLog(`[Request] Token expired ${Math.abs(timeLeft)}ms ago, clearing`);
           clearTokens();
         } else if (timeLeft < 0) {
-          // Token in grace period (0-60s past expiry) — still use it, backend may accept
           addLog(`[Request] Token in grace period (${Math.abs(timeLeft)}ms past expiry), using anyway`);
           config.headers.Authorization = `Bearer ${token}`;
         } else {
-          // Token valid
           config.headers.Authorization = `Bearer ${token}`;
           addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - Token valid (${Math.floor(timeLeft/1000)}s left)`);
         }
@@ -127,17 +173,16 @@ api.interceptors.request.use(
     } else {
       addLog(`[Request] ${config.method?.toUpperCase()} ${config.url} - NO TOKEN`);
     }
-    
-    // FIXED: Always ensure withCredentials
+
     config.withCredentials = true;
-    
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
 // ==========================================
-// RESPONSE INTERCEPTOR
+// RESPONSE INTERCEPTOR - CRITICAL FIX
 // ==========================================
 api.interceptors.response.use(
   (response: AxiosResponse) => {
@@ -149,7 +194,7 @@ api.interceptors.response.use(
 
     if (!error.response) {
       addLog(`[Response] Network error: ${error.message}`);
-      
+
       const retryCount = originalRequest._retryCount || 0;
       if (retryCount < 2 && error.code === 'ECONNABORTED') {
         addLog(`[Response] Retrying network error (${retryCount + 1}/2)...`);
@@ -157,7 +202,7 @@ api.interceptors.response.use(
         await new Promise(resolve => setTimeout(resolve, 3000));
         return api(originalRequest);
       }
-      
+
       return Promise.reject({
         ...error,
         message: 'Server is waking up. Please try again.',
@@ -171,8 +216,24 @@ api.interceptors.response.use(
 
     addLog(`[Response] ERROR ${status}: ${errorCode} - ${errorMessage}`);
 
+    // ========== HANDLE 401 UNAUTHORIZED ==========
     if (status === 401) {
-      addLog('[Response] Got 401, checking if we should refresh...');
+
+      // CRITICAL FIX: Never refresh on auth endpoints (login/register/etc)
+      // Use multiple ways to get the URL for maximum compatibility
+      const requestUrl = originalRequest?.url || 
+                        (originalRequest as any)?.baseURL + (originalRequest as any)?.url || 
+                        '';
+
+      addLog(`[Response] 401 detected. Request URL: "${requestUrl}"`);
+
+      if (isAuthEndpoint(requestUrl)) {
+        addLog('[Response] 401 on auth endpoint, returning original error (NO REFRESH)');
+        // CRITICAL FIX: Preserve the original 401 error data so AuthContext can read it
+        return Promise.reject(error);
+      }
+
+      addLog('[Response] Got 401 on non-auth endpoint, checking if we should refresh...');
 
       if (originalRequest._retry || originalRequest.url?.includes('/auth/refresh')) {
         addLog('[Response] Already retried or is refresh request - clearing token');
@@ -197,16 +258,16 @@ api.interceptors.response.use(
         try {
           addLog('[Response] Calling /auth/refresh...');
           const refreshToken = getRefreshToken();
-          
+
           if (!refreshToken) {
             throw new Error('No refresh token available');
           }
-          
+
           const response = await api.post('/auth/refresh', { refreshToken });
           const { accessToken } = response.data.data || response.data;
 
           addLog(`[Response] Token refreshed: ${accessToken.substring(0, 15)}...`);
-          
+
           storeTokens(accessToken, refreshToken, isRememberMe());
           onTokenRefreshed(accessToken);
           return accessToken;
@@ -229,12 +290,13 @@ api.interceptors.response.use(
       }
     }
 
+    // ========== HANDLE 403 FORBIDDEN ==========
     if (status === 403) {
       if (errorCode === 'AUTH_UNAUTHORIZED' || errorCode === 'AUTH_TOKEN_EXPIRED') {
         clearTokens();
         addLog('[Response] 403 - Token cleared');
       }
-      
+
       return Promise.reject({
         ...error,
         message: errorMessage || 'Access denied.',
@@ -340,9 +402,9 @@ export interface RegisterData {
 
 const transformArtisanData = (artisan: any): any | null => {
   if (!artisan) return null;
-  
+
   const userData = artisan.userId || artisan.user;
-  
+
   return {
     id: artisan.id || artisan._id,
     profession: artisan.profession || artisan.Profession,
@@ -386,7 +448,7 @@ export const authApi = {
         return response;
       });
   },
-  
+
   register: (data: RegisterData, rememberMe = false) => {
     addLog(`[Auth] Register attempt (rememberMe: ${rememberMe})`);
     return api.post<ApiResponse<{ user: any; accessToken: string; refreshToken: string; dashboardRoute: string }>>('/auth/register', data)
@@ -398,34 +460,34 @@ export const authApi = {
         return response;
       });
   },
-  
+
   logout: () => {
     clearTokens();
     return api.post<ApiResponse<void>>('/auth/logout');
   },
-  
+
   refresh: () => api.post<ApiResponse<{ accessToken: string }>>('/auth/refresh'),
-  
+
   verifyEmail: (token: string) => api.post<ApiResponse<void>>(`/auth/verify-email/${token}`),
-  
+
   resendVerification: (email: string) => api.post<ApiResponse<void>>('/auth/resend-verification', { email }),
-  
+
   forgotPassword: (email: string) => api.post<ApiResponse<void>>('/auth/forgot-password', { email }),
-  
+
   resetPassword: (token: string, password: string) => api.post<ApiResponse<void>>(`/auth/reset-password/${token}`, { password }),
 };
 
 export const userApi = {
   getMe: () => api.get<ApiResponse<any>>('/users/me'),
-  
+
   updateMe: (data: Partial<{ fullName: string; phone: string; location: any; profileImage: string }>) => 
     api.put<ApiResponse<any>>('/users/me', data),
 
   getArtisanById: (id: string) => api.get(`/artisans/${id}`),
-  
+
   updateLocation: (data: { state: string; city: string; address?: string; coordinates?: { lat: number; lng: number } }) => 
     api.put<ApiResponse<any>>('/users/location', data),
-  
+
   uploadProfileImage: (file: File) => {
     const formData = new FormData();
     formData.append('image', file);
@@ -433,7 +495,7 @@ export const userApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  
+
   deleteMe: () => api.delete<ApiResponse<void>>('/users/me'),
 };
 
@@ -472,64 +534,64 @@ export const artisanApi = {
     sortBy?: string;
   }) => {
     const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans', { params });
-    
+
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
         .map(transformArtisanData)
         .filter(Boolean);
     }
-    
+
     return response;
   },
-  
+
   search: async (query: string, params?: { page?: number; limit?: number }) => {
     const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/search', { 
       params: { q: query, ...params } 
     });
-    
+
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
         .map(transformArtisanData)
         .filter(Boolean);
     }
-    
+
     return response;
   },
-  
+
   getNearby: async (lat: number, lng: number, radius?: number, params?: any) => {
     const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/nearby', { 
       params: { lat, lng, radius, ...params } 
     });
-    
+
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
         .map(transformArtisanData)
         .filter(Boolean);
     }
-    
+
     return response;
   },
-  
+
   getById: async (id: string) => {
     const response = await api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`);
-    
+
     if (response.data?.data?.artisan) {
       response.data.data.artisan = transformArtisanData(response.data.data.artisan);
     }
-    
+
     return response;
   },
-  
+
   getReviews: (id: string, params?: { page?: number; limit?: number }) => 
     api.get<ApiResponse<{ reviews: any[]; ratingStats: any[]; pagination: any }>>(`/artisans/${id}/reviews`, { params }),
-  
+
   updateProfile: (data: ArtisanProfileUpdate) => api.put<ApiResponse<{ artisan: any }>>('/artisans/profile', data),
-  
+
   updateAvailability: (data: { status: 'available' | 'unavailable' | 'busy'; nextAvailableDate?: string }) => 
     api.put<ApiResponse<{ availability: any }>>('/artisans/availability', data),
-  
+
   updateBankDetails: (data: BankDetails) => api.put<ApiResponse<{ bankDetails: BankDetails }>>('/artisans/bank-details', data),
-  
+
   uploadPortfolioImages: (files: FileList | File[]) => {
     const formData = new FormData();
     Array.from(files).forEach(file => formData.append('images', file));
@@ -537,7 +599,7 @@ export const artisanApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  
+
   deletePortfolioImage: (imageUrl: string) => 
     api.delete<ApiResponse<{ portfolioImages: string[] }>>('/artisans/portfolio', { data: { imageUrl } }),
 };
@@ -564,36 +626,36 @@ export interface ReviewData {
 
 export const jobApi = {
   create: (data: JobCreateData) => api.post<ApiResponse<{ job: any }>>('/jobs', data),
-  
+
   getMyJobs: (params?: { status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ jobs: any[]; pagination: any }>>('/jobs/my-jobs', { params }),
-  
+
   getById: (id: string) => api.get<ApiResponse<{ job: any }>>(`/jobs/${id}`),
 
   getJobApplications: (jobId: string) => api.get(`/jobs/${jobId}/applications`),
-  
+
   deleteJob: (id: string) => api.delete<ApiResponse<void>>(`/jobs/${id}`),
-  
+
   accept: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/accept`),
 
   acceptApplication: (applicationId: string) => api.post(`/jobs/applications/${applicationId}/accept`),
-  
+
   start: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/start`),
-  
+
   complete: (id: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/complete`),
-  
+
   confirmCompletion: (id: string, data?: { rating?: number; comment?: string }) => 
     api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/confirm-completion`, data),
-  
+
   cancel: (id: string, reason?: string) => api.put<ApiResponse<{ job: any }>>(`/jobs/${id}/cancel`, { reason }),
 
   rejectApplication: (applicationId: string) => api.post(`/jobs/applications/${applicationId}/reject`),
-  
+
   addReview: (id: string, data: ReviewData) => api.post<ApiResponse<{ review: any }>>(`/jobs/${id}/review`, data),
-  
+
   getAll: (params?: { status?: string; category?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ jobs: any[]; pagination: any }>>('/jobs', { params }),
-  
+
   apply: (id: string, data?: { coverLetter?: string; proposedRate?: number }) => 
     api.post<ApiResponse<void>>(`/jobs/${id}/apply`, data),
 };
@@ -601,9 +663,9 @@ export const jobApi = {
 export const applicationsApi = {
   getMyApplications: (params?: { status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ applications: any[]; pagination: any }>>('/applications/my-applications', { params }),
-  
+
   getApplicationById: (id: string) => api.get<ApiResponse<{ application: any }>>(`/applications/${id}`),
-  
+
   withdrawApplication: (id: string) => api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
 };
 
@@ -623,23 +685,23 @@ export const walletApi = {
 export const paymentApi = {
   initialize: (data: PaymentInitializeData) => 
     api.post<ApiResponse<{ authorization_url: string; reference: string; transactionId: string; amount: any }>>('/payments/initialize', data),
-  
+
   verify: (reference: string) => api.get<ApiResponse<{ transaction: any; paystackData: any }>>(`/payments/verify/${reference}`),
-  
+
   verifyPayment: (reference: string) => api.get(`/payments/verify/${reference}`),
 
   releasePayment: (jobId: string) => api.put<ApiResponse<{ transaction: any; job: any }>>(`/payments/release/${jobId}`),
-  
+
   getHistory: (params?: { type?: string; status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ transactions: any[]; summary: any; pagination: any }>>('/payments/history', { params }),
-  
+
   getWallet: () => api.get<ApiResponse<{ wallet: any; isNew: boolean }>>('/payments/wallet'),
-  
+
   requestWithdrawal: (amount: number) => 
     api.post<ApiResponse<{ transaction: any; withdrawal: any; wallet: any }>>('/payments/withdraw', { amount }),
-  
+
   getBanks: () => api.get<ApiResponse<{ banks: any[]; count: number }>>('/payments/banks'),
-  
+
   verifyAccount: (data: { accountNumber: string; bankCode: string }) => 
     api.post<ApiResponse<{ accountNumber: string; accountName: string; bankCode: string }>>('/payments/verify-account', data),
 };
@@ -651,15 +713,15 @@ export interface CreateConversationData {
 
 export const chatApi = {
   getConversations: () => api.get<ApiResponse<{ conversations: any[] }>>('/chat/conversations'),
-  
+
   getMessages: (conversationId: string, params?: { page?: number; limit?: number; before?: string }) => 
     api.get<ApiResponse<{ messages: any[]; pagination: any }>>(`/chat/conversations/${conversationId}/messages`, { params }),
-  
+
   createConversation: (data: CreateConversationData) => 
     api.post<ApiResponse<{ conversation: any }>>('/chat/conversations', data),
-  
+
   deleteConversation: (id: string) => api.delete<ApiResponse<void>>(`/chat/conversations/${id}`),
-  
+
   markAsRead: (conversationId: string) => api.put<ApiResponse<void>>(`/chat/conversations/${conversationId}/read`),
 };
 
@@ -679,13 +741,13 @@ export const getErrorCode = (error: any): string => {
 
 export const verificationApi = {
   getStatus: () => api.get('/verify/status'),
-  
+
   checkJobValue: (jobValue: number) => api.get(`/verify/check-job/${jobValue}`),
-  
+
   verifyNIN: (nin: string) => api.post('/verify/nin', { nin }),
-  
+
   verifyBVN: (bvn: string) => api.post('/verify/bvn', { bvn }),
-  
+
   verifyPhoto: (photoFile: File) => {
     const formData = new FormData();
     formData.append('photo', photoFile);
@@ -693,13 +755,13 @@ export const verificationApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
-  
+
   verifyCAC: (cacNumber: string, businessName: string) => 
     api.post('/verify/cac', { cacNumber, businessName }),
-  
+
   verifyShopLocation: (gps: { lat: number; lng: number }) => 
     api.post('/verify/shop-location', { gps }),
-    
+
   confirmShopLocation: () => api.post('/verify/confirm-shop-location'),
 };
 
@@ -806,15 +868,15 @@ export const disputeApi = {
     desiredOutcome: 'full_refund' | 'partial' | 'continue';
     partialAmount?: number;
   }) => api.post(`/jobs/${jobId}/disputes`, data),
-  
+
   getJobDisputes: (jobId: string) => api.get(`/jobs/${jobId}/disputes`),
-  
+
   approveMilestone: (jobId: string, milestoneIndex: number) => 
     api.put(`/jobs/${jobId}/milestones/${milestoneIndex}/approve`),
-  
+
   getAllDisputes: (params?: { status?: string; page?: number }) => 
     api.get('/jobs/admin/disputes', { params }),
-    
+
   resolveDispute: (disputeId: string, resolution: any) => 
     api.put(`/jobs/admin/disputes/${disputeId}/resolve`, resolution),
 };
