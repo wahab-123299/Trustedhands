@@ -13,7 +13,6 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: function() {
-      // Only require password for non-OAuth users
       return !this.googleId && !this.facebookId;
     },
     minlength: [8, 'Password must be at least 8 characters'],
@@ -36,12 +35,11 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
     required: function() {
-      // Phone required only for non-OAuth users
       return !this.googleId && !this.facebookId;
     },
     unique: true,
-    sparse: true, // Allows null/undefined for OAuth users
-    match: [/^(0[7-9][0-1]\d{8}|\+234[7-9][0-1]\d{8})$/, 'Please enter a valid Nigerian phone number (e.g., 08012345678 or +2348012345678)']
+    sparse: true,
+    match: [/^(0[7-9][0-1]\d{8}|\+234[7-9][0-1]\d{8})$/, 'Please enter a valid Nigerian phone number']
   },
   isPhoneVerified: {
     type: Boolean,
@@ -145,10 +143,6 @@ const userSchema = new mongoose.Schema({
       expires: '30d'
     }
   }],
-  
-  // ==========================================
-  // OAUTH FIELDS (NEW)
-  // ==========================================
   googleId: {
     type: String,
     sparse: true,
@@ -167,14 +161,8 @@ const userSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// ==========================================
-// INDEXES
-// ==========================================
-
-// Compound index for common artisan queries
+// Indexes
 userSchema.index({ role: 1, isActive: 1, 'location.state': 1, 'location.city': 1 });
-
-// Text index for search functionality
 userSchema.index({ fullName: 'text', 'location.city': 'text' });
 
 // Virtual for artisan profile
@@ -186,29 +174,68 @@ userSchema.virtual('artisanProfile', {
 });
 
 // ==========================================
-// MIDDLEWARE
+// PRE-SAVE HOOK — FIXED
 // ==========================================
-
 userSchema.pre('save', async function(next) {
-  // Skip password hashing for OAuth users without password
-  if (!this.isModified('password') || !this.password) return next();
-  
-  if (this.password.length < 8) {
-    throw new Error('Password must be at least 8 characters');
+  // Only hash if password is modified and exists
+  if (!this.isModified('password') || !this.password) {
+    return next();
   }
   
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
+  // Validate minimum length before hashing
+  if (this.password.length < 8) {
+    return next(new Error('Password must be at least 8 characters'));
+  }
+  
+  try {
+    this.password = await bcrypt.hash(this.password, 12);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ==========================================
-// INSTANCE METHODS
+// COMPARE PASSWORD — FIXED WITH FALLBACK
 // ==========================================
-
 userSchema.methods.comparePassword = async function(candidatePassword) {
   // OAuth users without password can't use password login
-  if (!this.password) return false;
-  return await bcrypt.compare(candidatePassword, this.password);
+  if (!this.password) {
+    console.log('[comparePassword] No password stored (OAuth user?)');
+    return false;
+  }
+  
+  // Check if it's a valid bcrypt hash
+  const isBcryptHash = typeof this.password === 'string' && 
+                       (this.password.startsWith('$2a$') || 
+                        this.password.startsWith('$2b$') || 
+                        this.password.startsWith('$2y$'));
+  
+  if (!isBcryptHash) {
+    console.log('[comparePassword] WARNING: Password is NOT a bcrypt hash!');
+    console.log('[comparePassword] Password type:', typeof this.password);
+    console.log('[comparePassword] Password prefix:', this.password.substring(0, 20));
+    
+    // Fallback for plaintext passwords (auto-migrate to hash)
+    const isMatch = this.password === candidatePassword;
+    if (isMatch) {
+      console.log('[comparePassword] Plaintext match! Re-hashing...');
+      this.password = await bcrypt.hash(candidatePassword, 12);
+      await this.save();
+      console.log('[comparePassword] Re-hashed successfully.');
+    }
+    return isMatch;
+  }
+  
+  // Normal bcrypt comparison
+  try {
+    const result = await bcrypt.compare(candidatePassword, this.password);
+    console.log('[comparePassword] Bcrypt compare result:', result);
+    return result;
+  } catch (err) {
+    console.error('[comparePassword] Bcrypt error:', err.message);
+    return false;
+  }
 };
 
 userSchema.methods.isTokenBlacklisted = function(token) {
@@ -238,12 +265,8 @@ userSchema.methods.updateLastLogin = async function() {
   await this.save();
 };
 
-// ==========================================
-// STATIC METHODS
-// ==========================================
-
 userSchema.statics.findByEmailWithPassword = function(email) {
-  return this.findOne({ email }).select('+password');
+  return this.findOne({ email: email.toLowerCase() }).select('+password');
 };
 
 userSchema.statics.findArtisansByLocation = function(state, city, options = {}) {
@@ -261,15 +284,13 @@ userSchema.statics.findArtisansByLocation = function(state, city, options = {}) 
     .limit(options.limit || 20);
 };
 
-// Find or create OAuth user
 userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
   const email = profile.emails?.[0]?.value;
   if (!email) throw new Error('Email not provided by OAuth provider');
 
-  let user = await this.findOne({ email });
+  let user = await this.findOne({ email: email.toLowerCase() });
 
   if (user) {
-    // Link OAuth ID if not already linked
     if (provider === 'google' && !user.googleId) {
       user.googleId = profile.id;
       await user.save();
@@ -280,14 +301,13 @@ userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
     return user;
   }
 
-  // Create new OAuth user
   const userData = {
-    email: email,
+    email: email.toLowerCase(),
     fullName: profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim(),
     profileImage: profile.photos?.[0]?.value || '/default-avatar.png',
     role: 'customer',
     isActive: true,
-    isEmailVerified: true, // OAuth providers verify email
+    isEmailVerified: true,
   };
 
   if (provider === 'google') {
@@ -298,10 +318,6 @@ userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
 
   return await this.create(userData);
 };
-
-// ==========================================
-// TOJSON TRANSFORM
-// ==========================================
 
 userSchema.methods.toJSON = function() {
   const obj = this.toObject();

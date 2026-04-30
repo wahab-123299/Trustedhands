@@ -308,36 +308,43 @@ exports.login = async (req, res, next) => {
 
     console.log('=== LOGIN DEBUG ===');
     console.log('Email received:', email);
-    console.log('Password received:', password);
+    console.log('Password received:', password ? '**** (hidden)' : 'EMPTY');
     console.log('Password length:', password?.length);
 
     if (!email || !password) {
       throw new AppError('VALIDATION_ERROR', 'Please provide email and password.');
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    // Use the static method for consistency
+    const user = await User.findByEmailWithPassword(email.toLowerCase());
 
     console.log('User found:', !!user);
 
     if (!user) {
-      console.log('User not found in database');
+      console.log('User not found in database for email:', email.toLowerCase());
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
 
     console.log('User ID:', user._id);
     console.log('User email:', user.email);
-    console.log('Stored password field exists:', !!user.password);
+    console.log('User role:', user.role);
+    console.log('User isActive:', user.isActive);
+    console.log('Stored password exists:', !!user.password);
     console.log('Stored password type:', typeof user.password);
     console.log('Stored password length:', user.password?.length);
-    console.log('Stored password starts with:', user.password?.substring(0, 7));
+    
+    if (user.password) {
+      const isHash = user.password.startsWith('$2');
+      console.log('Stored password is bcrypt hash:', isHash);
+      console.log('Stored password prefix:', user.password.substring(0, 15) + '...');
+    }
 
     if (!user.isActive) {
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.');
     }
 
-    // Use the model's comparePassword method (uses bcryptjs)
     const isPasswordValid = await user.comparePassword(password);
-    console.log('user.comparePassword result:', isPasswordValid);
+    console.log('Final password validation result:', isPasswordValid);
 
     if (!isPasswordValid) {
       console.log('Password mismatch - rejecting login');
@@ -362,7 +369,8 @@ exports.login = async (req, res, next) => {
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-    console.log('[Login] SUCCESS - Token sent, length:', accessToken.length);
+    
+    console.log('[Login] SUCCESS for user:', user.email);
     console.log('===================');
 
     res.json({
