@@ -174,15 +174,13 @@ userSchema.virtual('artisanProfile', {
 });
 
 // ==========================================
-// PRE-SAVE HOOK — FIXED
+// PRE-SAVE HOOK
 // ==========================================
 userSchema.pre('save', async function(next) {
-  // Only hash if password is modified and exists
   if (!this.isModified('password') || !this.password) {
     return next();
   }
   
-  // Validate minimum length before hashing
   if (this.password.length < 8) {
     return next(new Error('Password must be at least 8 characters'));
   }
@@ -196,16 +194,14 @@ userSchema.pre('save', async function(next) {
 });
 
 // ==========================================
-// COMPARE PASSWORD — FIXED WITH FALLBACK
+// COMPARE PASSWORD WITH FALLBACK
 // ==========================================
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  // OAuth users without password can't use password login
   if (!this.password) {
     console.log('[comparePassword] No password stored (OAuth user?)');
     return false;
   }
   
-  // Check if it's a valid bcrypt hash
   const isBcryptHash = typeof this.password === 'string' && 
                        (this.password.startsWith('$2a$') || 
                         this.password.startsWith('$2b$') || 
@@ -216,7 +212,7 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     console.log('[comparePassword] Password type:', typeof this.password);
     console.log('[comparePassword] Password prefix:', this.password.substring(0, 20));
     
-    // Fallback for plaintext passwords (auto-migrate to hash)
+    // Fallback for plaintext passwords
     const isMatch = this.password === candidatePassword;
     if (isMatch) {
       console.log('[comparePassword] Plaintext match! Re-hashing...');
@@ -227,7 +223,6 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     return isMatch;
   }
   
-  // Normal bcrypt comparison
   try {
     const result = await bcrypt.compare(candidatePassword, this.password);
     console.log('[comparePassword] Bcrypt compare result:', result);
