@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { User, ArtisanProfile, Wallet } = require('../models');
 const { sendEmail } = require('../utils/email');
@@ -335,15 +335,9 @@ exports.login = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.');
     }
 
-    // DEBUG: Test bcrypt directly
-    const bcrypt = require('bcrypt');
-    console.log('Testing bcrypt.compare...');
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    console.log('bcrypt.compare result:', isPasswordValid);
-
-    // Also test the model method
-    const isModelValid = await user.comparePassword(password);
-    console.log('user.comparePassword result:', isModelValid);
+    // Use the model's comparePassword method (uses bcryptjs)
+    const isPasswordValid = await user.comparePassword(password);
+    console.log('user.comparePassword result:', isPasswordValid);
 
     if (!isPasswordValid) {
       console.log('Password mismatch - rejecting login');
