@@ -307,7 +307,10 @@ exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    console.log('[Login] Attempt for:', email);
+    console.log('=== LOGIN DEBUG ===');
+    console.log('Email received:', email);
+    console.log('Password received:', password);
+    console.log('Password length:', password?.length);
 
     if (!email || !password) {
       throw new AppError('VALIDATION_ERROR', 'Please provide email and password.');
@@ -315,16 +318,36 @@ exports.login = async (req, res, next) => {
 
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     
+    console.log('User found:', !!user);
+    
     if (!user) {
+      console.log('User not found in database');
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
+
+    console.log('User ID:', user._id);
+    console.log('User email:', user.email);
+    console.log('Stored password field exists:', !!user.password);
+    console.log('Stored password type:', typeof user.password);
+    console.log('Stored password length:', user.password?.length);
+    console.log('Stored password starts with:', user.password?.substring(0, 7));
 
     if (!user.isActive) {
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.');
     }
 
-    const isPasswordValid = await user.comparePassword(password);
+    // DEBUG: Test bcrypt directly
+    const bcrypt = require('bcrypt');
+    console.log('Testing bcrypt.compare...');
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    console.log('bcrypt.compare result:', isPasswordValid);
+    
+    // Also test the model method
+    const isModelValid = await user.comparePassword(password);
+    console.log('user.comparePassword result:', isModelValid);
+
     if (!isPasswordValid) {
+      console.log('Password mismatch - rejecting login');
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
 
@@ -333,7 +356,7 @@ exports.login = async (req, res, next) => {
     const { accessToken, refreshToken } = generateTokens(user._id);
     await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100));
 
-    // Get unread count
+    
     let unreadCount = 0;
     try {
       const { Conversation } = require('../models');
@@ -344,11 +367,12 @@ exports.login = async (req, res, next) => {
       unreadCount = 0;
     }
 
-    // Set cookies
+
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-    console.log('[Login] Success - Token sent, length:', accessToken.length);
+    console.log('[Login] SUCCESS - Token sent, length:', accessToken.length);
+    console.log('===================');
 
     res.json({
       success: true,
@@ -361,6 +385,7 @@ exports.login = async (req, res, next) => {
       }
     });
   } catch (error) {
+    console.log('===================');
     next(error);
   }
 };
