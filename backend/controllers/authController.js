@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { User, ArtisanProfile, Wallet } = require('../models');
 const { sendEmail } = require('../utils/email');
