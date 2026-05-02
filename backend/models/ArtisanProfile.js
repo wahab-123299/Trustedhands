@@ -8,7 +8,7 @@ const artisanProfileSchema = new mongoose.Schema({
     unique: true,
     index: true
   },
-  Profession: {
+  profession: {
     type: String,
     required: [true, 'Profession is required'],
     trim: true,
