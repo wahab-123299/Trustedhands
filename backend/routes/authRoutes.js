@@ -2,12 +2,12 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 const authController = require('../controllers/authController');
-const oauthController = require('../config/passport');
+const oauthController = require('../controllers/oauthController');
 const { authenticate } = require('../middleware/authMiddleware');
 
-//Initialize Passport strategies
+// FIXED: Only initialize passport, NO session
 router.use(passport.initialize());
-router.use(passport.session());
+// REMOVED: router.use(passport.session());
 
 // Public routes
 router.post('/register', authController.register);

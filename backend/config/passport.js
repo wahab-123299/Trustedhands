@@ -22,7 +22,6 @@ passport.use(new GoogleStrategy({
       let user = await User.findOne({ email: email.toLowerCase() });
 
       if (user) {
-        // Link Google ID if not already linked
         if (!user.googleId) {
           user.googleId = profile.id;
           await user.save();
@@ -30,7 +29,6 @@ passport.use(new GoogleStrategy({
         return done(null, user);
       }
 
-      // Create new user from Google data
       user = await User.create({
         email: email.toLowerCase(),
         fullName: profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim(),
@@ -91,6 +89,7 @@ passport.use(new FacebookStrategy({
   }
 ));
 
+// Minimal serialize/deserialize (required by passport, even without sessions)
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
@@ -105,16 +104,20 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // ==========================================
-// CONTROLLER METHODS (used by authRoutes.js)
+// CONTROLLER METHODS — SESSION: FALSE ADDED
 // ==========================================
 
 exports.googleAuth = passport.authenticate('google', {
   scope: ['profile', 'email'],
-  prompt: 'select_account'
+  prompt: 'select_account',
+  session: false  // ← ADDED: disables session requirement
 });
 
 exports.googleCallback = [
-  passport.authenticate('google', { failureRedirect: '/login?error=oauth_failed' }),
+  passport.authenticate('google', { 
+    failureRedirect: '/login?error=oauth_failed',
+    session: false  // ← ADDED: disables session requirement
+  }),
   async (req, res) => {
     try {
       const user = req.user;
@@ -123,7 +126,6 @@ exports.googleCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-google');
 
-      // FIXED: Changed from /oauth-callback to /oauth/callback to match App.tsx route
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
@@ -133,11 +135,15 @@ exports.googleCallback = [
 ];
 
 exports.facebookAuth = passport.authenticate('facebook', {
-  scope: ['email']
+  scope: ['email'],
+  session: false  // ← ADDED: disables session requirement
 });
 
 exports.facebookCallback = [
-  passport.authenticate('facebook', { failureRedirect: '/login?error=oauth_failed' }),
+  passport.authenticate('facebook', { 
+    failureRedirect: '/login?error=oauth_failed',
+    session: false  // ← ADDED: disables session requirement
+  }),
   async (req, res) => {
     try {
       const user = req.user;
@@ -146,7 +152,6 @@ exports.facebookCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-facebook');
 
-      // FIXED: Changed from /oauth-callback to /oauth/callback to match App.tsx route
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
