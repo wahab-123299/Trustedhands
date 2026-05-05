@@ -544,6 +544,17 @@ export const artisanApi = {
     return response;
   },
 
+  // ✅ ADDED: Get current artisan's own profile
+  getMyProfile: async () => {
+    const response = await api.get<ApiResponse<{ artisan: any }>>('/artisans/me');
+    
+    if (response.data?.data?.artisan) {
+      response.data.data.artisan = transformArtisanData(response.data.data.artisan);
+    }
+    
+    return response;
+  },
+
   search: async (query: string, params?: { page?: number; limit?: number }) => {
     const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans/search', { 
       params: { q: query, ...params } 

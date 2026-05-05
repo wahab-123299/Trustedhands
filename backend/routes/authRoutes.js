@@ -1,7 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const passport = require('passport');
 const authController = require('../controllers/authController');
+const oauthController = require('../config/passport');
 const { authenticate } = require('../middleware/authMiddleware');
+
+//Initialize Passport strategies
+router.use(passport.initialize());
+router.use(passport.session());
 
 // Public routes
 router.post('/register', authController.register);
@@ -12,9 +18,17 @@ router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password/:token', authController.resetPassword);
 
 
+// OAuth routes
+router.get('/google', oauthController.googleAuth);
+router.get('/google/callback', oauthController.googleCallback);
+router.get('/facebook', oauthController.facebookAuth);
+router.get('/facebook/callback', oauthController.facebookCallback);
+
 
 // Protected routes
 router.post('/logout', authenticate, authController.logout);
 router.post('/refresh', authController.refresh);
+
+
 
 module.exports = router;

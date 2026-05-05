@@ -8,6 +8,10 @@ const { uploadMultiple } = require('../middleware/uploadMiddleware');
 router.get('/', artisanController.getArtisans);
 router.get('/search', artisanController.searchArtisans);
 router.get('/nearby', artisanController.getNearbyArtisans);
+
+// ✅ ADDED: Get current artisan's own profile (MUST be before /:id)
+router.get('/me', authenticate, authorize('artisan'), artisanController.getMyProfile);
+
 router.get('/:id', artisanController.getArtisanById);
 router.get('/:id/reviews', artisanController.getArtisanReviews);
 

@@ -10,8 +10,8 @@ const transformArtisan = (artisan) => {
   return {
     id: artisan._id.toString(),
     
-    // ✅ FIXED: Map Profession (capital P) to profession (lowercase)
-    profession: artisan.Profession,
+    // ✅ FIXED: lowercase profession (was artisan.Profession)
+    profession: artisan.profession,
     skills: artisan.skills,
     bio: artisan.bio,
     experienceYears: artisan.experienceYears,
@@ -49,6 +49,29 @@ const transformArtisan = (artisan) => {
     createdAt: artisan.createdAt,
     updatedAt: artisan.updatedAt
   };
+};
+
+// ✅ ADDED: Get current logged-in artisan's profile
+exports.getMyProfile = async (req, res, next) => {
+  try {
+    const artisan = await ArtisanProfile.findOne({ userId: req.user._id })
+      .populate('userId', 'fullName email phone profileImage location isVerified');
+
+    if (!artisan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Artisan profile not found. Please complete your profile setup.',
+        code: 'PROFILE_NOT_FOUND'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: transformArtisan(artisan)
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 // Get all artisans with filters

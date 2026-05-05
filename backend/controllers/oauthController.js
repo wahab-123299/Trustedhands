@@ -35,7 +35,7 @@ passport.use(new GoogleStrategy({
         email: email.toLowerCase(),
         fullName: profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim(),
         profileImage: profile.photos?.[0]?.value || '/default-avatar.png',
-        role: 'customer',
+        role: 'customer', // Default role for OAuth
         googleId: profile.id,
         isActive: true,
         isEmailVerified: true
@@ -105,7 +105,7 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // ==========================================
-// CONTROLLER METHODS (used by authRoutes.js)
+// CONTROLLER METHODS
 // ==========================================
 
 exports.googleAuth = passport.authenticate('google', {
@@ -123,8 +123,8 @@ exports.googleCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-google');
 
-      // FIXED: Changed from /oauth-callback to /oauth/callback to match App.tsx route
-      const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
+      // Redirect to frontend with tokens
+      const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
       res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
@@ -146,8 +146,7 @@ exports.facebookCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-facebook');
 
-      // FIXED: Changed from /oauth-callback to /oauth/callback to match App.tsx route
-      const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
+      const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
       res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
