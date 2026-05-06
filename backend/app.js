@@ -47,23 +47,23 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     console.log('[CORS] Request from origin:', origin || 'undefined');
-    
+
     if (!origin) {
       console.log('[CORS] Allowed (no origin)');
       return callback(null, true);
     }
-    
+
     if (allowedOrigins.includes(origin)) {
-      console.log('[CORS] Allowed:', origin);
+      console.log('[CORS] Allowed (exact match):', origin);
       return callback(null, true);
     }
-    
+
     // Allow Netlify deploy previews
     if (origin.includes('netlify.app')) {
       console.log('[CORS] Allowed (Netlify):', origin);
       return callback(null, true);
     }
-    
+
     console.log('[CORS] Blocked:', origin);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
@@ -245,7 +245,7 @@ app.get('/data-deletion', (req, res) => {
     <p>To request deletion of your data:</p>
     <ol>
       <li>Log into your TrustedHand account</li>
-      <li>Go to Settings → Account</li>
+      <li>Go to Settings &rarr; Account</li>
       <li>Click "Delete Account"</li>
       <li>Confirm deletion</li>
     </ol>

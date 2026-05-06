@@ -20,20 +20,14 @@ router.post('/resend-verification', authController.resendVerification);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password/:token', authController.resetPassword);
 
-// ==========================================
-// OAUTH ROUTES
-// ==========================================
-
-// Google
+// OAuth routes
 router.get('/google', oauthController.googleAuth);
 router.get('/google/callback', oauthController.googleCallback);
 
-// Facebook
 router.get('/facebook', oauthController.facebookAuth);
 router.get('/facebook/callback', oauthController.facebookCallback);
 
-// CRITICAL: Facebook error fallback
-// Facebook sometimes appends /login to the callback URL on failure
+// CRITICAL: Facebook error fallback - prevents 404 and redirect loops
 router.get('/facebook/callback/login', (req, res) => {
   const error = req.query.error || 'oauth_failed';
   console.error('[Facebook OAuth Error]:', {

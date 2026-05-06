@@ -15,19 +15,18 @@ const OAuthCallback = () => {
 
     if (token) {
       try {
-        // Store tokens in localStorage
+        // Store tokens
         localStorage.setItem('token', token);
         if (refreshToken) {
           localStorage.setItem('refreshToken', refreshToken);
         }
         localStorage.setItem('rememberMe', 'true');
 
-        // Build minimal user object that matches User type requirements
-        // The backend will provide full user data on next API call
+        // Build minimal user object
         const minimalUser = {
-          _id: 'oauth-temp', // Will be replaced by refreshUser
-          email: '', // Will be replaced by refreshUser
-          fullName: 'OAuth User', // Will be replaced by refreshUser
+          _id: 'oauth-temp',
+          email: '',
+          fullName: 'OAuth User',
           role: (role as 'customer' | 'artisan') || 'customer',
           phone: '',
           isActive: true,
@@ -43,18 +42,18 @@ const OAuthCallback = () => {
           updatedAt: new Date().toISOString(),
         };
 
-        // Update auth context if method exists
+        // Update auth context
         if (updateUserFromOAuth) {
           updateUserFromOAuth(minimalUser as any, token);
         }
 
         toast.success('Login successful!');
-        
+
         // Redirect based on role
         const dashboardRoute = role === 'artisan' 
           ? '/artisan/dashboard' 
           : '/customer/dashboard';
-        
+
         navigate(dashboardRoute, { replace: true });
       } catch (error) {
         console.error('OAuth callback error:', error);

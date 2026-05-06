@@ -1,10 +1,6 @@
 const passport = require('passport');
-const authController = require('./authController');
 
-// ==========================================
-// CUSTOM AUTHENTICATE WRAPPER (NO SESSION)
-// ==========================================
-
+// Custom authenticate wrapper - no sessions
 const authenticateOAuth = (strategy) => {
   return (req, res, next) => {
     passport.authenticate(strategy, { session: false }, (err, user, info) => {
@@ -22,28 +18,7 @@ const authenticateOAuth = (strategy) => {
   };
 };
 
-// ==========================================
-// HELPER: Get generateTokens safely
-// ==========================================
-const getGenerateTokens = () => {
-  // Try different export patterns
-  if (authController.generateTokens && typeof authController.generateTokens === 'function') {
-    return authController.generateTokens;
-  }
-  if (authController.default && authController.default.generateTokens) {
-    return authController.default.generateTokens;
-  }
-  // If authController IS the function itself
-  if (typeof authController === 'function') {
-    return authController;
-  }
-  throw new Error('generateTokens not found in authController. Available exports: ' + Object.keys(authController).join(', '));
-};
-
-// ==========================================
-// GOOGLE CONTROLLERS
-// ==========================================
-
+// Google
 exports.googleAuth = passport.authenticate('google', {
   scope: ['profile', 'email'],
   prompt: 'select_account',
@@ -55,9 +30,9 @@ exports.googleCallback = [
   async (req, res) => {
     try {
       const user = req.user;
-      const generateTokens = getGenerateTokens();
+      const { generateTokens } = require('./authController');
       const { accessToken, refreshToken } = generateTokens(user._id);
-      
+
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-google');
 
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
@@ -69,10 +44,7 @@ exports.googleCallback = [
   }
 ];
 
-// ==========================================
-// FACEBOOK CONTROLLERS
-// ==========================================
-
+// Facebook
 exports.facebookAuth = passport.authenticate('facebook', {
   scope: ['email'],
   session: false
@@ -83,9 +55,9 @@ exports.facebookCallback = [
   async (req, res) => {
     try {
       const user = req.user;
-      const generateTokens = getGenerateTokens();
+      const { generateTokens } = require('./authController');
       const { accessToken, refreshToken } = generateTokens(user._id);
-      
+
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-facebook');
 
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
@@ -96,3 +68,4 @@ exports.facebookCallback = [
     }
   }
 ];
+

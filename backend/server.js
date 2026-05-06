@@ -25,6 +25,7 @@ const startServer = async () => {
       'http://localhost:5173',
       'http://localhost:3000',
       'https://trustedhand.netlify.app',
+      'https://trustedhands.netlify.app',
       'https://trustedhands.onrender.com',
       process.env.FRONTEND_URL
     ].filter(Boolean);
