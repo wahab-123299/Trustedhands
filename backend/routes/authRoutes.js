@@ -5,9 +5,14 @@ const authController = require('../controllers/authController');
 const oauthController = require('../controllers/oauthController');
 const { authenticate } = require('../middleware/authMiddleware');
 
+// FIXED: Disable sessions for this router to prevent OAuth session errors
+router.use((req, res, next) => {
+  req.session = null;
+  next();
+});
+
 // FIXED: Only initialize passport, NO session
 router.use(passport.initialize());
-// REMOVED: router.use(passport.session());
 
 // Public routes
 router.post('/register', authController.register);
