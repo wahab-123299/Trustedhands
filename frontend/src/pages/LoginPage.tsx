@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const LoginPage = () => {
   const { login } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [formData, setFormData] = useState({
     email: '',
@@ -20,20 +21,29 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  // CRITICAL FIX: State for API-level errors (server responses)
   const [apiError, setApiError] = useState<string>('');
 
   // Get API URL from env
   const API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
 
+  // Handle OAuth errors from URL query params
+  useEffect(() => {
+    const error = searchParams.get('error');
+    const provider = searchParams.get('provider');
+    if (error) {
+      const message = provider 
+        ? `${provider} login failed: ${error}` 
+        : `Login failed: ${error}`;
+      setApiError(message);
+    }
+  }, [searchParams]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    // Clear field error when user types
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
     }
-    // CRITICAL FIX: Clear API error when user makes any change
     if (apiError) {
       setApiError('');
     }
@@ -62,18 +72,13 @@ const LoginPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // CRITICAL FIX: Clear previous API error before new attempt
     setApiError('');
-
     if (!validateForm()) return;
 
     setIsLoading(true);
     try {
       await login(formData.email, formData.password, formData.rememberMe);
-      // Success: login() handles navigation
     } catch (error: any) {
-      // CRITICAL FIX: Display the real error message from AuthContext
       const message = error?.message || 'Login failed. Please try again.';
       setApiError(message);
       console.error('Login error:', error);
@@ -105,7 +110,7 @@ const LoginPage = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
 
-              {/* CRITICAL FIX: API Error Banner - shows server errors like "Email or password is incorrect" */}
+              {/* API Error Banner */}
               {apiError && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
                   <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />

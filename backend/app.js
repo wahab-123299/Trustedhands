@@ -46,18 +46,17 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     console.log('[CORS] Request from origin:', origin || 'undefined');
-    
-    // FIXED: Allow requests with no origin (Render proxy, curl, mobile apps)
+
     if (!origin) {
       console.log('[CORS] Allowed (no origin)');
       return callback(null, true);
     }
-    
+
     if (allowedOrigins.includes(origin)) {
       console.log('[CORS] Allowed:', origin);
       return callback(null, true);
     }
-    
+
     console.log('[CORS] Blocked:', origin);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
@@ -162,6 +161,20 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // ==========================================
+// DEBUG LOGGING FOR OAUTH
+// ==========================================
+app.use((req, res, next) => {
+  if (req.path.includes('auth') || req.path.includes('facebook') || req.path.includes('google')) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
+      query: req.query,
+      origin: req.headers.origin,
+      referer: req.headers.referer
+    });
+  }
+  next();
+});
+
+// ==========================================
 // HEALTH & API STATUS
 // ==========================================
 
@@ -175,7 +188,7 @@ app.get('/health', (req, res) => {
   }[dbState] || 'unknown';
 
   const isResponding = dbState === 1 || dbState === 2;
-  
+
   res.status(isResponding ? 200 : 503).json({
     success: dbState === 1,
     status: isResponding ? 'healthy' : 'unhealthy',
@@ -194,6 +207,43 @@ app.get('/health', (req, res) => {
       total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
     }
   });
+});
+
+// ==========================================
+// PRIVACY & TERMS ROUTES (Required by Facebook)
+// ==========================================
+app.get('/privacy', (req, res) => {
+  res.send(`
+    <h1>Privacy Policy</h1>
+    <p>Last updated: May 2026</p>
+    <p>TrustedHand respects your privacy. We collect only the information necessary to provide our services.</p>
+    <p>We do not sell or share your personal data with third parties.</p>
+    <p>For questions, contact: trustedhand100@gmail.com</p>
+  `);
+});
+
+app.get('/terms', (req, res) => {
+  res.send(`
+    <h1>Terms of Service</h1>
+    <p>Last updated: May 2026</p>
+    <p>By using TrustedHand, you agree to these terms.</p>
+    <p>Users must be 18 years or older to use this service.</p>
+    <p>TrustedHand is not responsible for disputes between users and artisans.</p>
+  `);
+});
+
+app.get('/data-deletion', (req, res) => {
+  res.send(`
+    <h1>Data Deletion Instructions</h1>
+    <p>To request deletion of your data:</p>
+    <ol>
+      <li>Log into your TrustedHand account</li>
+      <li>Go to Settings → Account</li>
+      <li>Click "Delete Account"</li>
+      <li>Confirm deletion</li>
+    </ol>
+    <p>Or email: trustedhand100@gmail.com</p>
+  `);
 });
 
 // ==========================================

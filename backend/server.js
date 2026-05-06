@@ -18,7 +18,6 @@ const startServer = async () => {
 
     const server = http.createServer(app);
 
-    // FIXED: Removed trailing spaces from origins
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
@@ -55,6 +54,7 @@ const startServer = async () => {
       console.log(`🚀 Server running in ${NODE_ENV} mode on port ${PORT}`);
       console.log(`📡 Socket.io ready for connections`);
       console.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
+      console.log(`🔗 FRONTEND_URL: ${process.env.FRONTEND_URL}`);
     });
 
     process.on('unhandledRejection', (err) => {
@@ -96,6 +96,7 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
 
 
 startServer();

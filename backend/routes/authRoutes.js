@@ -5,13 +5,11 @@ const authController = require('../controllers/authController');
 const oauthController = require('../controllers/oauthController');
 const { authenticate } = require('../middleware/authMiddleware');
 
-// FIXED: Disable sessions for this router to prevent OAuth session errors
+// Disable sessions for OAuth
 router.use((req, res, next) => {
   req.session = null;
   next();
 });
-
-// FIXED: Only initialize passport, NO session
 router.use(passport.initialize());
 
 // Public routes
@@ -34,16 +32,18 @@ router.get('/google/callback', oauthController.googleCallback);
 router.get('/facebook', oauthController.facebookAuth);
 router.get('/facebook/callback', oauthController.facebookCallback);
 
-// ✅ CRITICAL FIX: Facebook error callback handler
-// When Facebook OAuth fails, it redirects to callbackURL + '/login?error=...'
+// CRITICAL: Facebook error fallback
+// Facebook sometimes appends /login to the callback URL on failure
 router.get('/facebook/callback/login', (req, res) => {
   const error = req.query.error || 'oauth_failed';
   console.error('[Facebook OAuth Error]:', {
     error,
     query: req.query,
+    path: req.path,
     timestamp: new Date().toISOString()
   });
-  res.redirect(`${process.env.FRONTEND_URL}/login?error=${error}&provider=facebook`);
+  const frontendUrl = process.env.FRONTEND_URL || 'https://trustedhands.netlify.app';
+  res.redirect(`${frontendUrl}/login?error=${error}&provider=facebook`);
 });
 
 // Protected routes
