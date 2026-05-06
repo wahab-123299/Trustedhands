@@ -698,3 +698,5 @@ exports.resetPassword = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.generateTokens = generateTokens;
