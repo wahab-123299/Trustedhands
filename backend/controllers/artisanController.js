@@ -9,39 +9,48 @@ const transformArtisan = (artisan) => {
 
   return {
     id: artisan._id.toString(),
-    
-    // ✅ FIXED: lowercase profession (was artisan.Profession)
     profession: artisan.profession,
-    skills: artisan.skills,
+    skills: artisan.skills || [],
     bio: artisan.bio,
     experienceYears: artisan.experienceYears,
-    
-    // ✅ FIXED: Flatten nested rate object
-    hourlyRate: artisan.rate?.amount,
-    ratePeriod: artisan.rate?.period,
-    
-    // ✅ FIXED: Map availability to isAvailable boolean
-    isAvailable: artisan.availability?.status === 'available',
-    availabilityStatus: artisan.availability?.status,
-    nextAvailableDate: artisan.availability?.nextAvailableDate,
-    
-    workRadius: artisan.workRadius,
-    
-    // ✅ FIXED: Map rating fields to frontend names
-    rating: artisan.averageRating,
-    reviewCount: artisan.totalReviews,
-    completedJobs: artisan.completedJobs,
-    
-    // ✅ FIXED: Extract user data from populated userId
+
+    // ✅ MATCHES frontend Profile.tsx expectations
+    rate: {
+      amount: artisan.rate?.amount || 0,
+      period: artisan.rate?.period || 'job'
+    },
+
+    // ✅ MATCHES frontend Profile.tsx expectations
+    averageRating: artisan.averageRating || 0,
+    totalReviews: artisan.totalReviews || 0,
+    completedJobs: artisan.completedJobs || 0,
+
+    // User data (frontend expects these)
     name: artisan.userId.fullName,
+    fullName: artisan.userId.fullName,
     email: artisan.userId.email,
     phone: artisan.userId.phone,
     location: artisan.userId.location,
     profileImage: artisan.userId.profileImage,
     isVerified: artisan.userId.isVerified,
     userId: artisan.userId._id.toString(),
-    
-    // Other fields
+
+    // ✅ MATCHES frontend Profile.tsx expectations
+    availability: {
+      status: artisan.availability?.status || 'available',
+      nextAvailableDate: artisan.availability?.nextAvailableDate
+    },
+
+    // Keep flattened aliases for other components that use them
+    isAvailable: artisan.availability?.status === 'available',
+    availabilityStatus: artisan.availability?.status,
+    nextAvailableDate: artisan.availability?.nextAvailableDate,
+    workRadius: artisan.workRadius,
+    hourlyRate: artisan.rate?.amount,
+    ratePeriod: artisan.rate?.period,
+    rating: artisan.averageRating,
+    reviewCount: artisan.totalReviews,
+
     portfolioImages: artisan.portfolioImages || [],
     idVerification: artisan.idVerification,
     isCertified: artisan.isCertified,
@@ -67,7 +76,9 @@ exports.getMyProfile = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: transformArtisan(artisan)
+      data: {
+        artisan: transformArtisan(artisan)
+      }
     });
   } catch (error) {
     next(error);
@@ -97,7 +108,7 @@ exports.getArtisans = async (req, res, next) => {
     if (minRating) query.averageRating = { $gte: parseFloat(minRating) };
     if (maxRate) query['rate.amount'] = { $lte: parseFloat(maxRate) };
     if (experienceYears) query.experienceYears = experienceYears;
-    
+
     if (skills) {
       const skillsArray = skills.split(',').map(s => s.trim());
       query.skills = { $in: skillsArray };
@@ -126,13 +137,13 @@ exports.getArtisans = async (req, res, next) => {
 
     // Filter out null userId references and apply state/city filters
     artisans = artisans.filter(a => a.userId !== null);
-    
+
     if (state) {
       artisans = artisans.filter(a => 
         a.userId.location?.state?.toLowerCase() === state.toLowerCase()
       );
     }
-    
+
     if (city) {
       artisans = artisans.filter(a => 
         a.userId.location?.city?.toLowerCase() === city.toLowerCase()
@@ -193,7 +204,7 @@ exports.searchArtisans = async (req, res, next) => {
       { bio: searchRegex },
       { userId: { $in: userIds } }
     ];
-    
+
     if (exactSkillMatch.length > 0) {
       searchConditions.push({ _id: { $in: exactSkillMatch } });
     }
@@ -335,7 +346,7 @@ exports.getArtisanById = async (req, res, next) => {
 
     // ✅ FIXED: Transform artisan and format reviews
     const formattedArtisan = transformArtisan(artisan);
-    
+
     const formattedReviews = reviews.map(job => ({
       rating: job.review.rating,
       comment: job.review.comment,
@@ -576,7 +587,7 @@ exports.uploadPortfolioImages = async (req, res, next) => {
     const currentImages = artisan.portfolioImages || [];
     const newImagesCount = req.files.length;
     const maxImages = 6;
-    
+
     if (currentImages.length + newImagesCount > maxImages) {
       throw new AppError(
         'VALIDATION_ERROR', 
@@ -621,11 +632,11 @@ exports.deletePortfolioImage = async (req, res, next) => {
 
     const originalLength = artisan.portfolioImages.length;
     artisan.portfolioImages = artisan.portfolioImages.filter(img => img !== imageUrl);
-    
+
     if (artisan.portfolioImages.length === originalLength) {
       throw new AppError('VALIDATION_ERROR', 'Image not found in portfolio.');
     }
-    
+
     await artisan.save();
 
     res.json({

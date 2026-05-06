@@ -38,12 +38,12 @@ const NIGERIAN_STATES = [
 const Profile: React.FC = () => {
   const { user, artisanProfile, updateUser, updateArtisanProfile, refreshUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     fullName: user?.fullName || '',
     phone: user?.phone || '',
@@ -53,7 +53,7 @@ const Profile: React.FC = () => {
       city: user?.location?.city || '',
       address: user?.location?.address || ''
     },
-    // Artisan fields
+    // Artisan fields - match backend field names
     bio: artisanProfile?.bio || '',
     skills: artisanProfile?.skills || [],
     experienceYears: artisanProfile?.experienceYears || '',
@@ -63,7 +63,7 @@ const Profile: React.FC = () => {
     }
   });
 
-  // Update form data when artisanProfile loads
+  // ✅ FIXED: Update form data when artisanProfile loads/changes
   useEffect(() => {
     if (artisanProfile) {
       setFormData(prev => ({
@@ -99,16 +99,16 @@ const Profile: React.FC = () => {
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      
+
       // Update user profile
       const userUpdate = await userApi.updateMe({
         fullName: formData.fullName,
         phone: formData.phone,
         location: formData.location
       });
-      
+
       updateUser(userUpdate.data.data);
-      
+
       // Update artisan profile if applicable
       if (user?.role === 'artisan' && artisanProfile) {
         const artisanUpdate = await artisanApi.updateProfile({
@@ -117,10 +117,10 @@ const Profile: React.FC = () => {
           experienceYears: formData.experienceYears as '0-1' | '1-3' | '3-5' | '5-10' | '10+',
           rate: formData.rate
         });
-        
+
         updateArtisanProfile(artisanUpdate.data.data.artisan);
       }
-      
+
       toast.success('Profile updated successfully');
       setIsEditing(false);
     } catch (error: any) {
@@ -231,7 +231,7 @@ const Profile: React.FC = () => {
               </div>
               <p className="text-gray-600">{user.email}</p>
               <p className="text-gray-600">{user.phone}</p>
-              
+
               {user.isEmailVerified && (
                 <Badge variant="outline" className="mt-2 text-green-600 border-green-200">
                   <CheckCircle className="w-3 h-3 mr-1" />
@@ -388,7 +388,7 @@ const Profile: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Professional Info (Artisan Only) - FIXED */}
+        {/* Professional Info (Artisan Only) */}
         {user.role === 'artisan' && (
           <TabsContent value="professional" className="mt-6">
             {!artisanProfile ? (
@@ -524,7 +524,7 @@ const Profile: React.FC = () => {
                         </select>
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-lg mt-2">
-                          <span>{artisanProfile.experienceYears || 'Not specified'} years</span>
+                          <span>{artisanProfile.experienceYears || 'Not specified'}</span>
                         </div>
                       )}
                     </div>

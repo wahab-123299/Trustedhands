@@ -403,12 +403,24 @@ export interface RegisterData {
 const transformArtisanData = (artisan: any): any | null => {
   if (!artisan) return null;
 
+  // If backend already transformed it (has rate object with amount/period), return as-is with compatibility
+  if (artisan.rate && typeof artisan.rate === 'object' && 'amount' in artisan.rate) {
+    return {
+      ...artisan,
+      // Ensure all frontend-expected fields exist
+      userId: artisan.userId || artisan.user,
+      isAvailable: artisan.availability?.status === 'available' || artisan.isAvailable,
+    };
+  }
+
+  // Legacy fallback for raw MongoDB documents
   const userData = artisan.userId || artisan.user;
 
   return {
     id: artisan.id || artisan._id,
     profession: artisan.profession || artisan.Profession,
     name: artisan.name || userData?.fullName,
+    fullName: artisan.fullName || userData?.fullName,
     email: artisan.email || userData?.email,
     phone: artisan.phone || userData?.phone,
     location: artisan.location || userData?.location,
@@ -418,15 +430,21 @@ const transformArtisanData = (artisan: any): any | null => {
     skills: artisan.skills || [],
     bio: artisan.bio,
     experienceYears: artisan.experienceYears,
+    rate: artisan.rate || {
+      amount: artisan.hourlyRate || 0,
+      period: artisan.ratePeriod || 'job'
+    },
     hourlyRate: artisan.hourlyRate || artisan.rate?.amount,
     ratePeriod: artisan.ratePeriod || artisan.rate?.period,
-    isAvailable: artisan.isAvailable || artisan.availability?.status === 'available',
+    isAvailable: artisan.availability?.status === 'available' || artisan.isAvailable,
     availabilityStatus: artisan.availabilityStatus || artisan.availability?.status,
-    nextAvailableDate: artisan.availability?.nextAvailableDate,
+    nextAvailableDate: artisan.nextAvailableDate || artisan.availability?.nextAvailableDate,
     workRadius: artisan.workRadius,
-    rating: artisan.rating || artisan.averageRating,
-    reviewCount: artisan.reviewCount || artisan.totalReviews,
-    completedJobs: artisan.completedJobs,
+    averageRating: artisan.averageRating || artisan.rating || 0,
+    totalReviews: artisan.totalReviews || artisan.reviewCount || 0,
+    rating: artisan.rating || artisan.averageRating || 0,
+    reviewCount: artisan.reviewCount || artisan.totalReviews || 0,
+    completedJobs: artisan.completedJobs || 0,
     portfolioImages: artisan.portfolioImages || [],
     idVerification: artisan.idVerification,
     isCertified: artisan.isCertified,

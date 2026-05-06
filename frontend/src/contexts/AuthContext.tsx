@@ -262,14 +262,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         addLog(`[Init] User: ${user.email}, Role: ${user.role}`);
 
-        // ✅ ADDED: If user is artisan but no profile in user response, fetch it separately
+        // ✅ FIXED: If user is artisan but no profile in user response, fetch it separately
         let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
         if (user.role === 'artisan' && !artisanProfile) {
           addLog('[Init] User is artisan but no profile in /users/me, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
-            // ✅ FIXED: Access .artisan property and cast to ArtisanProfile
-            finalArtisanProfile = artisanRes.data.data.artisan as ArtisanProfile;
+            // ✅ FIXED: Access .artisan property from response
+            finalArtisanProfile = artisanRes.data?.data?.artisan as ArtisanProfile;
             addLog('[Init] Artisan profile loaded successfully');
           } catch (err: any) {
             if (err.response?.status === 404) {
@@ -327,7 +327,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // ==========================================
   // CRITICAL FIX: Extract real error message from API error
-  // Handles both original errors AND refresh-token-red-herring errors
   // ==========================================
   const extractErrorMessage = useCallback((err: any): string => {
     addLog(`[extractErrorMessage] Extracting from error: ${JSON.stringify({
@@ -413,14 +412,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Login] Token saved to storage: ${!!savedToken}`);
         addLog(`[Login] Saved token matches: ${savedToken === accessToken}`);
 
-        // ✅ ADDED: If user is artisan but no profile in login response, fetch it
+        // ✅ FIXED: If user is artisan but no profile in login response, fetch it
         let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
         if (user.role === 'artisan' && !artisanProfile) {
           addLog('[Login] User is artisan but no profile in login response, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
-            // ✅ FIXED: Access .artisan property and cast to ArtisanProfile
-            finalArtisanProfile = artisanRes.data.data.artisan as ArtisanProfile;
+            // ✅ FIXED: Access .artisan property from response
+            finalArtisanProfile = artisanRes.data?.data?.artisan as ArtisanProfile;
             addLog('[Login] Artisan profile loaded successfully');
           } catch (err: any) {
             if (err.response?.status === 404) {
@@ -590,14 +589,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const res = response.data as ApiResponse<AuthResponseData>;
       const { user, artisanProfile } = res.data;
 
-      // ✅ ADDED: If user is artisan but no profile in response, fetch it
+      // ✅ FIXED: If user is artisan but no profile in response, fetch it
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
       if (user.role === 'artisan' && !artisanProfile) {
         addLog('[RefreshUser] User is artisan but no profile, fetching /artisans/me...');
         try {
           const artisanRes = await artisanApi.getMyProfile();
-          // ✅ FIXED: Access .artisan property and cast to ArtisanProfile
-          finalArtisanProfile = artisanRes.data.data.artisan as ArtisanProfile;
+          // ✅ FIXED: Access .artisan property from response
+          finalArtisanProfile = artisanRes.data?.data?.artisan as ArtisanProfile;
           addLog('[RefreshUser] Artisan profile loaded successfully');
         } catch (err: any) {
           if (err.response?.status === 404) {
