@@ -22,13 +22,29 @@ router.post('/resend-verification', authController.resendVerification);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password/:token', authController.resetPassword);
 
+// ==========================================
+// OAUTH ROUTES
+// ==========================================
 
-// OAuth routes
+// Google
 router.get('/google', oauthController.googleAuth);
 router.get('/google/callback', oauthController.googleCallback);
+
+// Facebook
 router.get('/facebook', oauthController.facebookAuth);
 router.get('/facebook/callback', oauthController.facebookCallback);
 
+// ✅ CRITICAL FIX: Facebook error callback handler
+// When Facebook OAuth fails, it redirects to callbackURL + '/login?error=...'
+router.get('/facebook/callback/login', (req, res) => {
+  const error = req.query.error || 'oauth_failed';
+  console.error('[Facebook OAuth Error]:', {
+    error,
+    query: req.query,
+    timestamp: new Date().toISOString()
+  });
+  res.redirect(`${process.env.FRONTEND_URL}/login?error=${error}&provider=facebook`);
+});
 
 // Protected routes
 router.post('/logout', authenticate, authController.logout);

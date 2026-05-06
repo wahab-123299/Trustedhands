@@ -89,21 +89,29 @@ passport.use(new FacebookStrategy({
   }
 ));
 
-passport.serializeUser((user, done) => {
-  done(null, user.id);
-});
+// ==========================================
+// CUSTOM AUTHENTICATE WRAPPER (NO SESSION)
+// ==========================================
 
-passport.deserializeUser(async (id, done) => {
-  try {
-    const user = await User.findById(id);
-    done(null, user);
-  } catch (err) {
-    done(err, null);
-  }
-});
+const authenticateOAuth = (strategy) => {
+  return (req, res, next) => {
+    passport.authenticate(strategy, { session: false }, (err, user, info) => {
+      if (err) {
+        console.error(`[OAuth Error] ${strategy}:`, err.message);
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+      }
+      if (!user) {
+        console.error(`[OAuth Error] ${strategy}: No user returned`);
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+      }
+      req.user = user;
+      next();
+    })(req, res, next);
+  };
+};
 
 // ==========================================
-// CONTROLLER METHODS
+// CONTROLLER EXPORTS
 // ==========================================
 
 exports.googleAuth = passport.authenticate('google', {
@@ -113,10 +121,7 @@ exports.googleAuth = passport.authenticate('google', {
 });
 
 exports.googleCallback = [
-  passport.authenticate('google', { 
-    failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`,
-    session: false
-  }),
+  authenticateOAuth('google'),
   async (req, res) => {
     try {
       const user = req.user;
@@ -128,6 +133,7 @@ exports.googleCallback = [
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
+      console.error('[Google Callback Error]:', err);
       res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
     }
   }
@@ -139,10 +145,7 @@ exports.facebookAuth = passport.authenticate('facebook', {
 });
 
 exports.facebookCallback = [
-  passport.authenticate('facebook', { 
-    failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`,
-    session: false
-  }),
+  authenticateOAuth('facebook'),
   async (req, res) => {
     try {
       const user = req.user;
@@ -154,6 +157,7 @@ exports.facebookCallback = [
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
+      console.error('[Facebook Callback Error]:', err);
       res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
     }
   }

@@ -89,7 +89,6 @@ passport.use(new FacebookStrategy({
   }
 ));
 
-// Minimal serialize/deserialize (required by passport, even without sessions)
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
@@ -110,13 +109,13 @@ passport.deserializeUser(async (id, done) => {
 exports.googleAuth = passport.authenticate('google', {
   scope: ['profile', 'email'],
   prompt: 'select_account',
-  session: false  // ← ADDED: disables session requirement
+  session: false
 });
 
 exports.googleCallback = [
   passport.authenticate('google', { 
     failureRedirect: '/login?error=oauth_failed',
-    session: false  // ← ADDED: disables session requirement
+    session: false
   }),
   async (req, res) => {
     try {
@@ -136,13 +135,13 @@ exports.googleCallback = [
 
 exports.facebookAuth = passport.authenticate('facebook', {
   scope: ['email'],
-  session: false  // ← ADDED: disables session requirement
+  session: false
 });
 
 exports.facebookCallback = [
   passport.authenticate('facebook', { 
     failureRedirect: '/login?error=oauth_failed',
-    session: false  // ← ADDED: disables session requirement
+    session: false
   }),
   async (req, res) => {
     try {
