@@ -103,13 +103,13 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // ==========================================
-// CONTROLLER METHODS — SESSION: FALSE ADDED
+// CONTROLLER METHODS
 // ==========================================
 
 exports.googleAuth = passport.authenticate('google', {
   scope: ['profile', 'email'],
   prompt: 'select_account',
-  session: false  // ← ADDED
+  session: false
 });
 
 exports.googleCallback = [
@@ -125,7 +125,6 @@ exports.googleCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-google');
 
-      
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
@@ -134,7 +133,10 @@ exports.googleCallback = [
   }
 ];
 
-
+exports.facebookAuth = passport.authenticate('facebook', {
+  scope: ['email'],
+  session: false
+});
 
 exports.facebookCallback = [
   passport.authenticate('facebook', { 
@@ -148,7 +150,6 @@ exports.facebookCallback = [
       const { accessToken, refreshToken } = generateTokens(user._id);
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-facebook');
-
 
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
