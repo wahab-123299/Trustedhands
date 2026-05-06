@@ -38,8 +38,7 @@ app.use(helmet({
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  'https://trustedhand.netlify.app',
-  'https://trustedhands.netlify.app',
+  'https://trustedhand-app.netlify.app',
   'https://trustedhands.onrender.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);

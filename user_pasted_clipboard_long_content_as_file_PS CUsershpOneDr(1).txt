@@ -1,0 +1,63 @@
+PS C:\Users\hp\OneDrive\Desktop\trustedhand\frontend> rm frontend/public/_redirects
+rm : Cannot find path 
+'C:\Users\hp\OneDrive\Desktop\trustedhand\frontend\frontend\public\_redirects' because 
+it does not exist.
+At line:1 char:1
++ rm frontend/public/_redirects
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\Users\hp\One...blic\_redirects:String) 
+    [Remove-Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.RemoveItemComma 
+   nd
+ 
+PS C:\Users\hp\OneDrive\Desktop\trustedhand\frontend> npm run build                   
+
+> trustedhand-frontend@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 1970 modules transformed.
+dist/index.html                                           1.74 kB │ gzip:   0.84 kB
+dist/assets/geist-cyrillic-wght-normal-CHSlOQsW.woff2    14.69 kB
+dist/assets/geist-latin-ext-wght-normal-DMtmJ5ZE.woff2   15.31 kB
+dist/assets/geist-latin-wght-normal-Dm3htQBi.woff2       28.40 kB
+dist/assets/index-uyn4g1k1.css                           65.06 kB │ gzip:  11.47 kB
+dist/assets/check-check-DjqYEQv4.js                       0.40 kB │ gzip:   0.31 kB │ map:     0.89 kB
+dist/assets/trending-up-mZT3gpZL.js                       0.42 kB │ gzip:   0.32 kB │ map:     0.92 kB
+dist/assets/dollar-sign-BoriZXrW.js                       0.44 kB │ gzip:   0.33 kB │ map:     0.97 kB
+dist/assets/more-vertical-DMS_W1pF.js                     0.45 kB │ gzip:   0.31 kB │ map:     1.09 kB
+dist/assets/camera-CqPhNGvA.js                            0.46 kB │ gzip:   0.34 kB │ map:     0.99 kB
+dist/assets/trash-2-CqMeWB8T.js                           0.57 kB │ gzip:   0.38 kB │ map:     1.32 kB
+dist/assets/building-2-DiXzKjIf.js                        0.66 kB │ gzip:   0.38 kB │ map:     1.46 kB
+dist/assets/save-sGiJJgxz.js                              0.77 kB │ gzip:   0.41 kB │ map:     1.64 kB
+dist/assets/useTier-B9xscoJf.js                           1.08 kB │ gzip:   0.58 kB │ map:     3.18 kB
+dist/assets/formatDistanceToNow-CJVhn299.js               2.09 kB │ gzip:   0.91 kB │ map:    29.51 kB
+dist/assets/JobDetails-D0cRHKd9.js                        2.42 kB │ gzip:   1.07 kB │ map:     8.78 kB
+dist/assets/Applications-DzKeOsmv.js                      3.03 kB │ gzip:   1.24 kB │ map:    10.24 kB
+dist/assets/tabs-DYfT2p0k.js                              3.24 kB │ gzip:   1.38 kB │ map:    13.52 kB
+dist/assets/Wallet-DpUl1spK.js                            4.38 kB │ gzip:   1.71 kB │ map:    14.16 kB
+dist/assets/Messages-YB6U0ffy.js                          6.16 kB │ gzip:   2.38 kB │ map:    19.69 kB
+dist/assets/Messages-DjBWXcrU.js                          6.19 kB │ gzip:   2.41 kB │ map:    19.79 kB
+dist/assets/Dashboard-DDSBi8tl.js                         6.23 kB │ gzip:   1.81 kB │ map:    14.75 kB
+dist/assets/Jobs-B6NVrCkn.js                              7.50 kB │ gzip:   2.30 kB │ map:    21.66 kB
+dist/assets/Dashboard-nNS0gfw5.js                         7.78 kB │ gzip:   2.23 kB │ map:    18.87 kB
+dist/assets/JobDetails-BANBtZ_Z.js                        8.10 kB │ gzip:   2.51 kB │ map:    24.73 kB
+dist/assets/dialog-POwsjnkO.js                            8.64 kB │ gzip:   3.21 kB │ map:    34.15 kB
+dist/assets/Profile-BWSh-_Wh.js                          10.75 kB │ gzip:   3.02 kB │ map:    31.42 kB
+dist/assets/Jobs-C-CMKSNo.js                             11.07 kB │ gzip:   3.56 kB │ map:    31.06 kB
+dist/assets/Bookings-6lsBJarq.js                         12.71 kB │ gzip:   4.05 kB │ map:    38.58 kB
+dist/assets/Profile-DGboQuBV.js                          13.05 kB │ gzip:   3.76 kB │ map:    38.34 kB
+dist/assets/Verification-CaH3vckU.js                     15.68 kB │ gzip:   4.49 kB │ map:    39.19 kB
+dist/assets/Verification-B7ASoGbV.js                     21.99 kB │ gzip:   5.69 kB │ map:    54.55 kB
+dist/assets/ChatPage-BccSFW6c.js                         24.72 kB │ gzip:   7.91 kB │ map:    93.29 kB
+dist/assets/PostJob-IxIN1mGr.js                          90.84 kB │ gzip:  31.53 kB │ map:   412.46 kB
+dist/assets/index-CR7n7-tH.js                           598.42 kB │ gzip: 181.23 kB │ map: 2,434.51 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 21.68s
+PS C:\Users\hp\OneDrive\Desktop\trustedhand\frontend> netlify deploy --dir=dist --prod
+ »   JSONHTTPError: Forbidden
+PS C:\Users\hp\OneDrive\Desktop\trustedhand\frontend> 
