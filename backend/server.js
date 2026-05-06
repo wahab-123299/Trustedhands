@@ -2,6 +2,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
+// CRITICAL: Register passport strategies before creating app
+require('./config/passport');
+
 const app = require('./app');
 const connectDB = require('./config/database');
 const chatSocket = require('./socket/chatSocket');
@@ -14,7 +17,7 @@ mongoose.set('strictQuery', false);
 const startServer = async () => {
   try {
     await connectDB();
-    console.log('✅ Database connection established');
+    console.log('Database connection established');
 
     const server = http.createServer(app);
 
@@ -51,39 +54,39 @@ const startServer = async () => {
     const NODE_ENV = process.env.NODE_ENV || 'development';
 
     server.listen(PORT, () => {
-      console.log(`🚀 Server running in ${NODE_ENV} mode on port ${PORT}`);
-      console.log(`📡 Socket.io ready for connections`);
-      console.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
-      console.log(`🔗 FRONTEND_URL: ${process.env.FRONTEND_URL}`);
+      console.log(`Server running in ${NODE_ENV} mode on port ${PORT}`);
+      console.log(`Socket.io ready for connections`);
+      console.log(`CORS enabled for: ${allowedOrigins.join(', ')}`);
+      console.log(`FRONTEND_URL: ${process.env.FRONTEND_URL}`);
     });
 
     process.on('unhandledRejection', (err) => {
-      console.error('❌ Unhandled Rejection:', err.message);
+      console.error('Unhandled Rejection:', err.message);
       console.error(err.stack);
       server.close(() => process.exit(1));
       setTimeout(() => process.exit(1), 10000);
     });
 
     process.on('uncaughtException', (err) => {
-      console.error('❌ Uncaught Exception:', err.message);
+      console.error('Uncaught Exception:', err.message);
       console.error(err.stack);
       server.close(() => process.exit(1));
       setTimeout(() => process.exit(1), 10000);
     });
 
     process.on('SIGTERM', () => {
-      console.log('👋 SIGTERM received. Shutting down gracefully...');
+      console.log('SIGTERM received. Shutting down gracefully...');
       server.close(() => {
-        console.log('✅ HTTP server closed');
+        console.log('HTTP server closed');
         process.exit(0);
       });
       setTimeout(() => process.exit(1), 30000);
     });
 
     process.on('SIGINT', () => {
-      console.log('👋 SIGINT received. Shutting down gracefully...');
+      console.log('SIGINT received. Shutting down gracefully...');
       server.close(() => {
-        console.log('✅ HTTP server closed');
+        console.log('HTTP server closed');
         process.exit(0);
       });
       setTimeout(() => process.exit(1), 30000);
@@ -92,7 +95,7 @@ const startServer = async () => {
     return server;
 
   } catch (error) {
-    console.error('❌ Failed to start server:', error.message);
+    console.error('Failed to start server:', error.message);
     process.exit(1);
   }
 };
