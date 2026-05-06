@@ -39,6 +39,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://trustedhand.netlify.app',
+  'https://trustedhands.netlify.app',
   'https://trustedhands.onrender.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
@@ -46,17 +47,23 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     console.log('[CORS] Request from origin:', origin || 'undefined');
-
+    
     if (!origin) {
       console.log('[CORS] Allowed (no origin)');
       return callback(null, true);
     }
-
+    
     if (allowedOrigins.includes(origin)) {
       console.log('[CORS] Allowed:', origin);
       return callback(null, true);
     }
-
+    
+    // Allow Netlify deploy previews
+    if (origin.includes('netlify.app')) {
+      console.log('[CORS] Allowed (Netlify):', origin);
+      return callback(null, true);
+    }
+    
     console.log('[CORS] Blocked:', origin);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
