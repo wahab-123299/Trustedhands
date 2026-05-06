@@ -22,7 +22,6 @@ passport.use(new GoogleStrategy({
       let user = await User.findOne({ email: email.toLowerCase() });
 
       if (user) {
-        // Link Google ID if not already linked
         if (!user.googleId) {
           user.googleId = profile.id;
           await user.save();
@@ -30,12 +29,11 @@ passport.use(new GoogleStrategy({
         return done(null, user);
       }
 
-      // Create new user from Google data
       user = await User.create({
         email: email.toLowerCase(),
         fullName: profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim(),
         profileImage: profile.photos?.[0]?.value || '/default-avatar.png',
-        role: 'customer', // Default role for OAuth
+        role: 'customer',
         googleId: profile.id,
         isActive: true,
         isEmailVerified: true
@@ -105,16 +103,20 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // ==========================================
-// CONTROLLER METHODS
+// CONTROLLER METHODS — SESSION: FALSE ADDED
 // ==========================================
 
 exports.googleAuth = passport.authenticate('google', {
   scope: ['profile', 'email'],
-  prompt: 'select_account'
+  prompt: 'select_account',
+  session: false  // ← ADDED
 });
 
 exports.googleCallback = [
-  passport.authenticate('google', { failureRedirect: '/login?error=oauth_failed' }),
+  passport.authenticate('google', { 
+    failureRedirect: '/login?error=oauth_failed',
+    session: false  // ← ADDED
+  }),
   async (req, res) => {
     try {
       const user = req.user;
@@ -123,8 +125,8 @@ exports.googleCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-google');
 
-      // Redirect to frontend with tokens
-      const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
+      // FIXED: Changed from /oauth-callback to /oauth/callback
+      const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
       res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
@@ -133,11 +135,15 @@ exports.googleCallback = [
 ];
 
 exports.facebookAuth = passport.authenticate('facebook', {
-  scope: ['email']
+  scope: ['email'],
+  session: false  // ← ADDED
 });
 
 exports.facebookCallback = [
-  passport.authenticate('facebook', { failureRedirect: '/login?error=oauth_failed' }),
+  passport.authenticate('facebook', { 
+    failureRedirect: '/login?error=oauth_failed',
+    session: false  // ← ADDED
+  }),
   async (req, res) => {
     try {
       const user = req.user;
@@ -146,7 +152,8 @@ exports.facebookCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-facebook');
 
-      const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
+      // FIXED: Changed from /oauth-callback to /oauth/callback
+      const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
       res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
