@@ -114,8 +114,8 @@ exports.googleAuth = passport.authenticate('google', {
 
 exports.googleCallback = [
   passport.authenticate('google', { 
-    failureRedirect: '/login?error=oauth_failed',
-    session: false  // ← ADDED
+    failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`,
+    session: false
   }),
   async (req, res) => {
     try {
@@ -125,7 +125,7 @@ exports.googleCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-google');
 
-      // FIXED: Changed from /oauth-callback to /oauth/callback
+      
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
@@ -134,15 +134,12 @@ exports.googleCallback = [
   }
 ];
 
-exports.facebookAuth = passport.authenticate('facebook', {
-  scope: ['email'],
-  session: false  // ← ADDED
-});
+
 
 exports.facebookCallback = [
   passport.authenticate('facebook', { 
-    failureRedirect: '/login?error=oauth_failed',
-    session: false  // ← ADDED
+    failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`,
+    session: false
   }),
   async (req, res) => {
     try {
@@ -152,7 +149,7 @@ exports.facebookCallback = [
       
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth-facebook');
 
-      // FIXED: Changed from /oauth-callback to /oauth/callback
+
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth/callback?token=${accessToken}&refresh=${refreshToken}&role=${user.role}`;
       res.redirect(redirectUrl);
     } catch (err) {
