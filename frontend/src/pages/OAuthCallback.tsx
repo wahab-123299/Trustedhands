@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { userApi } from '@/services/api'; // Import this
+import { userApi } from '@/services/api';
 import { toast } from 'sonner';
 
 const OAuthCallback = () => {
@@ -20,28 +20,26 @@ const OAuthCallback = () => {
       }
 
       try {
-        // Store token FIRST (updateUserFromOAuth will also do this, but do it early)
+        // Store token immediately so API calls work
         localStorage.setItem('token', token);
         localStorage.setItem('rememberMe', 'true');
 
-        // Fetch REAL user data from backend
-        addLog('[OAuthCallback] Fetching real user data...');
+        // Fetch real user data from backend
+        console.log('[OAuthCallback] Fetching user data...');
         const response = await userApi.getMe();
         const { user, hasProfile } = response.data.data;
 
-        addLog(`[OAuthCallback] Real user: ${user.email}, role: ${user.role}, hasProfile: ${hasProfile}`);
+        console.log(`[OAuthCallback] User: ${user.email}, role: ${user.role}, hasProfile: ${hasProfile}`);
 
-        // Update auth context with REAL user (this handles socket, state, profile check)
+        // Update auth context with real user (async — handles socket, profile check, redirect)
         await updateUserFromOAuth(user, token);
 
-        // DON'T navigate here — updateUserFromOAuth handles redirects!
-        // If we reach here, it means updateUserFromOAuth didn't redirect (user has profile)
-        
+        // If we reach here, updateUserFromOAuth didn't redirect (user has profile)
         const dashboardRoute = user.role === 'artisan' 
           ? '/artisan/dashboard' 
           : '/customer/dashboard';
 
-        addLog(`[OAuthCallback] Redirecting to ${dashboardRoute}`);
+        console.log(`[OAuthCallback] Redirecting to ${dashboardRoute}`);
         navigate(dashboardRoute, { replace: true });
 
       } catch (error: any) {
