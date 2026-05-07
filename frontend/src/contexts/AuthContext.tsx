@@ -34,6 +34,7 @@ if (typeof window !== 'undefined') {
 interface AuthResponseData {
   user: User;
   artisanProfile?: ArtisanProfile | null;
+  hasProfile?: boolean;
   dashboardRoute?: string;
   accessToken?: string;
 }
@@ -220,7 +221,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [disconnectSocket, SOCKET_URL, navigate, clearTokens]);
 
 
-   // ✅ FIXED: Helper to safely extract artisan data from API response
   const extractArtisanFromResponse = useCallback((response: any): ArtisanProfile | null => {
     if (!response?.data?.data) {
       addLog('[ExtractArtisan] No data in response');
@@ -229,19 +229,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     const data = response.data.data;
     
-    // From /users/me: { success: true, data: { user: {...}, artisanProfile: {...} } }
     if (data.artisanProfile) {
       addLog('[ExtractArtisan] Found artisanProfile in getMe response');
       return data.artisanProfile as ArtisanProfile;
     }
     
-    // From /artisans/me: { success: true, data: { artisan: {...} } }
     if (data.artisan) {
       addLog('[ExtractArtisan] Found artisan in data.artisan');
       return data.artisan as ArtisanProfile;
     }
     
-    // Direct data fallback
     if (data.userId || data.profession !== undefined || data.skills || data.bio !== undefined) {
       addLog('[ExtractArtisan] Found artisan directly in data');
       return data as ArtisanProfile;
@@ -289,32 +286,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 100)}...`);
         const res = response.data as ApiResponse<AuthResponseData>;
-        const { user, artisanProfile } = res.data;
+        const { user, artisanProfile, hasProfile } = res.data;
 
-        addLog(`[Init] User: ${user.email}, Role: ${user.role}`);
+        addLog(`[Init] User: ${user.email}, Role: ${user.role}, hasProfile: ${hasProfile}`);
 
-        // ✅ FIXED: If user is artisan but no profile in user response, fetch it separately
+        // If artisan with no profile, they're still authenticated — just need setup
+        if (user.role === 'artisan' && hasProfile === false) {
+          addLog('[Init] Artisan authenticated but needs profile setup');
+          
+          setState({
+            user,
+            token,
+            artisanProfile: null,
+            isAuthenticated: true,
+            isLoading: false,
+            isInitialized: true,
+          });
+
+          connectSocket(user._id, token);
+          
+          if (!location.pathname.includes('/setup-profile')) {
+            addLog('[Init] Redirecting to profile setup');
+            navigate('/setup-profile', { replace: true });
+          }
+          
+          addLog('[Init] === AUTH INITIALIZATION COMPLETE (needs profile) ===');
+          return;
+        }
+
+        // Normal flow: user has profile or is a client
         let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
         
         if (user.role === 'artisan' && !finalArtisanProfile) {
           addLog('[Init] User is artisan but no profile in /users/me, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
-            addLog(`[Init] /artisans/me response: ${JSON.stringify(artisanRes.data).substring(0, 150)}...`);
-            
             finalArtisanProfile = extractArtisanFromResponse(artisanRes);
-            
-            if (finalArtisanProfile) {
-              addLog('[Init] Artisan profile loaded successfully');
-            } else {
-              addLog('[Init] Artisan profile response had no usable data');
-            }
           } catch (err: any) {
-            if (err.response?.status === 404) {
-              addLog('[Init] Artisan profile not found (404) - profile not created yet');
-            } else {
-              addLog(`[Init] Failed to load artisan profile: ${err.message}`);
-            }
+            addLog(`[Init] Failed to load artisan profile: ${err.message}`);
             finalArtisanProfile = null;
           }
         }
@@ -330,7 +339,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         connectSocket(user._id, token);
         addLog('[Init] === AUTH INITIALIZATION COMPLETE ===');
+
       } catch (error: any) {
+        // CRITICAL FIX: Don't fail auth on 400 "Profession is required"
+        const isProfileMissingError = 
+          error.response?.status === 400 &&
+          error.response?.data?.error?.code === 'VALIDATION_ERROR' &&
+          error.response?.data?.error?.field === 'profession';
+
+        if (isProfileMissingError && error.response?.data?.data?.user) {
+          const user = error.response.data.data.user;
+          const token = getToken();
+          
+          addLog('[Init] Profile missing but user authenticated, redirecting to setup');
+          
+          setState({
+            user,
+            token,
+            artisanProfile: null,
+            isAuthenticated: true,
+            isLoading: false,
+            isInitialized: true,
+          });
+
+          if (token) connectSocket(user._id, token);
+          
+          if (!location.pathname.includes('/setup-profile')) {
+            navigate('/setup-profile', { replace: true });
+          }
+          
+          addLog('[Init] === AUTH INITIALIZATION COMPLETE (needs profile) ===');
+          return;
+        }
+
+        // Real auth errors (401/403)
         addLog(`[Init] FAILED: ${error.message}`);
         addLog(`[Init] Status: ${error.response?.status}`);
         addLog(`[Init] Error data: ${JSON.stringify(error.response?.data)}`);
@@ -360,12 +402,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearTimeout(timer);
       disconnectSocket();
     };
-  }, [connectSocket, disconnectSocket, getToken, clearTokens, extractArtisanFromResponse]);
+  }, [connectSocket, disconnectSocket, getToken, clearTokens, extractArtisanFromResponse, navigate, location.pathname]);
 
 
-  // ==========================================
-  // CRITICAL FIX: Extract real error message from API error
-  // ==========================================
   const extractErrorMessage = useCallback((err: any): string => {
     addLog(`[extractErrorMessage] Extracting from error: ${JSON.stringify({
       message: err?.message,
@@ -374,13 +413,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       serverMessage: err?.response?.data?.error?.message,
     })}`);
 
-    // Priority 1: Server error response message (most specific)
     if (err?.response?.data?.error?.message) {
       addLog(`[extractErrorMessage] Found server message: "${err.response.data.error.message}"`);
       return err.response.data.error.message;
     }
 
-    // Priority 2: Server error response code mapped to user-friendly message
     if (err?.response?.data?.error?.code) {
       const code = err.response.data.error.code;
       const codeMap: Record<string, string> = {
@@ -399,19 +436,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    // Priority 3: If it's a 401 with no specific message, give a helpful hint
     if (err?.response?.status === 401) {
       addLog(`[extractErrorMessage] Generic 401 - suggesting credentials issue`);
       return 'Email or password is incorrect';
     }
 
-    // Priority 4: Direct message property (filter out the refresh token red herring)
     if (err?.message && !err.message.toLowerCase().includes('refresh token')) {
       addLog(`[extractErrorMessage] Using error.message: "${err.message}"`);
       return err.message;
     }
 
-    // Priority 5: Response status text
     if (err?.response?.statusText) {
       addLog(`[extractErrorMessage] Using statusText: "${err.response.statusText}"`);
       return `Error ${err.response.status}: ${err.response.statusText}`;
@@ -450,8 +484,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Login] Token saved to storage: ${!!savedToken}`);
         addLog(`[Login] Saved token matches: ${savedToken === accessToken}`);
 
-        // ✅ FIXED: If user is artisan but no profile in login response, fetch it
         let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
+        let needsProfileSetup = false;
+
         if (user.role === 'artisan' && !finalArtisanProfile) {
           addLog('[Login] User is artisan but no profile in login response, fetching /artisans/me...');
           try {
@@ -463,7 +498,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           } catch (err: any) {
             if (err.response?.status === 404) {
-              addLog('[Login] Artisan profile not found (404) - profile not created yet');
+              addLog('[Login] Artisan profile not found (404) - needs setup');
+              needsProfileSetup = true;
             } else {
               addLog(`[Login] Failed to load artisan profile: ${err.message}`);
             }
@@ -483,17 +519,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         connectSocket(user._id, accessToken);
         toast.success(`Welcome ${user.fullName}`);
 
-        const destination = location.state?.from?.pathname || dashboardRoute || '/';
-        addLog(`[Login] Destination: ${destination}`);
-
         await new Promise(r => setTimeout(r, 500));
 
         addLog('[Login] Navigating now...');
         isLoggingIn.current = false;
-        navigate(destination, { replace: true });
+
+        // Redirect to setup if artisan has no profile
+        if (needsProfileSetup) {
+          navigate('/setup-profile', { replace: true });
+        } else {
+          const destination = location.state?.from?.pathname || dashboardRoute || '/';
+          navigate(destination, { replace: true });
+        }
 
       } catch (err: any) {
-        // CRITICAL FIX: Extract the REAL error message, not the refresh token red herring
         const message = extractErrorMessage(err);
 
         addLog(`[Login] FAILED: ${message}`);
@@ -504,10 +543,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isLoggingIn.current = false;
         setState((prev) => ({ ...prev, isLoading: false }));
 
-        // Show the real error to user via toast
         toast.error(message);
-
-        // Re-throw with clean message for UI components
         throw new Error(message);
       }
     },
@@ -603,7 +639,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const updateUserFromOAuth = useCallback((user: User, token: string) => {
     addLog(`[OAuth] Updating user from OAuth: ${user.email}`);
 
-
     localStorage.setItem('token', token);
     localStorage.setItem('rememberMe', 'true');
 
@@ -618,38 +653,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     connectSocket(user._id, token);
     addLog('[OAuth] User updated and socket connected');
-  }, [connectSocket]);
+
+    // If artisan, check if they need to complete profile
+    if (user.role === 'artisan') {
+      addLog('[OAuth] Checking if artisan needs profile setup...');
+      setTimeout(async () => {
+        try {
+          const res = await userApi.getMe();
+          if (res.data?.data?.hasProfile === false) {
+            addLog('[OAuth] Artisan needs profile setup, redirecting...');
+            if (!location.pathname.includes('/setup-profile')) {
+              navigate('/setup-profile', { replace: true });
+            }
+          }
+        } catch (err: any) {
+          if (err.response?.status === 400 && err.response?.data?.error?.field === 'profession') {
+            addLog('[OAuth] No artisan profile found, redirecting to setup...');
+            if (!location.pathname.includes('/setup-profile')) {
+              navigate('/setup-profile', { replace: true });
+            }
+          }
+        }
+      }, 100);
+    }
+  }, [connectSocket, navigate, location.pathname]);
 
 
-  // ✅ FIXED: refreshUser now fetches artisan profile separately with proper extraction
   const refreshUser = useCallback(async () => {
     try {
       addLog('[RefreshUser] Refreshing...');
       const response = await userApi.getMe();
       const res = response.data as ApiResponse<AuthResponseData>;
-      const { user, artisanProfile } = res.data;
+      const { user, artisanProfile, hasProfile } = res.data;
 
-      // ✅ FIXED: If user is artisan but no profile in user response, fetch it separately
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
         
-      if (user.role === 'artisan' && !finalArtisanProfile) {
-        addLog('[Init] User is artisan but no profile in /users/me, fetching /artisans/me...');
+      if (user.role === 'artisan' && !finalArtisanProfile && hasProfile !== false) {
+        addLog('[RefreshUser] User is artisan but no profile in /users/me, fetching /artisans/me...');
         try {
           const artisanRes = await artisanApi.getMyProfile();
-          addLog(`[Init] /artisans/me response: ${JSON.stringify(artisanRes.data).substring(0, 150)}...`);
+          addLog(`[RefreshUser] /artisans/me response: ${JSON.stringify(artisanRes.data).substring(0, 150)}...`);
           
           finalArtisanProfile = extractArtisanFromResponse(artisanRes);
           
           if (finalArtisanProfile) {
-            addLog('[Init] Artisan profile loaded successfully');
+            addLog('[RefreshUser] Artisan profile loaded successfully');
           } else {
-            addLog('[Init] Artisan profile response had no usable data');
+            addLog('[RefreshUser] Artisan profile response had no usable data');
           }
         } catch (err: any) {
           if (err.response?.status === 404) {
-            addLog('[Init] Artisan profile not found (404) - profile not created yet');
+            addLog('[RefreshUser] Artisan profile not found (404) - profile not created yet');
           } else {
-            addLog(`[Init] Failed to load artisan profile: ${err.message}`);
+            addLog(`[RefreshUser] Failed to load artisan profile: ${err.message}`);
           }
           finalArtisanProfile = null;
         }
@@ -678,6 +734,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     }
   }, [navigate, clearTokens, extractArtisanFromResponse]);
+
 
   const updateUser = useCallback((data: Partial<User>) => {
     setState((prev) => ({

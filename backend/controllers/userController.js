@@ -51,82 +51,25 @@ const transformArtisan = (artisan) => {
     updatedAt: artisan.updatedAt
   };
 };
-
-// Get current user
 exports.getMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id);
 
+    if (!user) {
+      throw new AppError('USER_NOT_FOUND', 'User not found.');
+    }
+
     if (user.role === 'artisan') {
-      // ✅ FIXED: Populate userId immediately so transformArtisan works
-      let artisanProfile = await ArtisanProfile.findOne({ userId: user._id })
+      const artisanProfile = await ArtisanProfile.findOne({ userId: user._id })
         .populate('userId', 'fullName email phone profileImage location isVerified')
         .populate('walletId');
-      
-      // ✅ AUTO-CREATE PROFILE IF MISSING (with duplicate check)
-      if (!artisanProfile) {
-        console.log(`[getMe] Creating missing artisan profile for user: ${user._id}`);
-        
-        try {
-          // Double-check if profile was created by another request
-          const existingProfile = await ArtisanProfile.findOne({ userId: user._id })
-            .populate('userId', 'fullName email phone profileImage location isVerified');
-          
-          if (existingProfile) {
-            artisanProfile = existingProfile;
-            console.log('[getMe] Profile already exists, using existing');
-          } else {
-            // Create wallet first (check if exists)
-            let wallet = await Wallet.findOne({ artisanId: user._id });
-            if (!wallet) {
-              wallet = await Wallet.create({
-                artisanId: user._id,
-                bankDetails: {}
-              });
-            }
-            
-            // Create artisan profile with defaults
-            artisanProfile = await ArtisanProfile.create({
-              userId: user._id,
-              skills: [],
-              experienceYears: '0-1',
-              rate: {
-                amount: 1000,
-                period: 'job'
-              },
-              bio: '',
-              portfolioImages: [],
-              workRadius: 'any',
-              walletId: wallet._id
-            });
-            
-            // Re-populate after creation
-            await artisanProfile.populate('userId', 'fullName email phone profileImage location isVerified');
-            console.log('[getMe] New profile created successfully');
-          }
-        } catch (err) {
-          console.error('[getMe] Error creating profile:', err.message);
-          // If duplicate key error, fetch existing
-          if (err.code === 11000) {
-            console.log('[getMe] Duplicate key error, fetching existing profile');
-            artisanProfile = await ArtisanProfile.findOne({ userId: user._id })
-              .populate('userId', 'fullName email phone profileImage location isVerified');
-          } else {
-            throw err;
-          }
-        }
-      }
-      
-      // ✅ FIXED: Transform artisan profile (userId is now populated)
-      const transformedProfile = artisanProfile ? transformArtisan(artisanProfile) : null;
-      
-      console.log('[getMe] Returning artisanProfile:', transformedProfile ? 'EXISTS' : 'NULL');
-      
+
       return res.json({
         success: true,
         data: {
           user,
-          artisanProfile: transformedProfile
+          artisanProfile: artisanProfile ? transformArtisan(artisanProfile) : null,
+          hasProfile: !!artisanProfile
         }
       });
     }
@@ -139,6 +82,7 @@ exports.getMe = async (req, res, next) => {
     next(error);
   }
 };
+
 
 // Update user profile
 exports.updateMe = async (req, res, next) => {
