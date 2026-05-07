@@ -98,11 +98,9 @@ const NO_REFRESH_ENDPOINTS = [
   '/auth/reset-password',
   '/auth/verify-email',
   '/auth/resend-verification',
-  '/auth/refresh',  // Also never refresh on refresh itself
+  '/auth/refresh',
 ];
 
-// CRITICAL FIX: More robust auth endpoint detection
-// Handles full URLs, relative paths, with/without leading slash
 const isAuthEndpoint = (url?: string): boolean => {
   if (!url) {
     addLog('[isAuthEndpoint] URL is empty/undefined');
@@ -111,10 +109,8 @@ const isAuthEndpoint = (url?: string): boolean => {
 
   addLog(`[isAuthEndpoint] Checking URL: "${url}"`);
 
-  // Extract pathname from full URL or relative path
   let pathname = url;
   try {
-    // If it's a full URL, extract pathname
     if (url.startsWith('http://') || url.startsWith('https://')) {
       pathname = new URL(url).pathname;
       addLog(`[isAuthEndpoint] Extracted pathname: "${pathname}"`);
@@ -123,11 +119,9 @@ const isAuthEndpoint = (url?: string): boolean => {
     // Not a valid full URL, use as-is
   }
 
-  // Normalize: ensure leading slash
   const normalizedPath = pathname.startsWith('/') ? pathname : '/' + pathname;
   addLog(`[isAuthEndpoint] Normalized path: "${normalizedPath}"`);
 
-  // Check against endpoints (also normalize endpoints for safety)
   const isMatch = NO_REFRESH_ENDPOINTS.some(endpoint => {
     const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
     const match = normalizedPath === normalizedEndpoint || 
@@ -182,7 +176,7 @@ api.interceptors.request.use(
 );
 
 // ==========================================
-// RESPONSE INTERCEPTOR - CRITICAL FIX
+// RESPONSE INTERCEPTOR
 // ==========================================
 api.interceptors.response.use(
   (response: AxiosResponse) => {
@@ -218,9 +212,6 @@ api.interceptors.response.use(
 
     // ========== HANDLE 401 UNAUTHORIZED ==========
     if (status === 401) {
-
-      // CRITICAL FIX: Never refresh on auth endpoints (login/register/etc)
-      // Use multiple ways to get the URL for maximum compatibility
       const requestUrl = originalRequest?.url || 
                         (originalRequest as any)?.baseURL + (originalRequest as any)?.url || 
                         '';
@@ -229,7 +220,6 @@ api.interceptors.response.use(
 
       if (isAuthEndpoint(requestUrl)) {
         addLog('[Response] 401 on auth endpoint, returning original error (NO REFRESH)');
-        // CRITICAL FIX: Preserve the original 401 error data so AuthContext can read it
         return Promise.reject(error);
       }
 
@@ -403,17 +393,14 @@ export interface RegisterData {
 const transformArtisanData = (artisan: any): any | null => {
   if (!artisan) return null;
 
-  // If backend already transformed it (has rate object with amount/period), return as-is with compatibility
   if (artisan.rate && typeof artisan.rate === 'object' && 'amount' in artisan.rate) {
     return {
       ...artisan,
-      // Ensure all frontend-expected fields exist
       userId: artisan.userId || artisan.user,
       isAvailable: artisan.availability?.status === 'available' || artisan.isAvailable,
     };
   }
 
-  // Legacy fallback for raw MongoDB documents
   const userData = artisan.userId || artisan.user;
 
   return {
@@ -562,12 +549,37 @@ export const artisanApi = {
     return response;
   },
 
-  // ✅ ADDED: Get current artisan's own profile
+  // ==========================================
+  // ✅ FIXED: getMyProfile with proper typing and response handling
+  // ==========================================
   getMyProfile: async () => {
-    const response = await api.get<ApiResponse<{ artisan: any }>>('/artisans/me');
+    const response = await api.get<ApiResponse<any>>('/artisans/me');
     
-    if (response.data?.data?.artisan) {
-      response.data.data.artisan = transformArtisanData(response.data.data.artisan);
+    console.log('[API] getMyProfile raw response:', JSON.stringify(response.data, null, 2));
+    
+    // Extract artisan data from response - handle both structures
+    const responseData = response.data?.data;
+    let artisanData: any = null;
+    
+    if (responseData?.artisan) {
+      // Structure: { data: { artisan: {...} } }
+      artisanData = responseData.artisan;
+      console.log('[API] getMyProfile: Found artisan in data.artisan');
+    } else if (responseData && !responseData.artisan) {
+      // Structure: { data: {...} } directly - check if it looks like artisan profile
+      const possibleArtisan = responseData as any;
+      if (possibleArtisan.userId || possibleArtisan.profession !== undefined || possibleArtisan.skills || possibleArtisan.bio !== undefined) {
+        artisanData = possibleArtisan;
+        console.log('[API] getMyProfile: Found artisan directly in data');
+      }
+    }
+    
+    if (artisanData) {
+      const transformed = transformArtisanData(artisanData);
+      // Ensure response has consistent structure for AuthContext
+      response.data.data = { artisan: transformed };
+    } else {
+      console.log('[API] getMyProfile: No artisan data found');
     }
     
     return response;

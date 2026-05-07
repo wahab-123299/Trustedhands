@@ -220,6 +220,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [disconnectSocket, SOCKET_URL, navigate, clearTokens]);
 
 
+  // ✅ FIXED: Helper to safely extract artisan data from API response
+  const extractArtisanFromResponse = useCallback((response: any): ArtisanProfile | null => {
+    if (!response?.data?.data) {
+      addLog('[ExtractArtisan] No data in response');
+      return null;
+    }
+    
+    // Backend returns { success: true, data: { artisan: {...} } }
+    if (response.data.data.artisan) {
+      addLog('[ExtractArtisan] Found artisan in data.artisan');
+      return response.data.data.artisan as ArtisanProfile;
+    }
+    
+    // Backend returns { success: true, data: {...} } directly
+    // Check if it looks like an artisan profile (has required fields)
+    const data = response.data.data;
+    if (data.userId && (data.profession || data.skills || data.bio !== undefined)) {
+      addLog('[ExtractArtisan] Found artisan directly in data');
+      return data as ArtisanProfile;
+    }
+    
+    addLog(`[ExtractArtisan] Could not find artisan. Keys: ${Object.keys(data).join(', ')}`);
+    return null;
+  }, []);
+
+
   useEffect(() => {
     if (hasInitialized.current) {
       addLog('[Init] Already initialized, skipping');
@@ -264,13 +290,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // ✅ FIXED: If user is artisan but no profile in user response, fetch it separately
         let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-        if (user.role === 'artisan' && !artisanProfile) {
+        
+        if (user.role === 'artisan' && !finalArtisanProfile) {
           addLog('[Init] User is artisan but no profile in /users/me, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
-            // ✅ FIXED: Access .artisan property from response
-            finalArtisanProfile = artisanRes.data?.data?.artisan as ArtisanProfile;
-            addLog('[Init] Artisan profile loaded successfully');
+            addLog(`[Init] /artisans/me response: ${JSON.stringify(artisanRes.data).substring(0, 150)}...`);
+            
+            finalArtisanProfile = extractArtisanFromResponse(artisanRes);
+            
+            if (finalArtisanProfile) {
+              addLog('[Init] Artisan profile loaded successfully');
+            } else {
+              addLog('[Init] Artisan profile response had no usable data');
+            }
           } catch (err: any) {
             if (err.response?.status === 404) {
               addLog('[Init] Artisan profile not found (404) - profile not created yet');
@@ -322,7 +355,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearTimeout(timer);
       disconnectSocket();
     };
-  }, [connectSocket, disconnectSocket, getToken, clearTokens]);
+  }, [connectSocket, disconnectSocket, getToken, clearTokens, extractArtisanFromResponse]);
 
 
   // ==========================================
@@ -414,13 +447,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // ✅ FIXED: If user is artisan but no profile in login response, fetch it
         let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-        if (user.role === 'artisan' && !artisanProfile) {
+        if (user.role === 'artisan' && !finalArtisanProfile) {
           addLog('[Login] User is artisan but no profile in login response, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
-            // ✅ FIXED: Access .artisan property from response
-            finalArtisanProfile = artisanRes.data?.data?.artisan as ArtisanProfile;
-            addLog('[Login] Artisan profile loaded successfully');
+            finalArtisanProfile = extractArtisanFromResponse(artisanRes);
+            
+            if (finalArtisanProfile) {
+              addLog('[Login] Artisan profile loaded successfully');
+            }
           } catch (err: any) {
             if (err.response?.status === 404) {
               addLog('[Login] Artisan profile not found (404) - profile not created yet');
@@ -471,7 +506,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(message);
       }
     },
-    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage]
+    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage, extractArtisanFromResponse]
   );
 
 
@@ -581,7 +616,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [connectSocket]);
 
 
-  // ✅ FIXED: refreshUser now fetches artisan profile separately
+  // ✅ FIXED: refreshUser now fetches artisan profile separately with proper extraction
   const refreshUser = useCallback(async () => {
     try {
       addLog('[RefreshUser] Refreshing...');
@@ -591,13 +626,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // ✅ FIXED: If user is artisan but no profile in response, fetch it
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-      if (user.role === 'artisan' && !artisanProfile) {
+      if (user.role === 'artisan' && !finalArtisanProfile) {
         addLog('[RefreshUser] User is artisan but no profile, fetching /artisans/me...');
         try {
           const artisanRes = await artisanApi.getMyProfile();
-          // ✅ FIXED: Access .artisan property from response
-          finalArtisanProfile = artisanRes.data?.data?.artisan as ArtisanProfile;
-          addLog('[RefreshUser] Artisan profile loaded successfully');
+          finalArtisanProfile = extractArtisanFromResponse(artisanRes);
+          
+          if (finalArtisanProfile) {
+            addLog('[RefreshUser] Artisan profile loaded successfully');
+          }
         } catch (err: any) {
           if (err.response?.status === 404) {
             addLog('[RefreshUser] Artisan profile not found (404)');
@@ -630,7 +667,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         navigate('/login');
       }
     }
-  }, [navigate, clearTokens]);
+  }, [navigate, clearTokens, extractArtisanFromResponse]);
 
   const updateUser = useCallback((data: Partial<User>) => {
     setState((prev) => ({

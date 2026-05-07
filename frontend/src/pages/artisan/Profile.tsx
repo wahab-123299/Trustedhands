@@ -13,7 +13,6 @@ import {
   Star,
   Briefcase,
   CheckCircle,
-  AlertCircle,
   RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,6 +42,8 @@ const Profile: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  // ✅ ADDED: Local state for artisan profile as fallback
+  const [localArtisanProfile, setLocalArtisanProfile] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     fullName: user?.fullName || '',
@@ -53,7 +54,6 @@ const Profile: React.FC = () => {
       city: user?.location?.city || '',
       address: user?.location?.address || ''
     },
-    // Artisan fields - match backend field names
     bio: artisanProfile?.bio || '',
     skills: artisanProfile?.skills || [],
     experienceYears: artisanProfile?.experienceYears || '',
@@ -76,8 +76,46 @@ const Profile: React.FC = () => {
           period: artisanProfile.rate?.period || 'job'
         }
       }));
+      setLocalArtisanProfile(artisanProfile);
     }
   }, [artisanProfile]);
+
+  // ✅ ADDED: Fallback fetch if artisanProfile is null but user is artisan
+  useEffect(() => {
+    const fetchArtisanProfile = async () => {
+      if (user?.role === 'artisan' && !artisanProfile && !localArtisanProfile && !isLoadingProfile) {
+        console.log('[Profile] No artisanProfile in context, fetching directly...');
+        try {
+          setIsLoadingProfile(true);
+          const response = await artisanApi.getMyProfile();
+          console.log('[Profile] Direct fetch response:', response.data);
+          
+          const fetchedArtisan = response.data?.data?.artisan;
+          if (fetchedArtisan) {
+            console.log('[Profile] Setting local artisan profile');
+            setLocalArtisanProfile(fetchedArtisan);
+            updateArtisanProfile(fetchedArtisan);
+            setFormData(prev => ({
+              ...prev,
+              bio: fetchedArtisan.bio || '',
+              skills: fetchedArtisan.skills || [],
+              experienceYears: fetchedArtisan.experienceYears || '',
+              rate: {
+                amount: fetchedArtisan.rate?.amount || 0,
+                period: fetchedArtisan.rate?.period || 'job'
+              }
+            }));
+          }
+        } catch (error: any) {
+          console.error('[Profile] Direct fetch failed:', error);
+        } finally {
+          setIsLoadingProfile(false);
+        }
+      }
+    };
+
+    fetchArtisanProfile();
+  }, [user?.role, artisanProfile]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -110,7 +148,7 @@ const Profile: React.FC = () => {
       updateUser(userUpdate.data.data);
 
       // Update artisan profile if applicable
-      if (user?.role === 'artisan' && artisanProfile) {
+      if (user?.role === 'artisan' && (artisanProfile || localArtisanProfile)) {
         const artisanUpdate = await artisanApi.updateProfile({
           bio: formData.bio,
           skills: formData.skills,
@@ -119,6 +157,7 @@ const Profile: React.FC = () => {
         });
 
         updateArtisanProfile(artisanUpdate.data.data.artisan);
+        setLocalArtisanProfile(artisanUpdate.data.data.artisan);
       }
 
       toast.success('Profile updated successfully');
@@ -186,6 +225,9 @@ const Profile: React.FC = () => {
       </div>
     );
   }
+
+  // ✅ FIXED: Use local profile if context profile is null
+  const activeArtisanProfile = artisanProfile || localArtisanProfile;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -391,17 +433,22 @@ const Profile: React.FC = () => {
         {/* Professional Info (Artisan Only) */}
         {user.role === 'artisan' && (
           <TabsContent value="professional" className="mt-6">
-            {!artisanProfile ? (
+            {/* Debug info removed for production safety */}
+            <DebugArtisanProfileInfo
+              artisanProfile={artisanProfile}
+              localArtisanProfile={localArtisanProfile}
+              activeArtisanProfile={activeArtisanProfile}
+            />
+            {activeArtisanProfile == null ? (
               <Card>
-                <CardContent className="p-8 text-center">
-                  <AlertCircle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                    Professional Profile Not Loaded
+                <CardContent>
+                  <h3 className="text-lg font-semibold text-center mb-2">
+                    Profile Not Found
                   </h3>
                   <p className="text-gray-500 mb-4 max-w-md mx-auto">
                     Your artisan profile data couldn't be loaded. This might be because the profile hasn't been created yet or there was a connection issue.
                   </p>
-                  <div className="flex gap-3 justify-center">
+                  <div className="flex gap-3 justify-center flex-wrap">
                     <Button 
                       onClick={handleRefreshProfile} 
                       disabled={isLoadingProfile}
@@ -434,19 +481,19 @@ const Profile: React.FC = () => {
                     <div className="text-center p-4 bg-emerald-50 rounded-lg">
                       <div className="flex items-center justify-center gap-1 text-2xl font-bold text-emerald-700">
                         <Star className="w-5 h-5 fill-current" />
-                        {artisanProfile.averageRating?.toFixed(1) || '0.0'}
+                        {activeArtisanProfile.averageRating?.toFixed(1) || '0.0'}
                       </div>
                       <p className="text-sm text-emerald-600">Rating</p>
                     </div>
                     <div className="text-center p-4 bg-blue-50 rounded-lg">
                       <p className="text-2xl font-bold text-blue-700">
-                        {artisanProfile.completedJobs || 0}
+                        {activeArtisanProfile.completedJobs || 0}
                       </p>
                       <p className="text-sm text-blue-600">Jobs Done</p>
                     </div>
                     <div className="text-center p-4 bg-purple-50 rounded-lg">
                       <p className="text-2xl font-bold text-purple-700">
-                        {artisanProfile.experienceYears}
+                        {activeArtisanProfile.experienceYears || 'N/A'}
                       </p>
                       <p className="text-sm text-purple-600">Experience</p>
                     </div>
@@ -458,14 +505,14 @@ const Profile: React.FC = () => {
                     {isEditing ? (
                       <Input
                         value={formData.skills.join(', ')}
-                        onChange={(e) => handleInputChange('skills', e.target.value.split(',').map(s => s.trim()))}
+                        onChange={(e) => handleInputChange('skills', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
                         placeholder="Enter skills separated by commas"
                         className="mt-2"
                       />
                     ) : (
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {artisanProfile.skills?.length > 0 ? (
-                          artisanProfile.skills.map((skill, idx) => (
+                        {activeArtisanProfile.skills?.length > 0 ? (
+                          activeArtisanProfile.skills.map((skill: string, idx: number) => (
                             <Badge key={idx} variant="secondary">
                               {skill}
                             </Badge>
@@ -486,7 +533,7 @@ const Profile: React.FC = () => {
                           <Input
                             type="number"
                             value={formData.rate.amount}
-                            onChange={(e) => handleInputChange('rate', { ...formData.rate, amount: parseInt(e.target.value) })}
+                            onChange={(e) => handleInputChange('rate', { ...formData.rate, amount: parseInt(e.target.value) || 0 })}
                           />
                           <select
                             className="border rounded-lg px-3"
@@ -501,7 +548,7 @@ const Profile: React.FC = () => {
                       ) : (
                         <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg mt-2">
                           <span className="font-semibold">
-                            ₦{artisanProfile.rate?.amount?.toLocaleString() || 0} / {artisanProfile.rate?.period || 'job'}
+                            ₦{activeArtisanProfile.rate?.amount?.toLocaleString() || 0} / {activeArtisanProfile.rate?.period || 'job'}
                           </span>
                         </div>
                       )}
@@ -524,7 +571,7 @@ const Profile: React.FC = () => {
                         </select>
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-lg mt-2">
-                          <span>{artisanProfile.experienceYears || 'Not specified'}</span>
+                          <span>{activeArtisanProfile.experienceYears || 'Not specified'}</span>
                         </div>
                       )}
                     </div>
@@ -543,14 +590,14 @@ const Profile: React.FC = () => {
                     ) : (
                       <div className="p-4 bg-gray-50 rounded-lg mt-2">
                         <p className="text-gray-700 whitespace-pre-wrap">
-                          {artisanProfile.bio || 'No bio added yet.'}
+                          {activeArtisanProfile.bio || 'No bio added yet.'}
                         </p>
                       </div>
                     )}
                   </div>
 
                   {/* Certification Status */}
-                  {artisanProfile.isCertified && (
+                  {activeArtisanProfile.isCertified && (
                     <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
                       <CheckCircle className="w-5 h-5 text-emerald-600" />
                       <span className="text-emerald-800 font-medium">Certified Artisan</span>
@@ -586,5 +633,26 @@ const Profile: React.FC = () => {
   );
 };
 
+// DebugArtisanProfileInfo component definition
+const DebugArtisanProfileInfo: React.FC<{
+  artisanProfile: any;
+  localArtisanProfile: any;
+  activeArtisanProfile: any;
+}> = ({ artisanProfile, localArtisanProfile, activeArtisanProfile }) => {
+  if (import.meta.env.MODE !== 'development') return null;
+  return (
+    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-xs font-mono">
+      <p>
+        <strong>Debug:</strong> artisanProfile (context) = {artisanProfile ? 'EXISTS' : 'NULL'}
+      </p>
+      <p>
+        <strong>Debug:</strong> localArtisanProfile = {localArtisanProfile ? 'EXISTS' : 'NULL'}
+      </p>
+      <p>
+        <strong>Debug:</strong> activeArtisanProfile = {activeArtisanProfile ? 'EXISTS' : 'NULL'}
+      </p>
+    </div>
+  );
+};
 
 export default Profile;

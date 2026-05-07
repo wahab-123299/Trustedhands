@@ -2,6 +2,52 @@ const { User, ArtisanProfile, Wallet } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 
+// ✅ HELPER: Transform artisan data to match frontend expectations
+const transformArtisan = (artisan) => {
+  if (!artisan || !artisan.userId) return null;
+
+  return {
+    id: artisan._id.toString(),
+    profession: artisan.profession,
+    skills: artisan.skills || [],
+    bio: artisan.bio,
+    experienceYears: artisan.experienceYears,
+    rate: {
+      amount: artisan.rate?.amount || 0,
+      period: artisan.rate?.period || 'job'
+    },
+    averageRating: artisan.averageRating || 0,
+    totalReviews: artisan.totalReviews || 0,
+    completedJobs: artisan.completedJobs || 0,
+    name: artisan.userId.fullName,
+    fullName: artisan.userId.fullName,
+    email: artisan.userId.email,
+    phone: artisan.userId.phone,
+    location: artisan.userId.location,
+    profileImage: artisan.userId.profileImage,
+    isVerified: artisan.userId.isVerified,
+    userId: artisan.userId._id.toString(),
+    availability: {
+      status: artisan.availability?.status || 'available',
+      nextAvailableDate: artisan.availability?.nextAvailableDate
+    },
+    isAvailable: artisan.availability?.status === 'available',
+    availabilityStatus: artisan.availability?.status,
+    nextAvailableDate: artisan.availability?.nextAvailableDate,
+    workRadius: artisan.workRadius,
+    hourlyRate: artisan.rate?.amount,
+    ratePeriod: artisan.rate?.period,
+    rating: artisan.averageRating,
+    reviewCount: artisan.totalReviews,
+    portfolioImages: artisan.portfolioImages || [],
+    idVerification: artisan.idVerification,
+    isCertified: artisan.isCertified,
+    canApplyForHighValueJobs: artisan.canApplyForHighValueJobs,
+    createdAt: artisan.createdAt,
+    updatedAt: artisan.updatedAt
+  };
+};
+
 // Get current user
 exports.getMe = async (req, res, next) => {
   try {
@@ -56,11 +102,19 @@ exports.getMe = async (req, res, next) => {
         }
       }
       
+      // ✅ FIXED: Populate userId before transforming
+      if (artisanProfile && !artisanProfile.userId?.fullName) {
+        await artisanProfile.populate('userId', 'fullName email phone profileImage location isVerified');
+      }
+      
+      // ✅ FIXED: Transform artisan profile before sending
+      const transformedProfile = artisanProfile ? transformArtisan(artisanProfile) : null;
+      
       return res.json({
         success: true,
         data: {
           user,
-          artisanProfile
+          artisanProfile: transformedProfile
         }
       });
     }
@@ -189,7 +243,8 @@ exports.getUserById = async (req, res, next) => {
 
     // If artisan, include profile
     if (user.role === 'artisan') {
-      const artisanProfile = await ArtisanProfile.findOne({ userId: user._id });
+      const artisanProfile = await ArtisanProfile.findOne({ userId: user._id })
+        .populate('userId', 'fullName email phone profileImage location isVerified');
       
       return res.json({
         success: true,
@@ -202,7 +257,7 @@ exports.getUserById = async (req, res, next) => {
             profileImage: user.profileImage,
             isVerified: user.isVerified
           },
-          artisanProfile
+          artisanProfile: artisanProfile ? transformArtisan(artisanProfile) : null
         }
       });
     }
