@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { artisanController } = require('../controllers');
+const artisanController = require('../controllers/artisanController');  // ✅ FIXED: Direct import
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { uploadMultiple } = require('../middleware/uploadMiddleware');
 
@@ -9,7 +9,7 @@ router.get('/', artisanController.getArtisans);
 router.get('/search', artisanController.searchArtisans);
 router.get('/nearby', artisanController.getNearbyArtisans);
 
-// ✅ ADDED: Get current artisan's own profile (MUST be before /:id)
+// ✅ FIXED: Get current artisan's own profile (MUST be before /:id)
 router.get('/me', authenticate, authorize('artisan'), artisanController.getMyProfile);
 
 router.get('/:id', artisanController.getArtisanById);

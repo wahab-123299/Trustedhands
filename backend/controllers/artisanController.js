@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { User, ArtisanProfile, Job } = require('../models');
+const { User, ArtisanProfile, Job, Wallet } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 
@@ -7,41 +7,35 @@ const { uploadToCloudinary } = require('../utils/cloudinary');
 const transformArtisan = (artisan) => {
   if (!artisan || !artisan.userId) return null;
 
+  // Handle both populated and unpopulated userId
+  const userData = typeof artisan.userId === 'object' ? artisan.userId : null;
+  const userId = userData ? userData._id?.toString() : artisan.userId?.toString();
+
   return {
     id: artisan._id.toString(),
     profession: artisan.profession,
     skills: artisan.skills || [],
     bio: artisan.bio,
     experienceYears: artisan.experienceYears,
-
-    // ✅ MATCHES frontend Profile.tsx expectations
     rate: {
       amount: artisan.rate?.amount || 0,
       period: artisan.rate?.period || 'job'
     },
-
-    // ✅ MATCHES frontend Profile.tsx expectations
     averageRating: artisan.averageRating || 0,
     totalReviews: artisan.totalReviews || 0,
     completedJobs: artisan.completedJobs || 0,
-
-    // User data (frontend expects these)
-    name: artisan.userId.fullName,
-    fullName: artisan.userId.fullName,
-    email: artisan.userId.email,
-    phone: artisan.userId.phone,
-    location: artisan.userId.location,
-    profileImage: artisan.userId.profileImage,
-    isVerified: artisan.userId.isVerified,
-    userId: artisan.userId._id.toString(),
-
-    // ✅ MATCHES frontend Profile.tsx expectations
+    name: userData?.fullName || 'Unknown',
+    fullName: userData?.fullName || 'Unknown',
+    email: userData?.email,
+    phone: userData?.phone,
+    location: userData?.location,
+    profileImage: userData?.profileImage,
+    isVerified: userData?.isVerified,
+    userId: userId,
     availability: {
       status: artisan.availability?.status || 'available',
       nextAvailableDate: artisan.availability?.nextAvailableDate
     },
-
-    // Keep flattened aliases for other components that use them
     isAvailable: artisan.availability?.status === 'available',
     availabilityStatus: artisan.availability?.status,
     nextAvailableDate: artisan.availability?.nextAvailableDate,
@@ -50,7 +44,6 @@ const transformArtisan = (artisan) => {
     ratePeriod: artisan.rate?.period,
     rating: artisan.averageRating,
     reviewCount: artisan.totalReviews,
-
     portfolioImages: artisan.portfolioImages || [],
     idVerification: artisan.idVerification,
     isCertified: artisan.isCertified,
@@ -131,7 +124,90 @@ exports.getMyProfile = async (req, res, next) => {
   }
 };
 
+// Get all artisans with filters
+exports.getArtisans = async (req, res, next) => {
+  try {
+    const {
+      state,
+      city,
+      skills,
+      availability,
+      minRating,
+      maxRate,
+      experienceYears,
+      page = 1,
+      limit = 10,
+      sortBy = 'averageRating'
+    } = req.query;
 
+    const query = {};
+
+    if (availability) query['availability.status'] = availability;
+    if (minRating) query.averageRating = { $gte: parseFloat(minRating) };
+    if (maxRate) query['rate.amount'] = { $lte: parseFloat(maxRate) };
+    if (experienceYears) query.experienceYears = experienceYears;
+
+    if (skills) {
+      const skillsArray = skills.split(',').map(s => s.trim());
+      query.skills = { $in: skillsArray };
+    }
+
+    let sort = {};
+    if (sortBy === 'rating') sort = { averageRating: -1 };
+    else if (sortBy === 'price_low') sort = { 'rate.amount': 1 };
+    else if (sortBy === 'price_high') sort = { 'rate.amount': -1 };
+    else if (sortBy === 'experience') sort = { experienceYears: -1 };
+    else sort = { averageRating: -1 };
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    let artisans = await ArtisanProfile.find(query)
+      .populate({
+        path: 'userId',
+        model: 'User',
+        select: 'fullName location profileImage isVerified phone isActive email',
+        match: { isActive: true }
+      })
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    artisans = artisans.filter(a => a.userId !== null);
+
+    if (state) {
+      artisans = artisans.filter(a => 
+        a.userId.location?.state?.toLowerCase() === state.toLowerCase()
+      );
+    }
+
+    if (city) {
+      artisans = artisans.filter(a => 
+        a.userId.location?.city?.toLowerCase() === city.toLowerCase()
+      );
+    }
+
+    const total = await ArtisanProfile.countDocuments(query);
+
+    const formattedArtisans = artisans
+      .map(transformArtisan)
+      .filter(a => a !== null);
+
+    res.json({
+      success: true,
+      data: {
+        artisans: formattedArtisans,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 // Search artisans by name or skill
 exports.searchArtisans = async (req, res, next) => {
@@ -145,7 +221,6 @@ exports.searchArtisans = async (req, res, next) => {
     const searchRegex = new RegExp(q.trim(), 'i');
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Find users matching name
     const users = await User.find({
       fullName: searchRegex,
       role: 'artisan',
@@ -184,7 +259,6 @@ exports.searchArtisans = async (req, res, next) => {
       'availability.status': { $ne: 'unavailable' }
     });
 
-    // ✅ FIXED: Transform artisans
     const formattedArtisans = activeArtisans
       .map(transformArtisan)
       .filter(a => a !== null);
@@ -254,7 +328,6 @@ exports.getNearbyArtisans = async (req, res, next) => {
       'availability.status': 'available'
     });
 
-    // ✅ FIXED: Transform artisans
     const formattedArtisans = artisans
       .map(transformArtisan)
       .filter(a => a !== null);
@@ -292,7 +365,6 @@ exports.getArtisanById = async (req, res, next) => {
       throw new AppError('ARTISAN_NOT_FOUND', 'Artisan not found or account is inactive.');
     }
 
-    // Get recent reviews
     const reviews = await Job.find({
       artisanId: id,
       status: 'completed',
@@ -303,7 +375,6 @@ exports.getArtisanById = async (req, res, next) => {
       .sort({ completedAt: -1 })
       .limit(10);
 
-    // ✅ FIXED: Transform artisan and format reviews
     const formattedArtisan = transformArtisan(artisan);
 
     const formattedReviews = reviews.map(job => ({
@@ -326,7 +397,7 @@ exports.getArtisanById = async (req, res, next) => {
   }
 };
 
-// Get artisan reviews (unchanged - already returns proper format)
+// Get artisan reviews
 exports.getArtisanReviews = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -425,7 +496,6 @@ exports.updateProfile = async (req, res, next) => {
 
     await artisan.save();
 
-    // ✅ FIXED: Return transformed artisan
     const updatedArtisan = await ArtisanProfile.findById(artisan._id)
       .populate('userId', 'fullName location profileImage isVerified phone email');
 
@@ -482,7 +552,7 @@ exports.updateAvailability = async (req, res, next) => {
   }
 };
 
-// Update bank details (artisan only) - unchanged
+// Update bank details (artisan only)
 exports.updateBankDetails = async (req, res, next) => {
   try {
     const userId = req.user._id;
@@ -607,3 +677,23 @@ exports.deletePortfolioImage = async (req, res, next) => {
     next(error);
   }
 };
+
+// ==========================================
+// EXPORT ALL FUNCTIONS
+// ==========================================
+module.exports = {
+  getMyProfile: exports.getMyProfile,
+  getArtisans: exports.getArtisans,
+  searchArtisans: exports.searchArtisans,
+  getNearbyArtisans: exports.getNearbyArtisans,
+  getArtisanById: exports.getArtisanById,
+  getArtisanReviews: exports.getArtisanReviews,
+  updateProfile: exports.updateProfile,
+  updateAvailability: exports.updateAvailability,
+  updateBankDetails: exports.updateBankDetails,
+  uploadPortfolioImages: exports.uploadPortfolioImages,
+  deletePortfolioImage: exports.deletePortfolioImage
+};
+
+// Debug: Verify all exports are defined
+console.log('Artisan Controller Exports:', Object.keys(module.exports).map(k => `${k}: ${typeof module.exports[k]}`));
