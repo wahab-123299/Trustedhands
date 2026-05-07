@@ -53,70 +53,28 @@ const transformArtisan = (artisan) => {
   };
 };
 
-// ✅ ADDED/UPDATED: Get current logged-in artisan's profile (with auto-create)
 exports.getMyProfile = async (req, res, next) => {
   try {
-    // First try to find existing profile with populated user
-    let artisan = await ArtisanProfile.findOne({ userId: req.user._id })
-      .populate('userId', 'fullName email phone profileImage location isVerified');
+    const userId = req.user._id;
 
-    // ✅ AUTO-CREATE IF MISSING
-    if (!artisan) {
-      console.log(`[getMyProfile] Creating missing artisan profile for user: ${req.user._id}`);
-      
-      try {
-        // Check if wallet exists
-        let wallet = await Wallet.findOne({ artisanId: req.user._id });
-        if (!wallet) {
-          wallet = await Wallet.create({
-            artisanId: req.user._id,
-            bankDetails: {}
-          });
-        }
-        
-        // Create artisan profile with defaults
-        artisan = await ArtisanProfile.create({
-          userId: req.user._id,
-          skills: [],
-          experienceYears: '0-1',
-          rate: {
-            amount: 1000,
-            period: 'job'
-          },
-          bio: '',
-          portfolioImages: [],
-          workRadius: 'any',
-          walletId: wallet._id
-        });
-        
-        // Populate after creation
-        await artisan.populate('userId', 'fullName email phone profileImage location isVerified');
-        console.log('[getMyProfile] New profile created successfully');
-      } catch (err) {
-        console.error('[getMyProfile] Error creating profile:', err.message);
-        if (err.code === 11000) {
-          // Duplicate key - fetch existing
-          console.log('[getMyProfile] Duplicate key, fetching existing');
-          artisan = await ArtisanProfile.findOne({ userId: req.user._id })
-            .populate('userId', 'fullName email phone profileImage location isVerified');
-        } else {
-          throw err;
-        }
-      }
-    }
+    const artisanProfile = await ArtisanProfile.findOne({ userId })
+      .populate('userId', 'fullName email phone profileImage location isVerified')
+      .populate('walletId');
 
-    if (!artisan) {
+    if (!artisanProfile) {
       return res.status(404).json({
         success: false,
-        message: 'Artisan profile not found. Please complete your profile setup.',
-        code: 'PROFILE_NOT_FOUND'
+        error: {
+          code: 'PROFILE_NOT_FOUND',
+          message: 'Artisan profile not found. Please complete your profile setup.'
+        }
       });
     }
 
     res.status(200).json({
       success: true,
       data: {
-        artisan: transformArtisan(artisan)
+        artisan: transformArtisan(artisanProfile)
       }
     });
   } catch (error) {
