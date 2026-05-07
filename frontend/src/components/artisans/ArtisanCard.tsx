@@ -722,7 +722,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     addLog('[OAuth] OAuth processing complete');
   }, [connectSocket, navigate, location.pathname]);
 
-
   // ==========================================
   // REFRESH USER
   // ==========================================

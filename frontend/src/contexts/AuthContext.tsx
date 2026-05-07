@@ -56,9 +56,9 @@ interface AuthContextType {
   register: (data: RegisterData, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
+  updateUserFromOAuth: (user: User, token: string) => void;
   updateArtisanProfile: (data: Partial<ArtisanProfile>) => void;
   refreshUser: () => Promise<void>;
-  updateUserFromOAuth: (user: User, token: string) => void;
   socket: Socket | null;
   socketConnected: boolean;
 }
