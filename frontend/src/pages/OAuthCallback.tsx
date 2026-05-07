@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { userApi } from '@/services/api'; // Import this
 import { toast } from 'sonner';
 
 const OAuthCallback = () => {
@@ -9,61 +10,54 @@ const OAuthCallback = () => {
   const { updateUserFromOAuth } = useAuth();
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    const refreshToken = searchParams.get('refresh');
-    const role = searchParams.get('role');
+    const handleOAuth = async () => {
+      const token = searchParams.get('token');
+      
+      if (!token) {
+        toast.error('Authentication failed. No token received.');
+        navigate('/login?error=oauth_failed', { replace: true });
+        return;
+      }
 
-    if (token) {
       try {
-        // Store tokens
+        // Store token FIRST (updateUserFromOAuth will also do this, but do it early)
         localStorage.setItem('token', token);
-        if (refreshToken) {
-          localStorage.setItem('refreshToken', refreshToken);
-        }
         localStorage.setItem('rememberMe', 'true');
 
-        // Build minimal user object
-        const minimalUser = {
-          _id: 'oauth-temp',
-          email: '',
-          fullName: 'OAuth User',
-          role: (role as 'customer' | 'artisan') || 'customer',
-          phone: '',
-          isActive: true,
-          isEmailVerified: true,
-          isVerified: true,
-          profileImage: '/default-avatar.png',
-          location: {
-            state: '',
-            city: '',
-            address: '',
-          },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
+        // Fetch REAL user data from backend
+        addLog('[OAuthCallback] Fetching real user data...');
+        const response = await userApi.getMe();
+        const { user, hasProfile } = response.data.data;
 
-        // Update auth context
-        if (updateUserFromOAuth) {
-          updateUserFromOAuth(minimalUser as any, token);
-        }
+        addLog(`[OAuthCallback] Real user: ${user.email}, role: ${user.role}, hasProfile: ${hasProfile}`);
 
-        toast.success('Login successful!');
+        // Update auth context with REAL user (this handles socket, state, profile check)
+        await updateUserFromOAuth(user, token);
 
-        // Redirect based on role
-        const dashboardRoute = role === 'artisan' 
+        // DON'T navigate here — updateUserFromOAuth handles redirects!
+        // If we reach here, it means updateUserFromOAuth didn't redirect (user has profile)
+        
+        const dashboardRoute = user.role === 'artisan' 
           ? '/artisan/dashboard' 
           : '/customer/dashboard';
 
+        addLog(`[OAuthCallback] Redirecting to ${dashboardRoute}`);
         navigate(dashboardRoute, { replace: true });
-      } catch (error) {
+
+      } catch (error: any) {
         console.error('OAuth callback error:', error);
-        toast.error('Login failed. Please try again.');
+        
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          toast.error('Session expired. Please log in again.');
+        } else {
+          toast.error('Login failed. Please try again.');
+        }
+        
         navigate('/login?error=oauth_failed', { replace: true });
       }
-    } else {
-      toast.error('Authentication failed. No token received.');
-      navigate('/login?error=oauth_failed', { replace: true });
-    }
+    };
+
+    handleOAuth();
   }, [searchParams, navigate, updateUserFromOAuth]);
 
   return (
@@ -71,7 +65,7 @@ const OAuthCallback = () => {
       <div className="text-center">
         <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
         <p className="text-gray-600 text-lg">Completing login...</p>
-        <p className="text-gray-400 text-sm mt-2">Please wait while we redirect you</p>
+        <p className="text-gray-400 text-sm mt-2">Please wait while we set up your account</p>
       </div>
     </div>
   );
