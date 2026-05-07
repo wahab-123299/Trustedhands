@@ -60,11 +60,57 @@ const transformArtisan = (artisan) => {
   };
 };
 
-// ✅ ADDED: Get current logged-in artisan's profile
+// ✅ ADDED/UPDATED: Get current logged-in artisan's profile (with auto-create)
 exports.getMyProfile = async (req, res, next) => {
   try {
-    const artisan = await ArtisanProfile.findOne({ userId: req.user._id })
+    // First try to find existing profile with populated user
+    let artisan = await ArtisanProfile.findOne({ userId: req.user._id })
       .populate('userId', 'fullName email phone profileImage location isVerified');
+
+    // ✅ AUTO-CREATE IF MISSING
+    if (!artisan) {
+      console.log(`[getMyProfile] Creating missing artisan profile for user: ${req.user._id}`);
+      
+      try {
+        // Check if wallet exists
+        let wallet = await Wallet.findOne({ artisanId: req.user._id });
+        if (!wallet) {
+          wallet = await Wallet.create({
+            artisanId: req.user._id,
+            bankDetails: {}
+          });
+        }
+        
+        // Create artisan profile with defaults
+        artisan = await ArtisanProfile.create({
+          userId: req.user._id,
+          skills: [],
+          experienceYears: '0-1',
+          rate: {
+            amount: 1000,
+            period: 'job'
+          },
+          bio: '',
+          portfolioImages: [],
+          workRadius: 'any',
+          walletId: wallet._id
+        });
+        
+        // Populate after creation
+        await artisan.populate('userId', 'fullName email phone profileImage location isVerified');
+        console.log('[getMyProfile] New profile created successfully');
+      } catch (err) {
+        console.error('[getMyProfile] Error creating profile:', err.message);
+        if (err.code === 11000) {
+          // Duplicate key - fetch existing
+          console.log('[getMyProfile] Duplicate key, fetching existing');
+          artisan = await ArtisanProfile.findOne({ userId: req.user._id })
+            .populate('userId', 'fullName email phone profileImage location isVerified');
+        } else {
+          throw err;
+        }
+      }
+    }
 
     if (!artisan) {
       return res.status(404).json({
@@ -85,94 +131,7 @@ exports.getMyProfile = async (req, res, next) => {
   }
 };
 
-// Get all artisans with filters
-exports.getArtisans = async (req, res, next) => {
-  try {
-    const {
-      state,
-      city,
-      skills,
-      availability,
-      minRating,
-      maxRate,
-      experienceYears,
-      page = 1,
-      limit = 10,
-      sortBy = 'averageRating'
-    } = req.query;
 
-    const query = {};
-
-    // Build query
-    if (availability) query['availability.status'] = availability;
-    if (minRating) query.averageRating = { $gte: parseFloat(minRating) };
-    if (maxRate) query['rate.amount'] = { $lte: parseFloat(maxRate) };
-    if (experienceYears) query.experienceYears = experienceYears;
-
-    if (skills) {
-      const skillsArray = skills.split(',').map(s => s.trim());
-      query.skills = { $in: skillsArray };
-    }
-
-    // Build sort
-    let sort = {};
-    if (sortBy === 'rating') sort = { averageRating: -1 };
-    else if (sortBy === 'price_low') sort = { 'rate.amount': 1 };
-    else if (sortBy === 'price_high') sort = { 'rate.amount': -1 };
-    else if (sortBy === 'experience') sort = { experienceYears: -1 };
-    else sort = { averageRating: -1 };
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    let artisans = await ArtisanProfile.find(query)
-      .populate({
-        path: 'userId',
-        model: 'User',
-        select: 'fullName location profileImage isVerified phone isActive email',
-        match: { isActive: true }
-      })
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    // Filter out null userId references and apply state/city filters
-    artisans = artisans.filter(a => a.userId !== null);
-
-    if (state) {
-      artisans = artisans.filter(a => 
-        a.userId.location?.state?.toLowerCase() === state.toLowerCase()
-      );
-    }
-
-    if (city) {
-      artisans = artisans.filter(a => 
-        a.userId.location?.city?.toLowerCase() === city.toLowerCase()
-      );
-    }
-
-    const total = await ArtisanProfile.countDocuments(query);
-
-    // ✅ FIXED: Transform artisans before sending response
-    const formattedArtisans = artisans
-      .map(transformArtisan)
-      .filter(a => a !== null); // Remove any nulls from failed transforms
-
-    res.json({
-      success: true,
-      data: {
-        artisans: formattedArtisans,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / parseInt(limit))
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 // Search artisans by name or skill
 exports.searchArtisans = async (req, res, next) => {

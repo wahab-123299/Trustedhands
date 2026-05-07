@@ -6,6 +6,10 @@ const { uploadToCloudinary } = require('../utils/cloudinary');
 const transformArtisan = (artisan) => {
   if (!artisan || !artisan.userId) return null;
 
+  // Handle both populated and unpopulated userId
+  const userData = typeof artisan.userId === 'object' ? artisan.userId : null;
+  const userId = userData ? userData._id?.toString() : artisan.userId?.toString();
+
   return {
     id: artisan._id.toString(),
     profession: artisan.profession,
@@ -19,14 +23,14 @@ const transformArtisan = (artisan) => {
     averageRating: artisan.averageRating || 0,
     totalReviews: artisan.totalReviews || 0,
     completedJobs: artisan.completedJobs || 0,
-    name: artisan.userId.fullName,
-    fullName: artisan.userId.fullName,
-    email: artisan.userId.email,
-    phone: artisan.userId.phone,
-    location: artisan.userId.location,
-    profileImage: artisan.userId.profileImage,
-    isVerified: artisan.userId.isVerified,
-    userId: artisan.userId._id.toString(),
+    name: userData?.fullName || 'Unknown',
+    fullName: userData?.fullName || 'Unknown',
+    email: userData?.email,
+    phone: userData?.phone,
+    location: userData?.location,
+    profileImage: userData?.profileImage,
+    isVerified: userData?.isVerified,
+    userId: userId,
     availability: {
       status: artisan.availability?.status || 'available',
       nextAvailableDate: artisan.availability?.nextAvailableDate
@@ -54,25 +58,32 @@ exports.getMe = async (req, res, next) => {
     const user = await User.findById(req.user._id);
 
     if (user.role === 'artisan') {
+      // ✅ FIXED: Populate userId immediately so transformArtisan works
       let artisanProfile = await ArtisanProfile.findOne({ userId: user._id })
+        .populate('userId', 'fullName email phone profileImage location isVerified')
         .populate('walletId');
       
       // ✅ AUTO-CREATE PROFILE IF MISSING (with duplicate check)
       if (!artisanProfile) {
-        console.log(`Creating missing artisan profile for user: ${user._id}`);
+        console.log(`[getMe] Creating missing artisan profile for user: ${user._id}`);
         
         try {
           // Double-check if profile was created by another request
-          const existingProfile = await ArtisanProfile.findOne({ userId: user._id });
+          const existingProfile = await ArtisanProfile.findOne({ userId: user._id })
+            .populate('userId', 'fullName email phone profileImage location isVerified');
+          
           if (existingProfile) {
             artisanProfile = existingProfile;
-            console.log('Profile already exists, using existing');
+            console.log('[getMe] Profile already exists, using existing');
           } else {
-            // Create wallet first
-            const wallet = await Wallet.create({
-              artisanId: user._id,
-              bankDetails: {}
-            });
+            // Create wallet first (check if exists)
+            let wallet = await Wallet.findOne({ artisanId: user._id });
+            if (!wallet) {
+              wallet = await Wallet.create({
+                artisanId: user._id,
+                bankDetails: {}
+              });
+            }
             
             // Create artisan profile with defaults
             artisanProfile = await ArtisanProfile.create({
@@ -88,27 +99,28 @@ exports.getMe = async (req, res, next) => {
               workRadius: 'any',
               walletId: wallet._id
             });
-            console.log('New profile created successfully');
+            
+            // Re-populate after creation
+            await artisanProfile.populate('userId', 'fullName email phone profileImage location isVerified');
+            console.log('[getMe] New profile created successfully');
           }
         } catch (err) {
-          console.error('Error creating profile:', err.message);
+          console.error('[getMe] Error creating profile:', err.message);
           // If duplicate key error, fetch existing
           if (err.code === 11000) {
-            console.log('Duplicate key error, fetching existing profile');
-            artisanProfile = await ArtisanProfile.findOne({ userId: user._id });
+            console.log('[getMe] Duplicate key error, fetching existing profile');
+            artisanProfile = await ArtisanProfile.findOne({ userId: user._id })
+              .populate('userId', 'fullName email phone profileImage location isVerified');
           } else {
             throw err;
           }
         }
       }
       
-      // ✅ FIXED: Populate userId before transforming
-      if (artisanProfile && !artisanProfile.userId?.fullName) {
-        await artisanProfile.populate('userId', 'fullName email phone profileImage location isVerified');
-      }
-      
-      // ✅ FIXED: Transform artisan profile before sending
+      // ✅ FIXED: Transform artisan profile (userId is now populated)
       const transformedProfile = artisanProfile ? transformArtisan(artisanProfile) : null;
+      
+      console.log('[getMe] Returning artisanProfile:', transformedProfile ? 'EXISTS' : 'NULL');
       
       return res.json({
         success: true,
