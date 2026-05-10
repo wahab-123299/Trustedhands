@@ -45,18 +45,28 @@ const Wallet = () => {
   // ==============================
   // CHECK BANK DETAILS
   // ==============================
-
   const checkBankDetails = useCallback(async () => {
     try {
       setCheckingBank(true);
       const res = await userApi.getMe();
-      const bankDetails = res.data.data?.bankDetails;
+      
+      // Try multiple possible paths where bankDetails might live
+      const user = res.data.data?.user || res.data.data;
+      const bankDetails = 
+        user?.bankDetails ||                    // Direct on user
+        user?.artisanProfile?.bankDetails ||    // Nested in artisanProfile
+        user?.wallet?.bankDetails ||           // Nested in wallet
+        res.data.data?.bankDetails;             // Direct in data (fallback)
+
+      console.log('[Wallet] Bank details found:', bankDetails); // Debug log
+
       setHasBankDetails(
         !!bankDetails?.accountNumber && 
         !!bankDetails?.bankCode && 
         !!bankDetails?.accountName
       );
-    } catch {
+    } catch (err) {
+      console.error('[Wallet] checkBankDetails error:', err);
       setHasBankDetails(false);
     } finally {
       setCheckingBank(false);

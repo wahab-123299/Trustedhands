@@ -43,14 +43,26 @@ exports.deleteFromCloudinary = async (publicId) => {
   }
 };
 
-// Get public ID from URL
 exports.getPublicIdFromUrl = (url) => {
   if (!url) return null;
   
-  const parts = url.split('/');
-  const filename = parts[parts.length - 1];
-  const publicId = filename.split('.')[0];
-  const folder = parts.slice(parts.indexOf('trustedhand'), parts.length - 1).join('/');
-  
-  return `${folder}/${publicId}`;
+  try {
+    // Cloudinary URL format: https://res.cloudinary.com/cloud_name/image/upload/v1234567890/folder/filename.jpg
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/');
+    
+    // Find 'upload' index, skip version, get everything after
+    const uploadIndex = pathParts.indexOf('upload');
+    if (uploadIndex === -1) return null;
+    
+    // Remove version segment (starts with 'v') and get folder + filename
+    const relevantParts = pathParts.slice(uploadIndex + 1).filter(part => !part.startsWith('v'));
+    const filename = relevantParts[relevantParts.length - 1];
+    const publicId = filename.split('.')[0]; // Remove extension
+    
+    return relevantParts.slice(0, -1).concat(publicId).join('/');
+  } catch (error) {
+    console.error('Error parsing Cloudinary URL:', error);
+    return null;
+  }
 };
