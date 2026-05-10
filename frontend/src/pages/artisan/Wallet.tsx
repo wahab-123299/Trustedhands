@@ -50,15 +50,11 @@ const Wallet = () => {
       setCheckingBank(true);
       const res = await userApi.getMe();
       
-      // Try multiple possible paths where bankDetails might live
-      const user = res.data.data?.user || res.data.data;
-      const bankDetails = 
-        user?.bankDetails ||                    // Direct on user
-        user?.artisanProfile?.bankDetails ||    // Nested in artisanProfile
-        user?.wallet?.bankDetails ||           // Nested in wallet
-        res.data.data?.bankDetails;             // Direct in data (fallback)
+      // After backend fix, bankDetails is directly on user
+      const userData = res.data.data?.user;
+      const bankDetails = userData?.bankDetails;
 
-      console.log('[Wallet] Bank details found:', bankDetails); // Debug log
+      console.log('[Wallet] Bank details found:', bankDetails);
 
       setHasBankDetails(
         !!bankDetails?.accountNumber && 

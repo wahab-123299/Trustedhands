@@ -21,11 +21,12 @@ const startServer = async () => {
 
     const server = http.createServer(app);
 
+    // ✅ FIXED: Removed trailing spaces from origins
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://trustedhand-app.netlify.app',
-      'https://trustedhands.onrender.com',
+      'https://trustedhand-app.netlify.app',      // ✅ No trailing space
+      'https://trustedhands.onrender.com',        // ✅ No trailing space
       process.env.FRONTEND_URL
     ].filter(Boolean);
 

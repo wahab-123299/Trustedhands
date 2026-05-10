@@ -64,7 +64,6 @@ exports.getMe = async (req, res, next) => {
     }
 
     if (user.role === 'artisan') {
-      // ✅ FIX: Query for both ObjectId and string formats
       const userId = user._id;
       const userIdString = userId.toString();
       
@@ -72,25 +71,30 @@ exports.getMe = async (req, res, next) => {
         .populate('userId', 'fullName email phone profileImage location isVerified')
         .populate('walletId');
 
-      // If not found with ObjectId, try with string
       if (!artisanProfile) {
         artisanProfile = await ArtisanProfile.findOne({ userId: userIdString })
           .populate('userId', 'fullName email phone profileImage location isVerified')
           .populate('walletId');
-          
-        if (artisanProfile) {
-          console.log(`[getMe] Found artisan profile with string userId: ${userIdString}`);
-        }
       }
 
-      console.log(`[getMe] hasProfile: ${!!artisanProfile}`);
+      // ✅ FIXED: Fetch wallet with bank details
+      let bankDetails = null;
+      const wallet = await Wallet.findOne({ artisanId: user._id }).lean();
+      if (wallet) {
+        bankDetails = wallet.bankDetails || null;
+      }
+
+      console.log(`[getMe] hasProfile: ${!!artisanProfile}, hasBankDetails: ${!!bankDetails}`);
 
       return res.json({
         success: true,
         data: {
-          user: user.toJSON ? user.toJSON() : user,
+          user: {
+            ...(user.toJSON ? user.toJSON() : user),
+            bankDetails  // ✅ Now included in response
+          },
           artisanProfile: artisanProfile ? transformArtisan(artisanProfile) : null,
-          hasProfile: !!artisanProfile  // ✅ EXPLICIT boolean
+          hasProfile: !!artisanProfile
         }
       });
     }

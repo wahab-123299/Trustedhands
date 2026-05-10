@@ -1018,12 +1018,17 @@ exports.verifyAccount = async (req, res, next) => {
       }
     });
   } catch (error) {
+    // ✅ FIXED: Always call next(error) — never throw raw errors
     console.error('Account verification error:', error.response?.data || error.message);
     
-    if (error.response?.status === 422) {
-      throw new AppError('VALIDATION_ERROR', 'Invalid account number or bank code. Please verify and try again.');
+    if (error instanceof AppError) {
+      return next(error);
     }
     
-    throw new AppError('VALIDATION_ERROR', 'Could not verify account. Please check your details and try again.');
+    if (error.response?.status === 422) {
+      return next(new AppError('VALIDATION_ERROR', 'Invalid account number or bank code. Please verify and try again.'));
+    }
+    
+    return next(new AppError('VALIDATION_ERROR', 'Could not verify account. Please check your details and try again.'));
   }
 };
