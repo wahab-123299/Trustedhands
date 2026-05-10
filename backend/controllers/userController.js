@@ -4,18 +4,21 @@ const { uploadToCloudinary } = require('../utils/cloudinary');
 
 // ✅ HELPER: Transform artisan data to match frontend expectations
 const transformArtisan = (artisan) => {
-  if (!artisan || !artisan.userId) return null;
+  if (!artisan) return null;
 
   // Handle both populated and unpopulated userId
-  const userData = typeof artisan.userId === 'object' ? artisan.userId : null;
-  const userId = userData ? userData._id?.toString() : artisan.userId?.toString();
+  const userData = typeof artisan.userId === 'object' && artisan.userId !== null 
+    ? artisan.userId 
+    : null;
+    
+  const userId = userData ? userData._id?.toString() : (artisan.userId?.toString ? artisan.userId.toString() : artisan.userId);
 
   return {
     id: artisan._id.toString(),
-    profession: artisan.profession,
+    profession: artisan.profession || 'General Artisan',
     skills: artisan.skills || [],
-    bio: artisan.bio,
-    experienceYears: artisan.experienceYears,
+    bio: artisan.bio || '',
+    experienceYears: artisan.experienceYears || '0-1',
     rate: {
       amount: artisan.rate?.amount || 0,
       period: artisan.rate?.period || 'job'
@@ -38,15 +41,15 @@ const transformArtisan = (artisan) => {
     isAvailable: artisan.availability?.status === 'available',
     availabilityStatus: artisan.availability?.status,
     nextAvailableDate: artisan.availability?.nextAvailableDate,
-    workRadius: artisan.workRadius,
+    workRadius: artisan.workRadius || 'any',
     hourlyRate: artisan.rate?.amount,
     ratePeriod: artisan.rate?.period,
     rating: artisan.averageRating,
     reviewCount: artisan.totalReviews,
     portfolioImages: artisan.portfolioImages || [],
     idVerification: artisan.idVerification,
-    isCertified: artisan.isCertified,
-    canApplyForHighValueJobs: artisan.canApplyForHighValueJobs,
+    isCertified: artisan.isCertified || false,
+    canApplyForHighValueJobs: artisan.canApplyForHighValueJobs || false,
     createdAt: artisan.createdAt,
     updatedAt: artisan.updatedAt
   };
@@ -61,9 +64,26 @@ exports.getMe = async (req, res, next) => {
     }
 
     if (user.role === 'artisan') {
-      const artisanProfile = await ArtisanProfile.findOne({ userId: user._id })
+      // ✅ FIX: Query for both ObjectId and string formats
+      const userId = user._id;
+      const userIdString = userId.toString();
+      
+      let artisanProfile = await ArtisanProfile.findOne({ userId: userId })
         .populate('userId', 'fullName email phone profileImage location isVerified')
         .populate('walletId');
+
+      // If not found with ObjectId, try with string
+      if (!artisanProfile) {
+        artisanProfile = await ArtisanProfile.findOne({ userId: userIdString })
+          .populate('userId', 'fullName email phone profileImage location isVerified')
+          .populate('walletId');
+          
+        if (artisanProfile) {
+          console.log(`[getMe] Found artisan profile with string userId: ${userIdString}`);
+        }
+      }
+
+      console.log(`[getMe] hasProfile: ${!!artisanProfile}`);
 
       return res.json({
         success: true,
@@ -79,7 +99,7 @@ exports.getMe = async (req, res, next) => {
       success: true,
       data: {
         user: user.toJSON ? user.toJSON() : user,
-        hasProfile: true  // Customers always have "profile"
+        hasProfile: true
       }
     });
   } catch (error) {
