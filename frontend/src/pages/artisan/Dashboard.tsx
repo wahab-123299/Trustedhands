@@ -28,6 +28,8 @@ const ArtisanDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setIsLoading(true);
+
+      
       
       // Fetch jobs and wallet data
       const [jobsRes, walletRes] = await Promise.all([

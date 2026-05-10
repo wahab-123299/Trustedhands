@@ -51,6 +51,7 @@ const transformArtisan = (artisan) => {
     updatedAt: artisan.updatedAt
   };
 };
+
 exports.getMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id);
@@ -67,16 +68,19 @@ exports.getMe = async (req, res, next) => {
       return res.json({
         success: true,
         data: {
-          user,
+          user: user.toJSON ? user.toJSON() : user,
           artisanProfile: artisanProfile ? transformArtisan(artisanProfile) : null,
-          hasProfile: !!artisanProfile
+          hasProfile: !!artisanProfile  // ✅ EXPLICIT boolean
         }
       });
     }
 
     res.json({
       success: true,
-      data: { user }
+      data: {
+        user: user.toJSON ? user.toJSON() : user,
+        hasProfile: true  // Customers always have "profile"
+      }
     });
   } catch (error) {
     next(error);

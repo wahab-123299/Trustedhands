@@ -8,6 +8,7 @@ import { SocketProvider } from '@/contexts/SocketContext';
 // Layouts
 import MainLayout from '@/components/layout/MainLayout';
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import SetupProfile from '@/pages/SetupProfile';
 
 // Public Pages (Eager loaded for faster initial render)
 import HomePage from '@/pages/HomePage';
@@ -160,6 +161,11 @@ function App() {
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<RoleRoute allowedRoles={['artisan']} />}>
+                  
+                  {/* ✅ FIXED: Standalone setup page — NO DashboardLayout */}
+                  <Route path="/setup-profile" element={<SetupProfile />} />
+                  
+                  {/* Dashboard routes WITH layout */}
                   <Route element={<DashboardLayout />}>
                     <Route path="/artisan/dashboard" element={<ArtisanDashboard />} />
                     <Route path="/artisan/jobs" element={<ArtisanJobs />} />
@@ -171,6 +177,7 @@ function App() {
                     <Route path="/artisan/wallet" element={<ArtisanWallet />} />
                     <Route path="/artisan/verify" element={<ArtisanVerificationPage />} />
                   </Route>
+                  
                 </Route>
               </Route>
 
