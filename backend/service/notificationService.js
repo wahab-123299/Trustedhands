@@ -1,6 +1,5 @@
 const Notification = require('../models/Notification');
-const { sendEmail } = require('../utils/email');
-const { sendSMS, smsTemplates } = require('./smsService');
+const { sendEmail, sendWelcomeEmail, sendJobNotification, sendPaymentReceipt } = require('../utils/email');
 const { getIO } = require('../config/socket');
 
 class NotificationService {
@@ -12,8 +11,8 @@ class NotificationService {
       if (channels.includes('in_app')) {
         const inApp = await this.createInApp(user._id, type, data);
         results.push({ channel: 'in_app', success: true, id: inApp._id });
-        
-        // Real-time emit
+
+        // Real-time emit via Socket.IO
         const io = getIO();
         if (io) {
           io.to(`user_${user._id}`).emit('notification', {
@@ -30,26 +29,17 @@ class NotificationService {
 
       // 2. Email notification
       if (channels.includes('email') && user.email) {
-        const emailData = this.getEmailTemplate(type, user, data);
-        if (emailData) {
-          const emailResult = await sendEmail({
-            to: user.email,
-            subject: emailData.subject,
-            html: emailData.html
-          });
+        const emailResult = await this.sendEmailByType(type, user, data);
+        if (emailResult) {
           results.push({ channel: 'email', ...emailResult });
         }
       }
 
-      // 3. SMS notification
-      if (channels.includes('sms') && user.phone) {
-        const smsData = this.getSMSTemplate(type, user, data);
-        if (smsData) {
-          const smsResult = await sendSMS({
-            to: user.phone,
-            message: smsData.message
-          });
-          results.push({ channel: 'sms', ...smsResult });
+      // ✅ NEW: Push notification via FCM
+      if (channels.includes('push')) {
+        const pushResult = await this.sendPushNotification(user, type, data);
+        if (pushResult) {
+          results.push({ channel: 'push', ...pushResult });
         }
       }
 
@@ -58,6 +48,225 @@ class NotificationService {
       console.error('Notification service error:', error);
       return { success: false, error: error.message };
     }
+  }
+
+  // ✅ NEW: Dedicated push notification method
+  async sendPushNotification(user, type, data) {
+    try {
+      if (!user.fcmTokens || user.fcmTokens.length === 0) {
+        return null; // No tokens to send to
+      }
+
+      const pushNotificationService = require('./pushNotificationService');
+
+      // Build push payload based on notification type
+      const pushPayload = this.buildPushPayload(type, data);
+
+      const pushResult = await pushNotificationService.sendToUser(
+        user._id,
+        pushPayload.title,
+        pushPayload.body,
+        {
+          type,
+          ...pushPayload.data
+        }
+      );
+
+      return pushResult;
+    } catch (error) {
+      console.error('Push notification error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ✅ NEW: Build push notification payload
+  buildPushPayload(type, data) {
+    const payloads = {
+      welcome: {
+        title: 'Welcome to TrustedHand!',
+        body: `Hi ${data.name || 'there'}, your registration was successful.`,
+        data: { screen: 'home' }
+      },
+      new_booking: {
+        title: 'New Booking Request',
+        body: `${data.customerName} wants to book you for "${data.jobTitle}"`,
+        data: { screen: 'jobDetails', jobId: data.jobId }
+      },
+      booking_confirmed: {
+        title: 'Booking Confirmed',
+        body: `${data.artisanName} has accepted your booking`,
+        data: { screen: 'jobDetails', jobId: data.jobId }
+      },
+      booking_declined: {
+        title: 'Booking Declined',
+        body: `${data.artisanName} declined your booking request`,
+        data: { screen: 'findArtisans' }
+      },
+      new_job_alert: {
+        title: 'New Job Alert',
+        body: `New job matching your skills: "${data.jobTitle}"`,
+        data: { screen: 'jobDetails', jobId: data.jobId }
+      },
+      job_assigned: {
+        title: 'Job Assigned',
+        body: `You've been assigned to "${data.jobTitle}"`,
+        data: { screen: 'jobDetails', jobId: data.jobId }
+      },
+      job_started: {
+        title: 'Job Started',
+        body: `${data.artisanName} has started working on your job`,
+        data: { screen: 'jobDetails', jobId: data.jobId }
+      },
+      job_completed: {
+        title: 'Job Completed',
+        body: `Your job "${data.jobTitle}" has been completed`,
+        data: { screen: 'jobDetails', jobId: data.jobId }
+      },
+      payment_received: {
+        title: 'Payment Received',
+        body: `You received ₦${data.amount?.toLocaleString()} for "${data.jobTitle}"`,
+        data: { screen: 'wallet' }
+      },
+      review_received: {
+        title: 'New Review',
+        body: `You received a ${data.rating}-star review from ${data.customerName}`,
+        data: { screen: 'reviews' }
+      },
+      application_received: {
+        title: 'New Application',
+        body: `${data.artisanName} applied for your job "${data.jobTitle}"`,
+        data: { screen: 'jobApplications', jobId: data.jobId }
+      },
+      application_accepted: {
+        title: 'Application Accepted',
+        body: `Your application for "${data.jobTitle}" was accepted`,
+        data: { screen: 'jobDetails', jobId: data.jobId }
+      },
+      application_rejected: {
+        title: 'Application Rejected',
+        body: `Your application for "${data.jobTitle}" was not selected`,
+        data: { screen: 'myApplications' }
+      }
+    };
+
+    return payloads[type] || {
+      title: 'TrustedHand',
+      body: 'You have a new notification',
+      data: { screen: 'notifications' }
+    };
+  }
+
+  // Send email based on notification type
+  async sendEmailByType(type, user, data) {
+    try {
+      switch (type) {
+        case 'welcome':
+          return await sendWelcomeEmail(user);
+
+        case 'new_job_alert':
+          return await sendJobNotification(user, data.job, 'new_job');
+
+        case 'job_started':
+          return await sendJobNotification(user, data.job, 'job_started');
+
+        case 'job_completed':
+          return await sendJobNotification(user, data.job, 'job_completed');
+
+        case 'payment_received':
+          return await sendPaymentReceipt(user, data.transaction);
+
+        case 'application_accepted':
+        case 'booking_confirmed':
+          return await sendJobNotification(user, data.job, 'job_accepted');
+
+        case 'new_booking':
+          return await this.sendGenericEmail(user, {
+            subject: 'New Booking Request - TrustedHand',
+            title: 'New Booking Request',
+            message: `${data.customerName} wants to book you for "${data.jobTitle}"`,
+            actionText: 'View Booking',
+            actionUrl: `${process.env.FRONTEND_URL}/artisan/jobs/${data.jobId}`
+          });
+
+        case 'application_received':
+          return await this.sendGenericEmail(user, {
+            subject: 'New Application - TrustedHand',
+            title: 'New Job Application',
+            message: `${data.artisanName} applied for your job "${data.jobTitle}"`,
+            actionText: 'View Applications',
+            actionUrl: `${process.env.FRONTEND_URL}/customer/jobs/${data.jobId}/applications`
+          });
+
+        case 'booking_declined':
+          return await this.sendGenericEmail(user, {
+            subject: 'Booking Declined - TrustedHand',
+            title: 'Booking Declined',
+            message: `${data.artisanName} declined your booking request for "${data.jobTitle}"`,
+            actionText: 'Find Other Artisans',
+            actionUrl: `${process.env.FRONTEND_URL}/artisans`
+          });
+
+        case 'review_received':
+          return await this.sendGenericEmail(user, {
+            subject: 'New Review - TrustedHand',
+            title: 'New Review Received',
+            message: `You received a ${data.rating}-star review from ${data.customerName}!`,
+            actionText: 'View Reviews',
+            actionUrl: `${process.env.FRONTEND_URL}/artisan/profile`
+          });
+
+        default:
+          console.log(`No email handler for type: ${type}`);
+          return null;
+      }
+    } catch (error) {
+      console.error(`Failed to send ${type} email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Generic email builder for simple notifications
+  async sendGenericEmail(user, { subject, title, message, actionText, actionUrl }) {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${title}</title>
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #10B981; margin: 0;">TrustedHand</h1>
+          <p style="color: #6B7280; margin: 5px 0;">Nigeria's Trusted Marketplace for Skilled Artisans</p>
+        </div>
+
+        <div style="background: #f9fafb; padding: 30px; border-radius: 8px;">
+          <h2 style="color: #10B981; margin-top: 0;">${title}</h2>
+          <p>Hi ${user.fullName},</p>
+          <p>${message}</p>
+
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${actionUrl}" 
+               style="display: inline-block; padding: 12px 30px; background-color: #10B981; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
+              ${actionText}
+            </a>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px; color: #9CA3AF; font-size: 12px;">
+          <p>© ${new Date().getFullYear()} TrustedHand. All rights reserved.</p>
+          <p>Lagos, Nigeria</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    return await sendEmail({
+      to: user.email,
+      subject,
+      html
+    });
   }
 
   async createInApp(userId, type, data) {
@@ -133,38 +342,6 @@ class NotificationService {
       channels: ['in_app'],
       isRead: false
     });
-  }
-
-  getEmailTemplate(type, user, data) {
-    const { sendWelcomeEmail, sendJobNotification, sendPaymentReceipt } = require('../utils/email');
-    
-    switch (type) {
-      case 'welcome':
-        return { subject: 'Welcome!', html: null }; // Use existing sendWelcomeEmail
-      case 'new_booking':
-      case 'job_started':
-      case 'job_completed':
-        return { subject: 'Job Update', html: null }; // Use sendJobNotification
-      case 'payment_received':
-        return { subject: 'Payment Received', html: null }; // Use sendPaymentReceipt
-      default:
-        return null;
-    }
-  }
-
-  getSMSTemplate(type, user, data) {
-    const templates = {
-      welcome: smsTemplates.welcome,
-      new_booking: smsTemplates.newBooking,
-      booking_confirmed: smsTemplates.bookingConfirmed,
-      new_job_alert: smsTemplates.newJobAlert,
-      job_started: smsTemplates.jobStarted,
-      job_completed: smsTemplates.jobCompleted,
-      payment_received: smsTemplates.paymentReceived
-    };
-
-    const templateFn = templates[type];
-    return templateFn ? templateFn({ ...data, name: user.fullName }) : null;
   }
 
   // Get unread notifications

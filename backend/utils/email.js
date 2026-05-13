@@ -283,37 +283,35 @@ exports.sendPasswordResetEmail = async (user, resetUrl) => {
 exports.sendJobNotification = async (user, job, type) => {
   const templates = {
     new_job: {
-      subject: 'New Job Request',
+      subject: 'New Job Alert - TrustedHand',
       title: 'New Job Request',
-      message: 'You have a new job request:',
+      message: 'A new job matching your skills has been posted:',
       actionText: 'View Job',
-      actionUrl: `${process.env.FRONTEND_URL}/artisan/jobs/${job._id}`
+      actionUrl: `${process.env.FRONTEND_URL}/artisan/jobs/${job._id || job.id}`
     },
     job_accepted: {
-      subject: 'Job Accepted',
+      subject: 'Job Accepted - TrustedHand',
       title: 'Job Accepted',
-      message: 'Your job request has been accepted:',
-      actionText: 'Make Payment',
-      actionUrl: `${process.env.FRONTEND_URL}/customer/jobs/${job._id}`,
-      extraMessage: 'Please proceed to make payment to confirm the booking.'
+      message: 'Your application has been accepted!',
+      actionText: 'View Job',
+      actionUrl: `${process.env.FRONTEND_URL}/artisan/jobs/${job._id || job.id}`
     },
     job_started: {
-      subject: 'Job Started',
+      subject: 'Job Started - TrustedHand',
       title: 'Job Started',
       message: 'The artisan has started working on your job:',
       actionText: 'View Progress',
-      actionUrl: `${process.env.FRONTEND_URL}/customer/jobs/${job._id}`
+      actionUrl: `${process.env.FRONTEND_URL}/customer/jobs/${job._id || job.id}`
     },
     job_completed: {
-      subject: 'Job Completed',
+      subject: 'Job Completed - TrustedHand',
       title: 'Job Completed',
-      message: 'The artisan has completed the job:',
+      message: 'The job has been completed:',
       actionText: 'Confirm & Review',
-      actionUrl: `${process.env.FRONTEND_URL}/customer/jobs/${job._id}`,
-      extraMessage: 'Please confirm completion and leave a review.'
+      actionUrl: `${process.env.FRONTEND_URL}/customer/jobs/${job._id || job.id}`
     },
     payment_received: {
-      subject: 'Payment Received',
+      subject: 'Payment Received - TrustedHand',
       title: 'Payment Received',
       message: 'You have received a payment for:',
       actionText: 'View Wallet',
@@ -338,22 +336,25 @@ exports.sendJobNotification = async (user, job, type) => {
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="text-align: center; margin-bottom: 30px;">
         <h1 style="color: #10B981; margin: 0;">TrustedHand</h1>
+        <p style="color: #6B7280; margin: 5px 0;">Nigeria's Trusted Marketplace for Skilled Artisans</p>
       </div>
-      
+
       <div style="background: #f9fafb; padding: 30px; border-radius: 8px;">
         <h2 style="color: #10B981; margin-top: 0;">${template.title}</h2>
-        <p>Hi ${user.fullName},</p>
+        <p>Hi ${user.fullName || 'there'},</p>
         <p>${template.message}</p>
-        
+
         <div style="background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #10B981;">
-          <h3 style="margin-top: 0; color: #111827;">${job.title}</h3>
+          <h3 style="margin-top: 0; color: #111827;">${job.title || 'Untitled Job'}</h3>
           <p style="margin: 5px 0;"><strong>Budget:</strong> ₦${job.budget?.toLocaleString() || 'N/A'}</p>
           <p style="margin: 5px 0;"><strong>Location:</strong> ${job.location?.city || 'N/A'}, ${job.location?.state || 'N/A'}</p>
           ${job.scheduledDate ? `<p style="margin: 5px 0;"><strong>Scheduled:</strong> ${new Date(job.scheduledDate).toLocaleDateString('en-NG')}</p>` : ''}
         </div>
-        
-        ${template.extraMessage ? `<p>${template.extraMessage}</p>` : ''}
-        
+
+        ${type === 'job_accepted' ? '<p style="color: #10B981; font-weight: bold;">🎉 Congratulations! The customer has chosen you for this job.</p>' : ''}
+        ${type === 'job_completed' ? '<p>Please confirm completion and leave a review.</p>' : ''}
+        ${type === 'job_started' ? '<p>You will be notified when the job is completed.</p>' : ''}
+
         <div style="text-align: center; margin: 30px 0;">
           <a href="${template.actionUrl}" 
              style="display: inline-block; padding: 12px 30px; background-color: #10B981; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
@@ -361,9 +362,10 @@ exports.sendJobNotification = async (user, job, type) => {
           </a>
         </div>
       </div>
-      
+
       <div style="text-align: center; margin-top: 30px; color: #9CA3AF; font-size: 12px;">
         <p>© ${new Date().getFullYear()} TrustedHand. All rights reserved.</p>
+        <p>Lagos, Nigeria</p>
       </div>
     </body>
     </html>

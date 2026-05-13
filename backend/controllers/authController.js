@@ -4,7 +4,8 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { User, ArtisanProfile, Wallet } = require('../models');
-const { sendEmail } = require('../utils/email');
+const { sendEmail, sendWelcomeEmail } = require('../utils/email');
+const NotificationService = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
 // ==========================================
@@ -271,6 +272,15 @@ exports.register = [
             </div>
           `
         });
+        await sendWelcomeEmail(user.email, user.fullName);
+        await NotificationService.send({
+          userId: user._id,
+          type: 'welcome',
+          title: 'Welcome to TrustedHand!',
+          data: {name: user.fullName, role: user.role},
+          message: `Hi ${user.fullName}, welcome to Nigeria's Trusted Marketplace for Skilled Artisans! We're excited to have you on board. Explore our platform to find skilled artisans or get hired for your expertise. Let's build something great together!`,
+          channels: ['in_app', 'email'],
+        });
       } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
       }
@@ -279,11 +289,19 @@ exports.register = [
       const { accessToken, refreshToken } = generateTokens(user._id);
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'unknown');
 
+      let unreadNotifications = 0;
+      try {
+        unreadNotifications = await NotificationService.getUnreadCount(user._id);
+      } catch (e) {
+        unreadNotifications = 0;
+      }
+
       // Set cookies
       res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
       res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
       console.log('[Register] Success - Token sent, length:', accessToken.length);
+      console.log('===================');
 
       res.status(201).json({
         success: true,
@@ -291,6 +309,8 @@ exports.register = [
         data: {
           user: user.toJSON(),
           accessToken,
+          unreadMessageCount: 0,
+          unreadNotifications: unreadNotifications,
           dashboardRoute: role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
         }
       });
@@ -364,6 +384,22 @@ exports.login = async (req, res, next) => {
 
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+    // ✅ FIXED: Login notification (security alert) - NOW IN CORRECT PLACE (login, not register)
+    try {
+      const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
+      await NotificationService.send({
+        userId: user._id,
+        type: 'login_alert',
+        title: 'New Login Detected',
+        message: `A new login was detected from ${device} at ${ip}. If this wasn't you, change your password immediately.`,
+        data: { ip, device, time: new Date() },
+        channels: ['in_app'],
+      });
+    } catch (e) {
+      console.error('[login] Login notification failed:', e.message);
+    }
 
     console.log('[Login] SUCCESS for user:', user.email);
     console.log('===================');
@@ -523,6 +559,20 @@ exports.verifyEmail = async (req, res, next) => {
     user.emailVerificationToken = undefined;
     user.emailVerificationExpires = undefined;
     await user.save();
+
+    // ✅ Email verified notification
+    try {
+      await NotificationService.send({
+        userId: user._id,
+        type: 'email_verified',
+        title: 'Email Verified!',
+        message: `Hi ${user.fullName}, your email has been verified successfully. You now have full access to TrustedHand.`,
+        data: { name: user.fullName },
+        channels: ['in_app', 'email'],
+      });
+    } catch (e) {
+      console.error('[verifyEmail] Notification failed:', e.message);
+    }
 
     res.json({
       success: true,
@@ -689,6 +739,20 @@ exports.resetPassword = async (req, res, next) => {
     user.passwordResetExpires = undefined;
     user.refreshTokens = [];
     await user.save();
+
+    // ✅ ADDED: Notify user of password change
+    try {
+      await NotificationService.send({
+        userId: user._id,
+        type: 'password_changed',
+        title: 'Password Changed',
+        message: `Hi ${user.fullName}, your password was changed successfully. If you didn't do this, contact support immediately.`,
+        data: { name: user.fullName, changedAt: new Date() },
+        channels: ['in_app', 'email'],
+      });
+    } catch (e) {
+      console.error('[resetPassword] Notification failed:', e.message);
+    }
 
     res.json({
       success: true,

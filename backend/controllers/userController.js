@@ -262,3 +262,47 @@ exports.getUserById = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.registerFCMToken = async (req, res, next) => {
+  try {
+    const { fcmToken } = req.body;
+
+    if (!fcmToken) {
+      throw new AppError('VALIDATION_ERROR', 'FCM token is required');
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user.fcmTokens) user.fcmTokens = [];
+
+    if (!user.fcmTokens.includes(fcmToken)) {
+      user.fcmTokens.push(fcmToken);
+      await user.save();
+    }
+
+    res.json({
+      success: true,
+      message: 'FCM token registered',
+      data: { tokenCount: user.fcmTokens.length }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.unregisterFCMToken = async (req, res, next) => {
+  try {
+    const { fcmToken } = req.body;
+
+    await User.findByIdAndUpdate(req.user._id, {
+      $pull: { fcmTokens: fcmToken }
+    });
+
+    res.json({
+      success: true,
+      message: 'FCM token unregistered'
+    });
+  } catch (error) {
+    next(error);
+  }
+};

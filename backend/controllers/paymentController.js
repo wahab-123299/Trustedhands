@@ -2,6 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { User, Job, Transaction, Wallet, ArtisanProfile, Conversation } = require('../models');
 const { AppError } = require('../utils/errorHandler');
+const NotificationService = require('../services/notificationService');
 
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
 const PLATFORM_COMMISSION = 0.10; // 10%
@@ -38,6 +39,14 @@ exports.initializePayment = async (req, res, next) => {
       throw new AppError('JOB_INVALID_STATUS', 'Payment has already been processed for this job.');
     }
 
+    // ✅ ADDED: Block milestone-based jobs from regular payment
+    if (job.hasMilestones) {
+      throw new AppError(
+        'JOB_HAS_MILESTONES',
+        'This job uses milestone-based payments. Please use the milestone payment endpoints.'
+      );
+    }
+
     // Get artisan profile for rate validation
     const artisanProfile = await ArtisanProfile.findOne({ userId: job.artisanId });
     if (!artisanProfile) {
@@ -46,7 +55,7 @@ exports.initializePayment = async (req, res, next) => {
 
     // Calculate amounts
     const amount = job.budget || artisanProfile.rate?.amount || 0;
-    
+
     if (amount < 1000) {
       throw new AppError('VALIDATION_ERROR', 'Minimum payment amount is ₦1,000.');
     }
@@ -163,7 +172,7 @@ exports.verifyPayment = async (req, res, next) => {
 
     // Find transaction first
     let transaction = await Transaction.findOne({ paystackReference: reference });
-    
+
     // If already processed, return cached result
     if (transaction && transaction.status === 'success') {
       return res.json({
@@ -234,6 +243,40 @@ exports.verifyPayment = async (req, res, next) => {
 
     // Notify artisan via socket and create conversation if needed
     await notifyArtisanPaymentReceived(req.app.get('io'), transaction, wallet);
+
+    // ✅ ADDED: Payment received notification via NotificationService
+    try {
+      const artisan = await User.findById(transaction.payeeId);
+      const customer = await User.findById(transaction.payerId);
+      const job = await Job.findById(transaction.jobId);
+      if (artisan) {
+        await NotificationService.send({
+          user: artisan,
+          type: 'payment_received',
+          channels: ['in_app', 'email'],
+          data: {
+            amount: transaction.amount,
+            jobTitle: job?.title,
+            jobId: transaction.jobId,
+            customerName: customer?.fullName
+          }
+        });
+      }
+      if (customer) {
+        await NotificationService.send({
+          user: customer,
+          type: 'payment_confirmed',
+          channels: ['in_app', 'email'],
+          data: {
+            amount: transaction.amount,
+            jobTitle: job?.title,
+            jobId: transaction.jobId
+          }
+        });
+      }
+    } catch (e) {
+      console.error('[verifyPayment] NotificationService failed:', e.message);
+    }
 
     res.json({
       success: true,
@@ -314,6 +357,40 @@ exports.releasePayment = async (req, res, next) => {
     // Notify artisan
     await notifyArtisanPaymentReleased(req.app.get('io'), transaction, wallet);
 
+    // ✅ ADDED: Payment released notification via NotificationService
+    try {
+      const artisan = await User.findById(transaction.payeeId);
+      const customer = await User.findById(transaction.payerId);
+      if (artisan) {
+        await NotificationService.send({
+          user: artisan,
+          type: 'payment_released',
+          channels: ['in_app', 'email'],
+          data: {
+            amount: transaction.artisanAmount,
+            jobTitle: job.title,
+            jobId: job._id,
+            walletBalance: wallet.balance
+          }
+        });
+      }
+      if (customer) {
+        await NotificationService.send({
+          user: customer,
+          type: 'payment_released_customer',
+          channels: ['in_app', 'email'],
+          data: {
+            amount: transaction.amount,
+            jobTitle: job.title,
+            jobId: job._id,
+            artisanName: artisan?.fullName
+          }
+        });
+      }
+    } catch (e) {
+      console.error('[releasePayment] NotificationService failed:', e.message);
+    }
+
     res.json({
       success: true,
       message: 'Payment released successfully. Funds are now available in artisan wallet.',
@@ -366,23 +443,23 @@ exports.webhook = async (req, res) => {
       case 'charge.success':
         await handleChargeSuccess(event.data);
         break;
-      
+
       case 'charge.failed':
         await handleChargeFailed(event.data);
         break;
-      
+
       case 'transfer.success':
         await handleTransferSuccess(event.data);
         break;
-      
+
       case 'transfer.failed':
         await handleTransferFailed(event.data);
         break;
-      
+
       case 'transfer.reversed':
         await handleTransferReversed(event.data);
         break;
-      
+
       default:
         console.log(`Unhandled webhook event: ${event.event}`);
     }
@@ -486,6 +563,25 @@ async function handleTransferSuccess(data) {
     await wallet.completeWithdrawal(reference, id.toString());
   }
 
+  // ✅ ADDED: Withdrawal completed notification
+  try {
+    const artisan = await User.findById(transaction.payeeId);
+    if (artisan) {
+      await NotificationService.send({
+        user: artisan,
+        type: 'withdrawal_completed',
+        channels: ['in_app', 'email'],
+        data: {
+          amount: transaction.amount,
+          reference: reference,
+          bankName: transaction.metadata?.bankName
+        }
+      });
+    }
+  } catch (e) {
+    console.error('[handleTransferSuccess] Notification failed:', e.message);
+  }
+
   console.log(`Transfer success processed: ${reference}`);
 }
 
@@ -506,14 +602,33 @@ async function handleTransferFailed(data) {
     await wallet.failWithdrawal(reference, reason);
   }
 
+  // ✅ ADDED: Withdrawal failed notification
+  try {
+    const artisan = await User.findById(transaction.payeeId);
+    if (artisan) {
+      await NotificationService.send({
+        user: artisan,
+        type: 'withdrawal_failed',
+        channels: ['in_app', 'email'],
+        data: {
+          amount: transaction.amount,
+          reference: reference,
+          reason: reason
+        }
+      });
+    }
+  } catch (e) {
+    console.error('[handleTransferFailed] Notification failed:', e.message);
+  }
+
   console.log(`Transfer failed processed: ${reference}, reason: ${reason}`);
 }
 
 async function handleTransferReversed(data) {
   const { reference, reason } = data;
-  
+
   console.log(`Transfer reversed: ${reference}, reason: ${reason}`);
-  
+
   // Similar to failed - refund the wallet
   const transaction = await Transaction.findOne({ paystackTransferReference: reference });
   if (!transaction || transaction.status === 'reversed') return;
@@ -525,6 +640,25 @@ async function handleTransferReversed(data) {
   const wallet = await Wallet.findOne({ artisanId: transaction.payeeId });
   if (wallet) {
     await wallet.failWithdrawal(reference, `Reversed: ${reason}`);
+  }
+
+  // ✅ ADDED: Withdrawal reversed notification
+  try {
+    const artisan = await User.findById(transaction.payeeId);
+    if (artisan) {
+      await NotificationService.send({
+        user: artisan,
+        type: 'withdrawal_failed',
+        channels: ['in_app', 'email'],
+        data: {
+          amount: transaction.amount,
+          reference: reference,
+          reason: `Reversed: ${reason}`
+        }
+      });
+    }
+  } catch (e) {
+    console.error('[handleTransferReversed] Notification failed:', e.message);
   }
 }
 
@@ -604,6 +738,24 @@ exports.requestWithdrawal = async (req, res, next) => {
       // Update withdrawal in wallet
       await wallet.processWithdrawal(withdrawalId, transferData.reference);
 
+      // ✅ ADDED: Withdrawal initiated notification
+      try {
+        const user = await User.findById(userId);
+        await NotificationService.send({
+          user: user,
+          type: 'withdrawal_initiated',
+          channels: ['in_app', 'email'],
+          data: {
+            amount: withdrawalAmount,
+            reference: transferData.reference,
+            bankName: wallet.bankDetails.bankName,
+            accountNumber: wallet.bankDetails.accountNumber.slice(-4)
+          }
+        });
+      } catch (e) {
+        console.error('[requestWithdrawal] Notification failed:', e.message);
+      }
+
       res.json({
         success: true,
         message: 'Withdrawal request submitted successfully. Funds will be transferred within 24 hours.',
@@ -625,7 +777,7 @@ exports.requestWithdrawal = async (req, res, next) => {
     } catch (transferError) {
       // Rollback: Cancel withdrawal and refund
       await wallet.cancelWithdrawal(withdrawalId);
-      
+
       await Transaction.findByIdAndUpdate(transaction._id, {
         status: 'failed',
         failureReason: transferError.message,
@@ -725,12 +877,12 @@ async function initiatePaystackTransfer(amount, bankDetails, reason) {
     };
   } catch (error) {
     console.error('Transfer initiation error:', error.response?.data || error.message);
-    
+
     // Check for specific Paystack errors
     if (error.response?.data?.message?.includes('insufficient')) {
       throw new Error('Platform temporarily unable to process withdrawals. Please try again later.');
     }
-    
+
     throw new Error(error.response?.data?.message || 'Failed to initiate bank transfer');
   }
 }
@@ -929,7 +1081,7 @@ exports.getWallet = async (req, res, next) => {
         totalWithdrawn: 0,
         totalPendingWithdrawal: 0
       });
-      
+
       return res.json({
         success: true,
         data: { 
@@ -1020,15 +1172,15 @@ exports.verifyAccount = async (req, res, next) => {
   } catch (error) {
     // ✅ FIXED: Always call next(error) — never throw raw errors
     console.error('Account verification error:', error.response?.data || error.message);
-    
+
     if (error instanceof AppError) {
       return next(error);
     }
-    
+
     if (error.response?.status === 422) {
       return next(new AppError('VALIDATION_ERROR', 'Invalid account number or bank code. Please verify and try again.'));
     }
-    
+
     return next(new AppError('VALIDATION_ERROR', 'Could not verify account. Please check your details and try again.'));
   }
 };

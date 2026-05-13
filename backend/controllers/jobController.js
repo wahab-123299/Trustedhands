@@ -1,5 +1,7 @@
 const Job = require('../models/Job');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
+const NotificationService = require('../services/notificationService');
 const Application = require('../models/Application');
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
@@ -10,7 +12,7 @@ const mongoose = require('mongoose');
 exports.getAllJobs = async (req, res) => {
   try {
     const { status, category, location, page = 1, limit = 10, search } = req.query;
-    
+
     let query = {};
 
     if (status) {
@@ -158,6 +160,34 @@ exports.createJob = async (req, res) => {
       status: 'pending'
     });
 
+    // ✅ NOTIFY NEARBY ARTISANS
+    try {
+      const ArtisanProfile = require('../models/ArtisanProfile');
+      const nearbyArtisans = await ArtisanProfile.find({
+        'skills': { $in: [category] },
+        'availability.status': 'available',
+        'location.city': location?.city
+      }).populate('userId', 'fullName email');
+
+      for (const artisan of nearbyArtisans) {
+        if (artisan.userId && artisan.userId.email) {
+          await NotificationService.send({
+            user: artisan.userId,
+            type: 'new_job_alert',
+            channels: ['in_app', 'email'],
+            data: { 
+              jobTitle: job.title, 
+              jobId: job._id,
+              location: job.location 
+            }
+          });
+        }
+      }
+      console.log(`[createJob] Notified ${nearbyArtisans.length} nearby artisans`);
+    } catch (notifyError) {
+      console.error('[createJob] Failed to notify artisans:', notifyError);
+    }
+
     await job.populate('customerId', 'fullName profileImage');
 
     res.status(201).json({
@@ -183,7 +213,7 @@ exports.createJob = async (req, res) => {
 exports.getMyJobs = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    
+
     const userIdStr = req.user._id?.toString?.() || String(req.user._id);
     const userId = new mongoose.Types.ObjectId(userIdStr);
     const userRole = req.user.role;
@@ -281,6 +311,27 @@ exports.updateJob = async (req, res) => {
     await job.save();
     await job.populate('customerId', 'fullName profileImage');
 
+    // ✅ ADDED: Notify artisan of job update
+    try {
+      if (job.artisanId) {
+        const artisan = await User.findById(job.artisanId);
+        if (artisan) {
+          await NotificationService.send({
+            user: artisan,
+            type: 'job_update',
+            channels: ['in_app', 'email'],
+            data: {
+              jobTitle: job.title,
+              jobId: job._id,
+              updatedFields: Object.keys(updates)
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[updateJob] Notification failed:', e.message);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Job updated successfully',
@@ -322,6 +373,27 @@ exports.deleteJob = async (req, res) => {
     }
 
     await Application.deleteMany({ jobId: id });
+
+    // ✅ ADDED: Notify artisans who applied
+    try {
+      const applications = await Application.find({ jobId: id });
+      for (const app of applications) {
+        const artisan = await User.findById(app.artisanId);
+        if (artisan) {
+          await NotificationService.send({
+            user: artisan,
+            type: 'job_cancelled',
+            channels: ['in_app', 'email'],
+            data: {
+              jobTitle: job.title,
+              jobId: job._id
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[deleteJob] Notification failed:', e.message);
+    }
 
     res.status(200).json({
       success: true,
@@ -395,6 +467,26 @@ exports.applyForJob = async (req, res) => {
 
     await application.populate('artisanId', 'fullName profileImage');
 
+    // ✅ NOTIFY CUSTOMER ABOUT NEW APPLICATION
+    try {
+      const customer = await User.findById(job.customerId);
+      const artisan = await User.findById(artisanId);
+      if (customer && customer.email) {
+        await NotificationService.send({
+          user: customer,
+          type: 'application_received',
+          channels: ['in_app', 'email'],
+          data: {
+            artisanName: artisan?.fullName || 'An artisan',
+            jobTitle: job.title,
+            jobId: job._id
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('[applyForJob] Failed to notify customer:', notifyError);
+    }
+
     res.status(201).json({
       success: true,
       message: 'Application submitted successfully',
@@ -461,6 +553,44 @@ exports.acceptApplication = async (req, res) => {
       },
       { status: 'rejected' }
     );
+
+    // ✅ NOTIFY ARTISAN THAT APPLICATION WAS ACCEPTED
+    try {
+      const artisan = await User.findById(application.artisanId);
+      const customer = await User.findById(req.user._id);
+      if (artisan && artisan.email) {
+        await NotificationService.send({
+          user: artisan,
+          type: 'application_accepted',
+          channels: ['in_app', 'email'],
+          data: {
+            jobTitle: job.title,
+            jobId: job._id,
+            customerName: customer?.fullName || 'A customer'
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('[acceptApplication] Failed to notify artisan:', notifyError);
+    }
+
+    // ✅ ADDED: Book artisan's availability slot
+    try {
+      const { bookSlot } = require('../controllers/availabilityController');
+      const scheduledDate = job.scheduledDate;
+      if (scheduledDate) {
+        const dateStr = scheduledDate.toISOString().split('T')[0];
+        await bookSlot(
+          application.artisanId,
+          dateStr,
+          '08:00',
+          '18:00',
+          job._id
+        );
+      }
+    } catch (e) {
+      console.error('[acceptApplication] Slot booking failed:', e.message);
+    }
 
     res.status(200).json({
       success: true,
@@ -625,6 +755,24 @@ exports.rejectApplication = async (req, res) => {
     application.status = 'rejected';
     await application.save();
 
+    // ✅ NOTIFY ARTISAN THAT APPLICATION WAS REJECTED
+    try {
+      const artisan = await User.findById(application.artisanId);
+      if (artisan && artisan.email) {
+        await NotificationService.send({
+          user: artisan,
+          type: 'application_rejected',
+          channels: ['in_app', 'email'],
+          data: {
+            jobTitle: application.jobId.title,
+            jobId: application.jobId._id
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('[rejectApplication] Failed to notify artisan:', notifyError);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Application rejected successfully',
@@ -673,6 +821,26 @@ exports.acceptJob = async (req, res) => {
     job.status = 'in-progress';
     job.startedAt = new Date();
     await job.save();
+
+    // ✅ NOTIFY CUSTOMER THAT JOB WAS ACCEPTED/STARTED
+    try {
+      const customer = await User.findById(job.customerId);
+      const artisan = await User.findById(req.user._id);
+      if (customer && customer.email) {
+        await NotificationService.send({
+          user: customer,
+          type: 'job_started',
+          channels: ['in_app', 'email'],
+          data: {
+            artisanName: artisan?.fullName || 'Your artisan',
+            jobTitle: job.title,
+            jobId: job._id
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('[acceptJob] Failed to notify customer:', notifyError);
+    }
 
     res.status(200).json({
       success: true,
@@ -732,6 +900,26 @@ exports.startJob = async (req, res) => {
     job.status = 'in_progress';
     job.startedAt = new Date();
     await job.save();
+
+    // ✅ NOTIFY CUSTOMER THAT JOB STARTED
+    try {
+      const customer = await User.findById(job.customerId);
+      const artisan = await User.findById(req.user._id);
+      if (customer && customer.email) {
+        await NotificationService.send({
+          user: customer,
+          type: 'job_started',
+          channels: ['in_app', 'email'],
+          data: {
+            artisanName: artisan?.fullName || 'Your artisan',
+            jobTitle: job.title,
+            jobId: job._id
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('[startJob] Failed to notify customer:', notifyError);
+    }
 
     res.status(200).json({
       success: true,
@@ -795,6 +983,62 @@ exports.completeJob = async (req, res) => {
       await job.confirmByCustomer();
     } else {
       await job.confirmByArtisan();
+    }
+
+    // ✅ ADDED: Update hiredBefore in favorites
+    try {
+      const Favorite = require('../models/Favorite');
+      await Favorite.findOneAndUpdate(
+        { customerId: job.customerId, artisanId: job.artisanId },
+        {
+          $set: {
+            hiredBefore: true,
+            lastInteractedAt: new Date()
+          },
+          $inc: { hireCount: 1 }
+        },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.error('[completeJob] Favorite update failed:', e.message);
+    }
+
+    // ✅ NOTIFY BOTH PARTIES WHEN JOB IS COMPLETED
+    try {
+      if (job.status === 'completed') {
+        const customer = await User.findById(job.customerId);
+        const artisan = await User.findById(job.artisanId);
+
+        // Notify customer
+        if (customer && customer.email) {
+          await NotificationService.send({
+            user: customer,
+            type: 'job_completed',
+            channels: ['in_app', 'email'],
+            data: {
+              artisanName: artisan?.fullName || 'Your artisan',
+              jobTitle: job.title,
+              jobId: job._id
+            }
+          });
+        }
+
+        // Notify artisan
+        if (artisan && artisan.email) {
+          await NotificationService.send({
+            user: artisan,
+            type: 'job_completed',
+            channels: ['in_app', 'email'],
+            data: {
+              customerName: customer?.fullName || 'Your customer',
+              jobTitle: job.title,
+              jobId: job._id
+            }
+          });
+        }
+      }
+    } catch (notifyError) {
+      console.error('[completeJob] Failed to send completion notifications:', notifyError);
     }
 
     res.status(200).json({
@@ -869,6 +1113,28 @@ exports.cancelJob = async (req, res) => {
     job.cancellationReason = reason;
     job.cancelledBy = req.user._id;
     await job.save();
+
+    // ✅ NOTIFY OTHER PARTY ABOUT CANCELLATION
+    try {
+      const otherPartyId = isCustomer ? job.artisanId : job.customerId;
+      const otherParty = await User.findById(otherPartyId);
+      const canceller = await User.findById(req.user._id);
+
+      if (otherParty && otherParty.email) {
+        await NotificationService.send({
+          user: otherParty,
+          type: 'booking_declined',
+          channels: ['in_app', 'email'],
+          data: {
+            artisanName: canceller?.fullName || 'The other party',
+            jobTitle: job.title,
+            jobId: job._id
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('[cancelJob] Failed to notify other party:', notifyError);
+    }
 
     res.status(200).json({
       success: true,
@@ -953,6 +1219,27 @@ exports.addReview = async (req, res) => {
       createdAt: new Date()
     };
     await job.save();
+
+    // ✅ NOTIFY ARTISAN ABOUT NEW REVIEW
+    try {
+      const artisan = await User.findById(job.artisanId);
+      const customer = await User.findById(req.user._id);
+      if (artisan && artisan.email) {
+        await NotificationService.send({
+          user: artisan,
+          type: 'review_received',
+          channels: ['in_app', 'email'],
+          data: {
+            customerName: customer?.fullName || 'A customer',
+            rating: rating,
+            jobTitle: job.title,
+            jobId: job._id
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('[addReview] Failed to notify artisan:', notifyError);
+    }
 
     res.status(201).json({
       success: true,

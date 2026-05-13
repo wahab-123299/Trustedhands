@@ -8,9 +8,18 @@ require('./config/passport');
 const app = require('./app');
 const connectDB = require('./config/database');
 const chatSocket = require('./socket/chatSocket');
+const notificationSocket = require('./socket/notificationSocket');
 const mongoose = require('mongoose');
 
-console.log('MongoDB URI:', process.env.MONGODB_URI);
+if (process.env.NODE_ENV !== 'production') {
+  console.log('MongoDB URI:', process.env.MONGODB_URI);
+} else {
+  const uri = process.env.MONGODB_URI;
+  if (uri) {
+    const masked = uri.replace(/\/\/(.*?):(.*?)@/, '//****:****@');
+    console.log('MongoDB URI:', masked);
+  }
+}
 
 mongoose.set('strictQuery', false);
 
@@ -21,12 +30,11 @@ const startServer = async () => {
 
     const server = http.createServer(app);
 
-    // ✅ FIXED: Removed trailing spaces from origins
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://trustedhand-app.netlify.app',      // ✅ No trailing space
-      'https://trustedhands.onrender.com',        // ✅ No trailing space
+      'https://trustedhand-app.netlify.app',
+      'https://trustedhands.onrender.com',
       process.env.FRONTEND_URL
     ].filter(Boolean);
 
@@ -48,52 +56,61 @@ const startServer = async () => {
       upgradeTimeout: 10000
     });
 
+    // ✅ SINGLE io attachment
     app.set('io', io);
+
+    // ✅ Initialize socket handlers
     chatSocket(io);
+    notificationSocket(io);
+
+    // ✅ Register notification routes AFTER io is created
+    const notificationRoutes = require('./routes/notificationRoutes');
+    app.use('/api/notifications', notificationRoutes);
 
     const PORT = process.env.PORT || 5000;
-    const NODE_ENV = process.env.NODE_ENV || 'development';
-
     server.listen(PORT, () => {
-      console.log(`Server running in ${NODE_ENV} mode on port ${PORT}`);
-      console.log(`Socket.io ready for connections`);
-      console.log(`CORS enabled for: ${allowedOrigins.join(', ')}`);
-      console.log(`FRONTEND_URL: ${process.env.FRONTEND_URL}`);
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     });
+
+    let exiting = false;
+    const safeExit = (code) => {
+      if (!exiting) {
+        exiting = true;
+        process.exit(code);
+      }
+    };
 
     process.on('unhandledRejection', (err) => {
       console.error('Unhandled Rejection:', err.message);
       console.error(err.stack);
-      server.close(() => process.exit(1));
-      setTimeout(() => process.exit(1), 10000);
+      server.close(() => safeExit(1));
     });
 
     process.on('uncaughtException', (err) => {
       console.error('Uncaught Exception:', err.message);
       console.error(err.stack);
-      server.close(() => process.exit(1));
-      setTimeout(() => process.exit(1), 10000);
+      server.close(() => safeExit(1));
     });
 
     process.on('SIGTERM', () => {
       console.log('SIGTERM received. Shutting down gracefully...');
       server.close(() => {
         console.log('HTTP server closed');
-        process.exit(0);
+        safeExit(0);
       });
-      setTimeout(() => process.exit(1), 30000);
     });
 
     process.on('SIGINT', () => {
       console.log('SIGINT received. Shutting down gracefully...');
       server.close(() => {
         console.log('HTTP server closed');
-        process.exit(0);
+        safeExit(0);
       });
-      setTimeout(() => process.exit(1), 30000);
-    });
 
-    return server;
+    });
+    
+
 
   } catch (error) {
     console.error('Failed to start server:', error.message);

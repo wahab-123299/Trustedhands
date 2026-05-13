@@ -21,8 +21,8 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: {
-      values: ['customer', 'artisan'],
-      message: 'Role must be either customer or artisan'
+      values: ['customer', 'artisan', 'admin'],
+      message: 'Role must be either customer, artisan, or admin'
     },
     required: [true, 'Role is required']
   },
@@ -61,7 +61,6 @@ const userSchema = new mongoose.Schema({
           'Yobe', 'Zamfara'
         ],
         message: 'Please enter a valid Nigerian state'
-      }
     },
     city: {
       type: String,
@@ -154,36 +153,19 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     unique: true,
     index: true
-  }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
+  },
+  fcmtopic: {
+    type: String,
+    default: ''
+  },
 
-// Indexes
-userSchema.index({ role: 1, isActive: 1, 'location.state': 1, 'location.city': 1 });
-userSchema.index({ fullName: 'text', 'location.city': 'text' });
-
-// Virtual for artisan profile
-userSchema.virtual('artisanProfile', {
-  ref: 'ArtisanProfile',
-  localField: '_id',
-  foreignField: 'userId',
-  justOne: true
 });
 
 // ==========================================
-// PRE-SAVE HOOK
+// HASH PASSWORD BEFORE SAVE
 // ==========================================
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password') || !this.password) {
-    return next();
-  }
-  
-  if (this.password.length < 8) {
-    return next(new Error('Password must be at least 8 characters'));
-  }
+  if (!this.isModified('password') || !this.password) return next();
   
   try {
     this.password = await bcrypt.hash(this.password, 12);

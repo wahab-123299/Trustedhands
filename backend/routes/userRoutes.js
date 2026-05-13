@@ -11,6 +11,10 @@ router.put('/location', authenticate, userController.updateLocation);
 router.put('/profile-image', authenticate, uploadSingle('image'), userController.updateProfileImage);
 router.delete('/me', authenticate, userController.deleteMe);
 
+// ✅ FIXED: Method names now match controller exports
+router.post('/fcm-token', authenticate, userController.registerFCMToken);
+router.delete('/fcm-token', authenticate, userController.unregisterFCMToken);
+
 // Public profile
 router.get('/:id', userController.getUserById);
 

@@ -12,6 +12,7 @@ class AppError extends Error {
   }
 }
 
+
 // Get HTTP status code based on error code
 function getStatusCode(code) {
   const statusCodes = {

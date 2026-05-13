@@ -1,60 +1,73 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
-const Notification = require('../models/Notification');
-const notificationService = require('../services/notificationService');
+const { authenticate } = require('../middleware/auth');
+const NotificationService = require('../services/notificationService');
 
-// Get all notifications
-router.get('/', auth, async (req, res) => {
+// Get all notifications (paginated)
+router.get('/', authenticate, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
-    const result = await notificationService.getAll(req.user._id, parseInt(page), parseInt(limit));
-    
-    res.json({
-      success: true,
-      data: result
-    });
+    const result = await NotificationService.getAll(
+      req.user._id,
+      parseInt(page),
+      parseInt(limit)
+    );
+    res.json({ success: true, data: result });
   } catch (error) {
+    console.error('Get notifications error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // Get unread notifications
-router.get('/unread', auth, async (req, res) => {
+router.get('/unread', authenticate, async (req, res) => {
   try {
-    const notifications = await notificationService.getUnread(req.user._id);
-    const count = await notificationService.getUnreadCount(req.user._id);
-    
-    res.json({
-      success: true,
-      data: { notifications, count }
-    });
+    const notifications = await NotificationService.getUnread(req.user._id);
+    res.json({ success: true, data: { notifications } });
   } catch (error) {
+    console.error('Get unread notifications error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Mark as read
-router.put('/:id/read', auth, async (req, res) => {
+// Get unread count
+router.get('/unread/count', authenticate, async (req, res) => {
   try {
-    const notification = await notificationService.markAsRead(req.params.id, req.user._id);
-    
-    if (!notification) {
-      return res.status(404).json({ success: false, error: 'Notification not found' });
-    }
-    
-    res.json({ success: true, data: notification });
+    const count = await NotificationService.getUnreadCount(req.user._id);
+    res.json({ success: true, data: { count } });
   } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Mark notification as read
+router.put('/:id/read', authenticate, async (req, res) => {
+  try {
+    const notification = await NotificationService.markAsRead(
+      req.params.id,
+      req.user._id
+    );
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Notification not found' }
+      });
+    }
+    res.json({ success: true, data: { notification } });
+  } catch (error) {
+    console.error('Mark as read error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // Mark all as read
-router.put('/read-all', auth, async (req, res) => {
+router.put('/read-all', authenticate, async (req, res) => {
   try {
-    await notificationService.markAllAsRead(req.user._id);
+    await NotificationService.markAllAsRead(req.user._id);
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (error) {
+    console.error('Mark all as read error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

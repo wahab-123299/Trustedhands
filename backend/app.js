@@ -45,7 +45,9 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    console.log('[CORS] Request from origin:', origin || 'undefined');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[CORS] Request from origin:', origin || 'undefined');
+    }
 
     if (!origin) {
       console.log('[CORS] Allowed (no origin)');
@@ -58,7 +60,7 @@ const corsOptions = {
     }
 
     // Allow Netlify deploy previews
-    if (origin.includes('netlify.app')) {
+    if (typeof origin === 'string' && origin.includes('netlify.app')) {
       console.log('[CORS] Allowed (Netlify):', origin);
       return callback(null, true);
     }
@@ -143,7 +145,7 @@ app.use(mongoSanitize({
 
 app.use(xss());
 app.use(hpp({
-  whitelist: ['skills', 'status', 'category', 'sortBy']
+  allowedParams: ['skills', 'status', 'category', 'sortBy']
 }));
 
 // ==========================================
@@ -161,9 +163,7 @@ app.use(compression({
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 } else {
-  app.use(morgan('combined', {
-    skip: (req, res) => res.statusCode < 400
-  }));
+  app.use(morgan('combined'));
 }
 
 // ==========================================
@@ -221,25 +221,17 @@ app.get('/health', (req, res) => {
 app.get('/privacy', (req, res) => {
   res.send(`
     <h1>Privacy Policy</h1>
-    <p>Last updated: May 2026</p>
+    <p>Last updated: May 2024</p>
     <p>TrustedHand respects your privacy. We collect only the information necessary to provide our services.</p>
     <p>We do not sell or share your personal data with third parties.</p>
     <p>For questions, contact: trustedhand100@gmail.com</p>
-  `);
-});
-
-app.get('/terms', (req, res) => {
-  res.send(`
+    <hr>
     <h1>Terms of Service</h1>
-    <p>Last updated: May 2026</p>
+    <p>Last updated: May 2024</p>
     <p>By using TrustedHand, you agree to these terms.</p>
     <p>Users must be 18 years or older to use this service.</p>
     <p>TrustedHand is not responsible for disputes between users and artisans.</p>
-  `);
-});
-
-app.get('/data-deletion', (req, res) => {
-  res.send(`
+    <hr>
     <h1>Data Deletion Instructions</h1>
     <p>To request deletion of your data:</p>
     <ol>
@@ -264,6 +256,16 @@ app.use('/api/applications', require('./routes/applicationRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/verification', verificationRoutes);
+
+//=========================================
+// NEW FEATURE ROUTES
+//=========================================
+
+app.use('/api/availability', require('./routes/availabilityRoutes'));
+app.use('/api/favorites', require('./routes/favoriteRoutes'));
+// ✅ FIXED: Added missing leading slash
+app.use('/api/milestones', require('./routes/milestoneRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 // ==========================================
 // ERROR HANDLING

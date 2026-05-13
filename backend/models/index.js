@@ -5,6 +5,10 @@ const Transaction = require('./Transaction');
 const Wallet = require('./Wallet');
 const Conversation = require('./Conversation');
 const Message = require('./Message');
+const AvailabilitySlot = require('./AvailabilitySlot');
+const RecurringPattern = require('./RecurringPattern');
+const Favorite = require('./Favorite');
+const Milestone = require('./Milestone');
 
 module.exports = {
   User,
@@ -13,5 +17,9 @@ module.exports = {
   Transaction,
   Wallet,
   Conversation,
-  Message
+  Message,
+  AvailabilitySlot,
+  RecurringPattern,
+  Favorite,
+  Milestone
 };

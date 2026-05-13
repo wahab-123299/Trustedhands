@@ -251,6 +251,11 @@ const jobSchema = new mongoose.Schema({
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
+}, {
+  hasMilestones: {
+    type: Boolean,
+    default: false
+  }
 });
 
 // Indexes
