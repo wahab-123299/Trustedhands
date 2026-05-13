@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const recurringPatternSchema = new mongoose.Schema({
   artisanId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -58,3 +60,5 @@ const recurringPatternSchema = new mongoose.Schema({
 recurringPatternSchema.index({ artisanId: 1, isActive: 1 });
 
 const RecurringPattern = mongoose.model('RecurringPattern', recurringPatternSchema);
+
+module.exports = RecurringPattern;
