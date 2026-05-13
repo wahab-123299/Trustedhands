@@ -1,11 +1,17 @@
+const mongoose = require('mongoose');
+
 const milestoneSchema = new mongoose.Schema({
   jobId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Job',
-    required: true,
+    required: [true, 'Job ID is required'],
     index: true
   },
-  // Milestone details
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   title: {
     type: String,
     required: [true, 'Milestone title is required'],
@@ -14,119 +20,153 @@ const milestoneSchema = new mongoose.Schema({
   },
   description: {
     type: String,
-    maxlength: [1000, 'Description cannot exceed 1000 characters'],
-    trim: true
+    trim: true,
+    maxlength: [1000, 'Description cannot exceed 1000 characters']
   },
-  // Financials
   amount: {
     type: Number,
-    required: [true, 'Amount is required'],
-    min: [1000, 'Minimum milestone amount is ₦1,000']
+    required: [true, 'Milestone amount is required'],
+    min: [0, 'Amount cannot be negative']
   },
-  platformFee: {
+  percentOfTotal: {
     type: Number,
-    default: 0
+    min: 0,
+    max: 100
   },
-  artisanAmount: {
-    type: Number,
-    default: 0
-  },
-  // Due date
-  dueDate: {
-    type: Date,
-    required: true
-  },
-  // Status
   status: {
     type: String,
-    enum: ['pending', 'in_progress', 'completed', 'approved', 'revision_requested', 'released', 'disputed'],
-    default: 'pending',
-    index: true
+    enum: ['pending', 'in_progress', 'completed', 'approved', 'disputed', 'cancelled'],
+    default: 'pending'
   },
-  // Order in the milestone sequence
-  order: {
-    type: Number,
-    required: true,
-    min: 1
+  dueDate: {
+    type: Date
   },
-  // Completion
-  completedAt: Date,
+  completedAt: {
+    type: Date
+  },
   completedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  completionNote: {
-    type: String,
-    maxlength: [1000, 'Completion note cannot exceed 1000 characters']
+  approvedAt: {
+    type: Date
   },
-  // Approval
-  approvedAt: Date,
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  approvalNote: {
-    type: String,
-    maxlength: [500, 'Approval note cannot exceed 500 characters']
-  },
-  // Revision request
-  revisionRequest: {
-    requestedAt: Date,
-    requestedBy: {
+  attachments: [{
+    url: {
+      type: String,
+      required: true
+    },
+    filename: String,
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    },
+    uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
-    },
-    reason: {
+    }
+  }],
+  notes: [{
+    text: {
       type: String,
-      maxlength: [1000, 'Reason cannot exceed 1000 characters']
+      required: true,
+      maxlength: [1000, 'Note cannot exceed 1000 characters']
     },
-    resolvedAt: Date
-  },
-  // Evidence/images uploaded by artisan
-  deliverables: [{
-    url: String,
-    description: String,
-    uploadedAt: {
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    createdAt: {
       type: Date,
       default: Date.now
     }
   }],
-  // Linked transaction (when payment is released)
-  transactionId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Transaction'
+  order: {
+    type: Number,
+    default: 0
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  isActive: {
+    type: Boolean,
+    default: true
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-milestoneSchema.index({ jobId: 1, order: 1 });
 milestoneSchema.index({ jobId: 1, status: 1 });
+milestoneSchema.index({ jobId: 1, order: 1 });
+milestoneSchema.index({ createdBy: 1 });
 
-// Calculate progress percentage
-milestoneSchema.statics.calculateProgress = async function(jobId) {
-  const milestones = await this.find({ jobId });
-  if (milestones.length === 0) return 0;
-  const completed = milestones.filter(m => ['approved', 'released'].includes(m.status)).length;
-  return Math.round((completed / milestones.length) * 100);
+milestoneSchema.virtual('isOverdue').get(function() {
+  if (!this.dueDate || ['completed', 'approved', 'cancelled'].includes(this.status)) {
+    return false;
+  }
+  return new Date() > this.dueDate;
+});
+
+milestoneSchema.virtual('daysUntilDue').get(function() {
+  if (!this.dueDate || ['completed', 'approved', 'cancelled'].includes(this.status)) {
+    return null;
+  }
+  const diff = this.dueDate - new Date();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+});
+
+milestoneSchema.methods.complete = async function(userId) {
+  if (this.status === 'completed' || this.status === 'approved') {
+    throw new Error('Milestone is already completed');
+  }
+  this.status = 'completed';
+  this.completedAt = new Date();
+  this.completedBy = userId;
+  return await this.save();
 };
 
-// Get total released amount
-milestoneSchema.statics.getTotalReleased = async function(jobId) {
-  const result = await this.aggregate([
-    { $match: { jobId: new mongoose.Types.ObjectId(jobId), status: 'released' } },
-    { $group: { _id: null, total: { $sum: '$amount' } } }
-  ]);
-  return result[0]?.total || 0;
+milestoneSchema.methods.approve = async function(userId) {
+  if (this.status !== 'completed') {
+    throw new Error('Milestone must be completed before approval');
+  }
+  this.status = 'approved';
+  this.approvedAt = new Date();
+  this.approvedBy = userId;
+  return await this.save();
 };
+
+milestoneSchema.methods.dispute = async function(reason) {
+  if (this.status === 'approved' || this.status === 'cancelled') {
+    throw new Error('Cannot dispute an approved or cancelled milestone');
+  }
+  this.status = 'disputed';
+  this.notes.push({
+    text: `Dispute filed: ${reason}`,
+    createdBy: this.jobId
+  });
+  return await this.save();
+};
+
+milestoneSchema.methods.addNote = async function(text, userId) {
+  this.notes.push({ text, createdBy: userId });
+  return await this.save();
+};
+
+milestoneSchema.methods.addAttachment = async function(url, filename, userId) {
+  this.attachments.push({ url, filename, uploadedBy: userId });
+  return await this.save();
+};
+
+milestoneSchema.pre('save', function(next) {
+  if (this.title) this.title = this.title.trim();
+  if (this.description) this.description = this.description.trim();
+  next();
+});
 
 const Milestone = mongoose.model('Milestone', milestoneSchema);
+
 module.exports = Milestone;
