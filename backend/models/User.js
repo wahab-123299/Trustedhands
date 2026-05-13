@@ -8,7 +8,7 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email']
+    match: [/^[[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email']
   },
   password: {
     type: String,
@@ -61,6 +61,7 @@ const userSchema = new mongoose.Schema({
           'Yobe', 'Zamfara'
         ],
         message: 'Please enter a valid Nigerian state'
+      }  // ✅ FIXED: Added missing closing brace for enum
     },
     city: {
       type: String,
@@ -154,11 +155,16 @@ const userSchema = new mongoose.Schema({
     unique: true,
     index: true
   },
-  fcmtopic: {
+  // ✅ NEW: FCM tokens for push notifications (replaces old fcmtopic)
+  fcmTokens: [{
     type: String,
-    default: ''
-  },
+    trim: true
+  }]
 
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
 // ==========================================
@@ -166,7 +172,7 @@ const userSchema = new mongoose.Schema({
 // ==========================================
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password') || !this.password) return next();
-  
+
   try {
     this.password = await bcrypt.hash(this.password, 12);
     next();
@@ -183,17 +189,17 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     console.log('[comparePassword] No password stored (OAuth user?)');
     return false;
   }
-  
+
   const isBcryptHash = typeof this.password === 'string' && 
                        (this.password.startsWith('$2a$') || 
                         this.password.startsWith('$2b$') || 
                         this.password.startsWith('$2y$'));
-  
+
   if (!isBcryptHash) {
     console.log('[comparePassword] WARNING: Password is NOT a bcrypt hash!');
     console.log('[comparePassword] Password type:', typeof this.password);
     console.log('[comparePassword] Password prefix:', this.password.substring(0, 20));
-    
+
     // Fallback for plaintext passwords
     const isMatch = this.password === candidatePassword;
     if (isMatch) {
@@ -204,7 +210,7 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     }
     return isMatch;
   }
-  
+
   try {
     const result = await bcrypt.compare(candidatePassword, this.password);
     console.log('[comparePassword] Bcrypt compare result:', result);
@@ -252,10 +258,10 @@ userSchema.statics.findArtisansByLocation = function(state, city, options = {}) 
     isActive: true,
     'location.state': state
   };
-  
+
   if (city) query['location.city'] = city;
   if (options.isOnline) query.isOnline = true;
-  
+
   return this.find(query)
     .populate('artisanProfile')
     .limit(options.limit || 20);
@@ -298,7 +304,7 @@ userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
 
 userSchema.methods.toJSON = function() {
   const obj = this.toObject();
-  
+
   const sensitiveFields = [
     'password',
     'refreshTokens',
@@ -311,9 +317,9 @@ userSchema.methods.toJSON = function() {
     'googleId',
     'facebookId'
   ];
-  
+
   sensitiveFields.forEach(field => delete obj[field]);
-  
+
   return obj;
 };
 
