@@ -112,3 +112,5 @@ availabilitySlotSchema.methods.findAvailableSlot = function(startTime, endTime) 
 };
 
 const AvailabilitySlot = mongoose.model('AvailabilitySlot', availabilitySlotSchema);
+
+module.exports = AvailabilitySlot;

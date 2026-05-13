@@ -67,3 +67,5 @@ favoriteSchema.index({ customerId: 1, hiredBefore: 1 });
 favoriteSchema.index({ customerId: 1, tags: 1 });
 
 const Favorite = mongoose.model('Favorite', favoriteSchema);
+
+module.exports = Favorite;
