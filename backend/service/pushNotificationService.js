@@ -1,16 +1,7 @@
-n = require('firebase-admin');
+const admin = require('firebase-admin');
 
 // ==========================================
 // FEATURE 2: PUSH NOTIFICATIONS (Firebase Cloud Messaging)
-// ==========================================
-//
-// STEP 1: Install dependency
-// npm install firebase-admin
-//
-// STEP 2: Add to your .env file:
-// FIREBASE_SERVICE_ACCOUNT_BASE64=<your_base64_encoded_service_account_json>
-//
-// STEP 3: Create this file: services/pushNotificationService.js
 // ==========================================
 
 let firebaseInitialized = false;
