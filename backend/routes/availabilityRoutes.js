@@ -1,15 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const availabilityController = require('../controllers/availabilityController');
-const { authenticate } = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
-router.post('/set', authenticate, availabilityController.setAvailability);
-router.post('/block', authenticate, availabilityController.blockDate);
-router.post('/unblock', authenticate, availabilityController.unblockDate);
-router.get('/patterns', authenticate, availabilityController.getRecurringPatterns);
-router.post('/patterns', authenticate, availabilityController.createRecurringPattern);
-router.delete('/patterns/:patternId', authenticate, availabilityController.deleteRecurringPattern);
-router.get('/:artisanId', availabilityController.getAvailability);
-router.get('/:artisanId/check', availabilityController.checkAvailability);
+router.post('/set', protect, availabilityController.setAvailability);
+router.post('/block', protect, availabilityController.blockDate);
+router.post('/unblock', protect, availabilityController.unblockDate);
+router.get('/patterns', protect, availabilityController.getRecurringPatterns);
+router.post('/patterns', protect, availabilityController.createRecurringPattern);
+router.delete('/patterns/:patternId', protect, availabilityController.deleteRecurringPattern);
+router.get('/:artisanId', protect, availabilityController.getAvailability);
+router.get('/:artisanId/check', protect, availabilityController.checkAvailability);
 
 module.exports = router;

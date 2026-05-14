@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const milestoneController = require('../controllers/milestoneController');
-const { authenticate } = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
-router.post('/job/:jobId', authenticate, milestoneController.createMilestones);
-router.get('/job/:jobId', authenticate, milestoneController.getMilestones);
-router.get('/job/:jobId/progress', authenticate, milestoneController.getMilestoneProgress);
-router.post('/:milestoneId/complete', authenticate, milestoneController.completeMilestone);
-router.post('/:milestoneId/approve', authenticate, milestoneController.approveMilestone);
-router.post('/:milestoneId/revision', authenticate, milestoneController.requestRevision);
+router.post('/job/:jobId', protect, milestoneController.createMilestones);
+router.get('/job/:jobId', protect, milestoneController.getMilestones);
+router.get('/job/:jobId/progress', protect, milestoneController.getMilestoneProgress);
+router.post('/:milestoneId/complete', protect, milestoneController.completeMilestone);
+router.post('/:milestoneId/approve', protect, milestoneController.approveMilestone);
+router.post('/:milestoneId/revision', protect, milestoneController.requestRevision);
 
 module.exports = router;
