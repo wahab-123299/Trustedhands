@@ -1,5 +1,23 @@
 const { AppError } = require('../utils/errorHandler');
-const { AvailabilitySlot, RecurringPattern } = require('../models');
+
+// Defensive require with error logging
+let AvailabilitySlot, RecurringPattern;
+try {
+  const models = require('../models');
+  AvailabilitySlot = models.AvailabilitySlot;
+  RecurringPattern = models.RecurringPattern;
+
+  if (!AvailabilitySlot) {
+    console.error('[availabilityController] ERROR: AvailabilitySlot model is undefined!');
+    console.error('[availabilityController] Available models:', Object.keys(models));
+  }
+  if (!RecurringPattern) {
+    console.error('[availabilityController] ERROR: RecurringPattern model is undefined!');
+  }
+} catch (err) {
+  console.error('[availabilityController] ERROR loading models:', err.message);
+  console.error(err.stack);
+}
 
 // Helper: Parse time string to minutes
 const parseTimeCtrl = (timeStr) => {
@@ -22,10 +40,17 @@ const stripTime = (date) => {
 };
 
 // ==========================================
-// SET AVAILABILITY FOR A DATE
+// CONTROLLER OBJECT - bulletproof pattern
 // ==========================================
-exports.setAvailability = async (req, res, next) => {
+const availabilityController = {};
+
+// SET AVAILABILITY FOR A DATE
+availabilityController.setAvailability = async (req, res, next) => {
   try {
+    if (!AvailabilitySlot) {
+      throw new AppError('SERVER_ERROR', 'AvailabilitySlot model not loaded');
+    }
+
     const { date, slots, isBlocked, blockReason } = req.body;
     const artisanId = req.user._id;
 
@@ -91,11 +116,13 @@ exports.setAvailability = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // GET AVAILABILITY FOR A DATE RANGE
-// ==========================================
-exports.getAvailability = async (req, res, next) => {
+availabilityController.getAvailability = async (req, res, next) => {
   try {
+    if (!AvailabilitySlot) {
+      throw new AppError('SERVER_ERROR', 'AvailabilitySlot model not loaded');
+    }
+
     const { artisanId } = req.params;
     const { startDate, endDate } = req.query;
 
@@ -120,11 +147,13 @@ exports.getAvailability = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // BLOCK A DATE
-// ==========================================
-exports.blockDate = async (req, res, next) => {
+availabilityController.blockDate = async (req, res, next) => {
   try {
+    if (!AvailabilitySlot) {
+      throw new AppError('SERVER_ERROR', 'AvailabilitySlot model not loaded');
+    }
+
     const { date, reason } = req.body;
     const artisanId = req.user._id;
 
@@ -153,11 +182,13 @@ exports.blockDate = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // UNBLOCK A DATE
-// ==========================================
-exports.unblockDate = async (req, res, next) => {
+availabilityController.unblockDate = async (req, res, next) => {
   try {
+    if (!AvailabilitySlot) {
+      throw new AppError('SERVER_ERROR', 'AvailabilitySlot model not loaded');
+    }
+
     const { date } = req.body;
     const artisanId = req.user._id;
 
@@ -185,11 +216,13 @@ exports.unblockDate = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // CREATE RECURRING PATTERN
-// ==========================================
-exports.createRecurringPattern = async (req, res, next) => {
+availabilityController.createRecurringPattern = async (req, res, next) => {
   try {
+    if (!RecurringPattern || !AvailabilitySlot) {
+      throw new AppError('SERVER_ERROR', 'Required models not loaded');
+    }
+
     const {
       patternType,
       daysOfWeek,
@@ -237,11 +270,13 @@ exports.createRecurringPattern = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // GET RECURRING PATTERNS
-// ==========================================
-exports.getRecurringPatterns = async (req, res, next) => {
+availabilityController.getRecurringPatterns = async (req, res, next) => {
   try {
+    if (!RecurringPattern) {
+      throw new AppError('SERVER_ERROR', 'RecurringPattern model not loaded');
+    }
+
     const artisanId = req.user._id;
 
     const patterns = await RecurringPattern.find({
@@ -258,11 +293,13 @@ exports.getRecurringPatterns = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // DELETE RECURRING PATTERN
-// ==========================================
-exports.deleteRecurringPattern = async (req, res, next) => {
+availabilityController.deleteRecurringPattern = async (req, res, next) => {
   try {
+    if (!RecurringPattern) {
+      throw new AppError('SERVER_ERROR', 'RecurringPattern model not loaded');
+    }
+
     const { patternId } = req.params;
     const artisanId = req.user._id;
 
@@ -280,11 +317,13 @@ exports.deleteRecurringPattern = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // CHECK ARTISAN AVAILABILITY FOR A JOB
-// ==========================================
-exports.checkAvailability = async (req, res, next) => {
+availabilityController.checkAvailability = async (req, res, next) => {
   try {
+    if (!AvailabilitySlot) {
+      throw new AppError('SERVER_ERROR', 'AvailabilitySlot model not loaded');
+    }
+
     const { artisanId } = req.params;
     const { date, startTime, endTime } = req.query;
 
@@ -316,7 +355,7 @@ exports.checkAvailability = async (req, res, next) => {
       data: {
         isAvailable: !!slot,
         slot: slot || null,
-        allSlots: availability.slots.filter(s => s.isAvailable && !s.isBooked)
+        allSlots: (availability.slots || []).filter(s => s.isAvailable && !s.isBooked)
       }
     });
   } catch (error) {
@@ -324,11 +363,14 @@ exports.checkAvailability = async (req, res, next) => {
   }
 };
 
-// ==========================================
 // BOOK A SLOT (called when job is assigned)
-// ==========================================
-exports.bookSlot = async (artisanId, date, startTime, endTime, jobId) => {
+availabilityController.bookSlot = async (artisanId, date, startTime, endTime, jobId) => {
   try {
+    if (!AvailabilitySlot) {
+      console.error('[bookSlot] ERROR: AvailabilitySlot model not loaded');
+      return { success: false, reason: 'Model not loaded' };
+    }
+
     const targetDate = stripTime(new Date(date));
 
     const availability = await AvailabilitySlot.findOne({
@@ -358,11 +400,14 @@ exports.bookSlot = async (artisanId, date, startTime, endTime, jobId) => {
   }
 };
 
-// ==========================================
 // CANCEL A BOOKING (called when job is cancelled)
-// ==========================================
-exports.cancelBooking = async (artisanId, date, jobId) => {
+availabilityController.cancelBooking = async (artisanId, date, jobId) => {
   try {
+    if (!AvailabilitySlot) {
+      console.error('[cancelBooking] ERROR: AvailabilitySlot model not loaded');
+      return { success: false };
+    }
+
     const targetDate = stripTime(new Date(date));
 
     const availability = await AvailabilitySlot.findOne({
@@ -411,10 +456,10 @@ async function generateSlotsFromPattern(pattern) {
         shouldCreate = true;
         break;
       case 'weekly':
-        shouldCreate = pattern.daysOfWeek.includes(dayOfWeek);
+        shouldCreate = pattern.daysOfWeek && pattern.daysOfWeek.includes(dayOfWeek);
         break;
       case 'biweekly':
-        shouldCreate = pattern.daysOfWeek.includes(dayOfWeek) && 
+        shouldCreate = pattern.daysOfWeek && pattern.daysOfWeek.includes(dayOfWeek) && 
                         Math.floor((current - start) / (7 * 24 * 60 * 60 * 1000)) % 2 === 0;
         break;
       case 'monthly':
@@ -422,9 +467,10 @@ async function generateSlotsFromPattern(pattern) {
         break;
     }
 
-    // Check exceptions
-    const isException = pattern.exceptions.some(e => 
-      stripTime(e.date).getTime() === stripTime(current).getTime()
+    // Check exceptions - safely handle undefined
+    const exceptions = pattern.exceptions || [];
+    const isException = exceptions.some(e => 
+      e.date && stripTime(e.date).getTime() === stripTime(current).getTime()
     );
 
     if (shouldCreate && !isException) {
@@ -461,85 +507,14 @@ async function generateSlotsFromPattern(pattern) {
 }
 
 // ==========================================
-// STEP 4: Create routes/availabilityRoutes.js
+// EXPORT - single assignment, bulletproof
 // ==========================================
-/*
-const express = require('express');
-const router = express.Router();
-const availabilityController = require('../controllers/availabilityController');
-const { authenticate } = require('../middleware/auth');
+module.exports = availabilityController;
 
-// Artisan routes
-router.post('/set', authenticate, availabilityController.setAvailability);
-router.post('/block', authenticate, availabilityController.blockDate);
-router.post('/unblock', authenticate, availabilityController.unblockDate);
-router.get('/patterns', authenticate, availabilityController.getRecurringPatterns);
-router.post('/patterns', authenticate, availabilityController.createRecurringPattern);
-router.delete('/patterns/:patternId', authenticate, availabilityController.deleteRecurringPattern);
-
-// Public routes
-router.get('/:artisanId', availabilityController.getAvailability);
-router.get('/:artisanId/check', availabilityController.checkAvailability);
-
-module.exports = router;
-*/
-
-// ==========================================
-// STEP 5: Add to app.js
-// ==========================================
-/*
-// Add this line with other routes:
-app.use('/api/availability', require('./routes/availabilityRoutes'));
-*/
-
-// ==========================================
-// STEP 6: Add to models/index.js
-// ==========================================
-/*
-const AvailabilitySlot = require('./AvailabilitySlot');
-const RecurringPattern = require('./RecurringPattern');
-
-module.exports = {
-  // ... existing exports ...
-  AvailabilitySlot,
-  RecurringPattern
-};
-*/
-
-// ==========================================
-// STEP 7: Wire into job assignment flow
-// In jobController.js acceptApplication(), AFTER assigning artisan:
-// ==========================================
-/*
-// Book artisan's slot
-try {
-  const { bookSlot } = require('../controllers/availabilityController');
-  const scheduledDate = job.scheduledDate;
-  if (scheduledDate) {
-    const dateStr = scheduledDate.toISOString().split('T')[0];
-    // Default to a full day slot if no specific time
-    await bookSlot(
-      application.artisanId,
-      dateStr,
-      '08:00',
-      '18:00',
-      job._id
-    );
+// Debug: Verify all exports are defined
+console.log('[availabilityController] Exports:', Object.keys(availabilityController));
+Object.keys(availabilityController).forEach(key => {
+  if (typeof availabilityController[key] !== 'function') {
+    console.error(`[availabilityController] WARNING: ${key} is not a function!`);
   }
-} catch (e) {
-  console.error('[acceptApplication] Slot booking failed:', e.message);
-}
-*/
-
-module.exports = {
-  setAvailability: exports.setAvailability,
-  getAvailability: exports.getAvailability,
-  blockDate: exports.blockDate,
-  unblockDate: exports.unblockDate,
-  createRecurringPattern: exports.createRecurringPattern,
-  getRecurringPatterns: exports.getRecurringPatterns,
-  deleteRecurringPattern: exports.deleteRecurringPattern,
-  checkAvailability: exports.checkAvailability,
-  bookSlot: exports.bookSlot,
-  cancelBooking: exports.cancelBooking
-};
+});

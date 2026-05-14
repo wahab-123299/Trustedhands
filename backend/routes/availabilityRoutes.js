@@ -3,6 +3,12 @@ const router = express.Router();
 const availabilityController = require('../controllers/availabilityController');
 const { protect } = require('../middleware/authMiddleware');
 
+// DEBUG: Verify controller loaded correctly
+console.log('Availability Controller loaded. Exports:', Object.keys(availabilityController));
+if (!availabilityController.setAvailability) {
+  console.error('CRITICAL: setAvailability is undefined!');
+}
+
 // ✅ SPECIFIC ROUTES FIRST
 router.post('/set', protect, availabilityController.setAvailability);
 router.post('/block', protect, availabilityController.blockDate);
@@ -11,7 +17,7 @@ router.get('/patterns', protect, availabilityController.getRecurringPatterns);
 router.post('/patterns', protect, availabilityController.createRecurringPattern);
 router.delete('/patterns/:patternId', protect, availabilityController.deleteRecurringPattern);
 
-// ✅ PARAMETERIZED ROUTES LAST
+// ✅ PARAMETERIZED ROUTES LAST — more specific before less specific
 router.get('/:artisanId/check', availabilityController.checkAvailability);
 router.get('/:artisanId', availabilityController.getAvailability);
 
