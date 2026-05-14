@@ -376,8 +376,8 @@ try {
 }
 */
 
+// ✅ CORRECT - Only export controller functions
 module.exports = {
-
   addFavorite: exports.addFavorite,
   removeFavorite: exports.removeFavorite,
   getMyFavorites: exports.getMyFavorites,
