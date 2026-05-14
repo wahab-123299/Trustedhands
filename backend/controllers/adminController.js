@@ -6,6 +6,7 @@ const ArtisanProfile = require('../models/ArtisanProfile');
 const Application = require('../models/Application');
 const NotificationService = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
+const {protect} = require('../middleware/authMiddleware');
 const mongoose = require('mongoose');
 
 // ==========================================

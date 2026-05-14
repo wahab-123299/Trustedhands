@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const milestoneController = require('../controllers/milestoneController');
-const { authenticate } = require('../middleware/auth');
+const { authenticate } = require('../middleware/authMiddleware');
 
 router.post('/job/:jobId', authenticate, milestoneController.createMilestones);
 router.get('/job/:jobId', authenticate, milestoneController.getMilestones);

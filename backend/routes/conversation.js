@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-const { protect } = require('../middleware/auth');
+const { protect } = require('../middleware/authMiddleware');
 
 // GET /api/conversations - Get all conversations for user
 router.get('/', protect, async (req, res) => {
