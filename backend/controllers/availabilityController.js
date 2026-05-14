@@ -6,7 +6,7 @@ try {
   const models = require('../models');
   AvailabilitySlot = models.AvailabilitySlot;
   RecurringPattern = models.RecurringPattern;
-
+  
   if (!AvailabilitySlot) {
     console.error('[availabilityController] ERROR: AvailabilitySlot model is undefined!');
     console.error('[availabilityController] Available models:', Object.keys(models));
@@ -40,7 +40,7 @@ const stripTime = (date) => {
 };
 
 // ==========================================
-// CONTROLLER OBJECT - bulletproof pattern
+// CONTROLLER OBJECT
 // ==========================================
 const availabilityController = {};
 
@@ -60,26 +60,20 @@ availabilityController.setAvailability = async (req, res, next) => {
 
     const targetDate = stripTime(new Date(date));
 
-    // Validate slots
     if (slots && Array.isArray(slots)) {
       for (const slot of slots) {
         if (!slot.startTime || !slot.endTime) {
           throw new AppError('VALIDATION_ERROR', 'Each slot must have startTime and endTime');
         }
-
         const start = parseTimeCtrl(slot.startTime);
         const end = parseTimeCtrl(slot.endTime);
-
         if (end - start < 30) {
           throw new AppError('VALIDATION_ERROR', 'Each slot must be at least 30 minutes');
         }
-
         if (start >= end) {
           throw new AppError('VALIDATION_ERROR', 'End time must be after start time');
         }
       }
-
-      // Check for overlaps within the same request
       for (let i = 0; i < slots.length; i++) {
         for (let j = i + 1; j < slots.length; j++) {
           const a = slots[i];
@@ -92,7 +86,6 @@ availabilityController.setAvailability = async (req, res, next) => {
       }
     }
 
-    // Upsert availability
     const availability = await AvailabilitySlot.findOneAndUpdate(
       { artisanId, date: targetDate },
       {
@@ -127,7 +120,6 @@ availabilityController.getAvailability = async (req, res, next) => {
     const { startDate, endDate } = req.query;
 
     const query = { artisanId };
-
     if (startDate || endDate) {
       query.date = {};
       if (startDate) query.date.$gte = stripTime(new Date(startDate));
@@ -240,7 +232,6 @@ availabilityController.createRecurringPattern = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'At least one time slot is required');
     }
 
-    // Validate time slots
     for (const slot of timeSlots) {
       if (parseTimeCtrl(slot.endTime) - parseTimeCtrl(slot.startTime) < 30) {
         throw new AppError('VALIDATION_ERROR', 'Each slot must be at least 30 minutes');
@@ -257,7 +248,6 @@ availabilityController.createRecurringPattern = async (req, res, next) => {
       isActive: true
     });
 
-    // Generate slots for the next 30 days
     await generateSlotsFromPattern(pattern);
 
     res.status(201).json({
@@ -387,7 +377,6 @@ availabilityController.bookSlot = async (artisanId, date, startTime, endTime, jo
       return { success: false, reason: 'No matching slot found' };
     }
 
-    // Mark slot as booked
     slot.isBooked = true;
     slot.jobId = jobId;
     availability.updatedAt = new Date();
@@ -435,20 +424,17 @@ availabilityController.cancelBooking = async (artisanId, date, jobId) => {
   }
 };
 
-// ==========================================
 // HELPER: Generate slots from recurring pattern
-// ==========================================
 async function generateSlotsFromPattern(pattern) {
   const start = new Date(pattern.startDate);
   const end = pattern.endDate ? new Date(pattern.endDate) : new Date();
-  end.setDate(end.getDate() + 30); // Generate 30 days ahead
+  end.setDate(end.getDate() + 30);
 
   const current = new Date(start);
   const slotsToCreate = [];
 
   while (current <= end) {
     const dayOfWeek = current.getDay();
-
     let shouldCreate = false;
 
     switch (pattern.patternType) {
@@ -467,7 +453,6 @@ async function generateSlotsFromPattern(pattern) {
         break;
     }
 
-    // Check exceptions - safely handle undefined
     const exceptions = pattern.exceptions || [];
     const isException = exceptions.some(e => 
       e.date && stripTime(e.date).getTime() === stripTime(current).getTime()
@@ -476,7 +461,6 @@ async function generateSlotsFromPattern(pattern) {
     if (shouldCreate && !isException) {
       const dateKey = stripTime(current);
 
-      // Check if entry already exists
       const existing = await AvailabilitySlot.findOne({
         artisanId: pattern.artisanId,
         date: dateKey
@@ -507,14 +491,7 @@ async function generateSlotsFromPattern(pattern) {
 }
 
 // ==========================================
-// EXPORT - single assignment, bulletproof
+// SINGLE EXPORT — no duplicates, no old code after this
 // ==========================================
 module.exports = availabilityController;
 
-// Debug: Verify all exports are defined
-console.log('[availabilityController] Exports:', Object.keys(availabilityController));
-Object.keys(availabilityController).forEach(key => {
-  if (typeof availabilityController[key] !== 'function') {
-    console.error(`[availabilityController] WARNING: ${key} is not a function!`);
-  }
-});

@@ -3,12 +3,6 @@ const router = express.Router();
 const availabilityController = require('../controllers/availabilityController');
 const { protect } = require('../middleware/authMiddleware');
 
-// DEBUG: Verify controller loaded correctly
-console.log('Availability Controller loaded. Exports:', Object.keys(availabilityController));
-if (!availabilityController.setAvailability) {
-  console.error('CRITICAL: setAvailability is undefined!');
-}
-
 // ✅ SPECIFIC ROUTES FIRST
 router.post('/set', protect, availabilityController.setAvailability);
 router.post('/block', protect, availabilityController.blockDate);
