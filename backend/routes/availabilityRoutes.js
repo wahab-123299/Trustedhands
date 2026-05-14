@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const availabilityController = require('../controllers/availabilityController');
+const availabilityController = require('../controllers/availabilityCtrl');
 const { protect } = require('../middleware/authMiddleware');
 
 // ✅ SPECIFIC ROUTES FIRST

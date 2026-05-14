@@ -5,7 +5,7 @@ require('./config/passport');
 const fs = require('fs');
 const path = require('path');
 
-const ctrlPath = path.join(__dirname, 'controllers', 'availabilityController.js');
+const ctrlPath = path.join(__dirname, 'controllers', 'availabilityCtrl.js');
 console.log('=== CONTROLLER FILE DEBUG ===');
 console.log('Exists:', fs.existsSync(ctrlPath));
 if (!fs.existsSync(ctrlPath)) {
