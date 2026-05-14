@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const availabilityController = require('../controllers/availabilityController');
-const { authenticate } = require('../middleware/auth');
+const { authenticate } = require('../middleware/authMiddleware');
 
 router.post('/set', authenticate, availabilityController.setAvailability);
 router.post('/block', authenticate, availabilityController.blockDate);

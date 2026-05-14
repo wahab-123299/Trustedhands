@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+
 // ==========================================
 // STEP 1: Create models/AvailabilitySlot.js
 // ==========================================
