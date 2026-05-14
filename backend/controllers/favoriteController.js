@@ -1,6 +1,8 @@
+const Favorite = require('../models/Favorite');
 const User = require('../models/User');
 const ArtisanProfile = require('../models/ArtisanProfile');
 const { AppError } = require('../utils/errorHandler');
+
 
 // ==========================================
 // ADD TO FAVORITES
@@ -375,7 +377,7 @@ try {
 */
 
 module.exports = {
-  Favorite,
+
   addFavorite: exports.addFavorite,
   removeFavorite: exports.removeFavorite,
   getMyFavorites: exports.getMyFavorites,
