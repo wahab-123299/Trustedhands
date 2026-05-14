@@ -2,6 +2,20 @@ const http = require('http');
 require('dotenv').config();
 require('./config/passport');
 
+const fs = require('fs');
+const path = require('path');
+
+const ctrlPath = path.join(__dirname, 'controllers', 'availabilityController.js');
+console.log('=== CONTROLLER FILE DEBUG ===');
+console.log('Exists:', fs.existsSync(ctrlPath));
+if (!fs.existsSync(ctrlPath)) {
+  const content = fs.readFileSync(ctrlPath, 'utf-8');
+  console.log('Size:', content.length);
+  console.log('Last 200 chars:', content.slice(-200));
+}
+
+console.log('=== END DEBUG ===');
+
 const app = require('./app');
 const connectDB = require('./config/database');
 const { init: initSocket, getIO } = require('./config/socket'); // ✅ Use config/socket
