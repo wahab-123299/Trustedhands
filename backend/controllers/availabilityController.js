@@ -1,4 +1,5 @@
 const { AppError } = require('../utils/errorHandler');
+const { AvailabilitySlot, RecurringPattern } = require('../models');
 
 // Helper: Parse time string to minutes
 const parseTimeCtrl = (timeStr) => {
@@ -531,9 +532,6 @@ try {
 */
 
 module.exports = {
-  AvailabilitySlot,
-  RecurringPattern,
-  // Export controller methods if needed elsewhere
   setAvailability: exports.setAvailability,
   getAvailability: exports.getAvailability,
   blockDate: exports.blockDate,
