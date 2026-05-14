@@ -10,7 +10,6 @@ const availabilitySlotSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true
   },
   // The specific date (e.g., 2024-06-15)
   date: {
