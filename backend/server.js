@@ -8,7 +8,6 @@ const app = require('./app');
 const connectDB = require('./config/database');
 const { init: initSocket } = require('./config/socket');
 const chatSocket = require('./socket/chatSocket');
-const notificationSocket = require('./socket/notificationSocket');
 const mongoose = require('mongoose');
 
 
@@ -26,7 +25,6 @@ const startServer = async () => {
 
 
     chatSocket(io);
-    notificationSocket(io);
 
 
     const notificationRoutes = require('./routes/notificationRoutes');
