@@ -4,6 +4,7 @@ const Wallet = require('../models/Wallet');
 const User = require('../models/User');
 const notificationService = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
+const Milestone = require('../models/Milestone');
 
 const PLATFORM_COMMISSION = 0.10;
 
@@ -574,7 +575,6 @@ if (job.hasMilestones) {
 */
 
 module.exports = {
-  Milestone,
   createMilestones: exports.createMilestones,
   getMilestones: exports.getMilestones,
   completeMilestone: exports.completeMilestone,
