@@ -283,3 +283,8 @@ exports.verifyRefreshToken = async (req, res, next) => {
     next(error);
   }
 };
+
+// ==========================================
+// BACKWARD COMPATIBILITY ALIAS
+// ==========================================
+exports.protect = exports.authenticate;
