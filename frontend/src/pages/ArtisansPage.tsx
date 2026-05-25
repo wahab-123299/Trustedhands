@@ -110,7 +110,15 @@ const ArtisansPage = () => {
       console.log('API Response:', response.data);
 
       // ✅ CRITICAL: Filter out null/invalid artisans and normalize data
-      const rawArtisans = response.data?.data?.artisans || [];
+      const rawArtisans =
+        response.data?.data?.artisans ||
+        response.data?.artisans ||
+        response.data?.data ||
+        [];
+
+      console.log("RAW ARTISAN:", rawArtisans);
+
+      
       const validArtisans = rawArtisans
         .filter((a: any) => a !== null && a !== undefined && typeof a === 'object')
         .map((a: any) => ({
