@@ -391,62 +391,45 @@ export interface RegisterData {
 }
 
 // ==========================================
-// FIXED: transformArtisanData - handles backend response with null userId
+// FIXED: transformArtisanData - backend now returns flat transformed data
+// This function now just ensures all fields exist with defaults
 // ==========================================
 const transformArtisanData = (artisan: any): any | null => {
   if (!artisan) return null;
 
-  // Backend already transforms and returns flat structure
-  // Handle both: backend-transformed (flat) and raw populated (nested)
-  
-  // If backend already transformed it (has id, fullName, etc. at top level)
-  if (artisan.id && (artisan.fullName || artisan.name)) {
-    return {
-      ...artisan,
-      // Ensure consistent fields
-      userId: artisan.userId || artisan.id,
-      isAvailable: artisan.availabilityStatus === 'available' || artisan.isAvailable,
-    };
-  }
-
-  // Raw populated structure (fallback)
-  const userData = artisan.userId || artisan.user;
-
+  // Backend already returns flat structure with all fields at top level
+  // Just ensure defaults and normalize a few fields
   return {
+    ...artisan,
+    // Ensure ID exists
     id: artisan.id || artisan._id,
-    profession: artisan.profession || artisan.Profession,
-    name: artisan.name || userData?.fullName || artisan.fullName || 'Unknown Artisan',
-    fullName: artisan.fullName || userData?.fullName || artisan.name || 'Unknown Artisan',
-    email: artisan.email || userData?.email,
-    phone: artisan.phone || userData?.phone,
-    location: artisan.location || userData?.location || { city: '', state: '' },
-    profileImage: artisan.profileImage || userData?.profileImage,
-    isVerified: artisan.isVerified || userData?.isVerified,
-    userId: userData?._id || userData || artisan.id || artisan._id,
-    skills: artisan.skills || [],
-    bio: artisan.bio,
-    experienceYears: artisan.experienceYears,
+    // Ensure name fields exist
+    name: artisan.name || artisan.fullName || 'Unknown Artisan',
+    fullName: artisan.fullName || artisan.name || 'Unknown Artisan',
+    // Ensure rate exists
     rate: artisan.rate || {
       amount: artisan.hourlyRate || 0,
       period: artisan.ratePeriod || 'job'
     },
-    hourlyRate: artisan.hourlyRate || artisan.rate?.amount,
-    ratePeriod: artisan.ratePeriod || artisan.rate?.period,
-    isAvailable: artisan.availabilityStatus === 'available' || artisan.isAvailable,
-    availabilityStatus: artisan.availabilityStatus || artisan.availability?.status,
-    nextAvailableDate: artisan.nextAvailableDate || artisan.availability?.nextAvailableDate,
-    workRadius: artisan.workRadius,
+    // Ensure location exists
+    location: artisan.location || { city: '', state: '' },
+    // Ensure skills exists
+    skills: artisan.skills || [],
+    // Ensure rating fields exist
     averageRating: artisan.averageRating || artisan.rating || 0,
     totalReviews: artisan.totalReviews || artisan.reviewCount || 0,
     rating: artisan.rating || artisan.averageRating || 0,
     reviewCount: artisan.reviewCount || artisan.totalReviews || 0,
+    // Ensure availability
+    isAvailable: artisan.availabilityStatus === 'available' || artisan.isAvailable || false,
+    availabilityStatus: artisan.availabilityStatus || artisan.availability?.status || 'available',
+    // Ensure counts
     completedJobs: artisan.completedJobs || 0,
+    // Ensure arrays
     portfolioImages: artisan.portfolioImages || [],
-    idVerification: artisan.idVerification,
-    isCertified: artisan.isCertified,
-    canApplyForHighValueJobs: artisan.canApplyForHighValueJobs,
-    createdAt: artisan.createdAt,
-    updatedAt: artisan.updatedAt,
+    // Ensure booleans
+    isCertified: artisan.isCertified || false,
+    isVerified: artisan.isVerified || false,
   };
 };
 
@@ -549,10 +532,8 @@ export const artisanApi = {
   }) => {
     const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans', { params });
 
-    console.log('[API] getAll raw response.data:', JSON.stringify(response.data, null, 2));
+    console.log('[API] getAll raw response:', JSON.stringify(response.data, null, 2));
 
-    // FIXED: Backend now returns { success: true, data: { artisans: [...], pagination: {...} } }
-    // transformArtisanData handles both flat (backend-transformed) and nested structures
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
         .map(transformArtisanData)
@@ -603,7 +584,7 @@ export const artisanApi = {
       params: { q: query, ...params } 
     });
 
-    console.log('[API] search raw response.data:', JSON.stringify(response.data, null, 2));
+    console.log('[API] search raw response:', JSON.stringify(response.data, null, 2));
 
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
@@ -619,7 +600,7 @@ export const artisanApi = {
       params: { lat, lng, radius, ...params } 
     });
 
-    console.log('[API] getNearby raw response.data:', JSON.stringify(response.data, null, 2));
+    console.log('[API] getNearby raw response:', JSON.stringify(response.data, null, 2));
 
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
@@ -633,7 +614,7 @@ export const artisanApi = {
   getById: async (id: string) => {
     const response = await api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`);
 
-    console.log('[API] getById raw response.data:', JSON.stringify(response.data, null, 2));
+    console.log('[API] getById raw response:', JSON.stringify(response.data, null, 2));
 
     if (response.data?.data?.artisan) {
       response.data.data.artisan = transformArtisanData(response.data.data.artisan);
