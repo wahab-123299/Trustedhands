@@ -4,6 +4,7 @@ const { AppError } = require('../utils/errorHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 
 // ✅ HELPER: Transform artisan data to match frontend expectations
+// FIXED: Handles null/undefined userId gracefully instead of returning null
 const transformArtisan = (artisan) => {
   if (!artisan) {
     console.log('[transformArtisan] NULL artisan passed');
@@ -21,7 +22,7 @@ const transformArtisan = (artisan) => {
 
   // DEBUG: Log what we're working with
   if (!userData) {
-    console.log(`[transformArtisan] No userData for artisan ${artisan._id}, userId type: ${typeof artisan.userId}`);
+    console.log(`[transformArtisan] No userData for artisan ${artisan._id}, userId value: ${artisan.userId}`);
   }
 
   return {
@@ -40,12 +41,12 @@ const transformArtisan = (artisan) => {
     completedJobs: artisan.completedJobs || 0,
     name: userData?.fullName || 'Unknown Artisan',
     fullName: userData?.fullName || 'Unknown Artisan',
-    email: userData?.email,
-    phone: userData?.phone,
+    email: userData?.email || null,
+    phone: userData?.phone || null,
     location: userData?.location || artisan.location || { city: '', state: '' },
-    profileImage: userData?.profileImage,
-    isVerified: userData?.isVerified,
-    userId: userId,
+    profileImage: userData?.profileImage || null,
+    isVerified: userData?.isVerified || false,
+    userId: userId || artisan._id.toString(), // Fallback to artisan ID
     availability: {
       status: artisan.availability?.status || 'available',
       nextAvailableDate: artisan.availability?.nextAvailableDate
@@ -97,6 +98,7 @@ exports.getMyProfile = async (req, res, next) => {
 };
 
 // Get all artisans with filters
+// FIXED: Removed userId null filter that was dropping all artisans with broken references
 exports.getArtisans = async (req, res, next) => {
   try {
     const {
@@ -117,7 +119,7 @@ exports.getArtisans = async (req, res, next) => {
 
     const query = {};
 
-    // Only add availability filter if explicitly provided
+    // Only add availability filter if explicitly provided and not 'all'
     if (availability && availability !== 'all') {
       query['availability.status'] = availability;
     }
@@ -160,34 +162,22 @@ exports.getArtisans = async (req, res, next) => {
         path: 'userId',
         model: 'User',
         select: 'fullName location profileImage isVerified phone isActive email',
-        // ❌ REMOVED: match: { isActive: true } — this was causing null userId for inactive users
       })
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit))
-      .lean(); // Use lean for better performance
+      .lean();
 
     console.log('Raw artisans fetched:', artisans.length);
     
     if (artisans.length > 0) {
-      console.log('First artisan userId:', artisans[0].userId ? 'EXISTS' : 'NULL');
+      console.log('First artisan userId:', artisans[0].userId ? 'EXISTS' : 'NULL/UNDEFINED');
       console.log('First artisan userId type:', typeof artisans[0].userId);
-      if (artisans[0].userId && typeof artisans[0].userId === 'object') {
-        console.log('First artisan user fullName:', artisans[0].userId.fullName);
-      }
+      console.log('First artisan ID:', artisans[0]._id);
     }
 
-    // Filter out artisans with null userId (orphaned profiles)
-    // BUT keep them if we can still display basic info
-    artisans = artisans.filter(a => {
-      if (!a.userId) {
-        console.log(`[Filter] Removing artisan ${a._id} - no userId`);
-        return false;
-      }
-      return true;
-    });
-
-    console.log('After userId null filter:', artisans.length);
+    // FIXED: Removed the userId null filter that was causing empty results
+    // transformArtisan now handles null userId gracefully
 
     // Apply state filter ONLY if state is provided and not "All States"
     if (state && state !== 'All States') {
@@ -207,7 +197,6 @@ exports.getArtisans = async (req, res, next) => {
       );
     }
 
-    // Count total matching documents (for pagination)
     const total = await ArtisanProfile.countDocuments(query);
 
     const formattedArtisans = artisans

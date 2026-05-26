@@ -390,30 +390,39 @@ export interface RegisterData {
   bio?: string;
 }
 
+// ==========================================
+// FIXED: transformArtisanData - handles backend response with null userId
+// ==========================================
 const transformArtisanData = (artisan: any): any | null => {
   if (!artisan) return null;
 
-  if (artisan.rate && typeof artisan.rate === 'object' && 'amount' in artisan.rate) {
+  // Backend already transforms and returns flat structure
+  // Handle both: backend-transformed (flat) and raw populated (nested)
+  
+  // If backend already transformed it (has id, fullName, etc. at top level)
+  if (artisan.id && (artisan.fullName || artisan.name)) {
     return {
       ...artisan,
-      userId: artisan.userId || artisan.user,
-      isAvailable: artisan.availability?.status === 'available' || artisan.isAvailable,
+      // Ensure consistent fields
+      userId: artisan.userId || artisan.id,
+      isAvailable: artisan.availabilityStatus === 'available' || artisan.isAvailable,
     };
   }
 
+  // Raw populated structure (fallback)
   const userData = artisan.userId || artisan.user;
 
   return {
     id: artisan.id || artisan._id,
     profession: artisan.profession || artisan.Profession,
-    name: artisan.name || userData?.fullName,
-    fullName: artisan.fullName || userData?.fullName,
+    name: artisan.name || userData?.fullName || artisan.fullName || 'Unknown Artisan',
+    fullName: artisan.fullName || userData?.fullName || artisan.name || 'Unknown Artisan',
     email: artisan.email || userData?.email,
     phone: artisan.phone || userData?.phone,
-    location: artisan.location || userData?.location,
+    location: artisan.location || userData?.location || { city: '', state: '' },
     profileImage: artisan.profileImage || userData?.profileImage,
     isVerified: artisan.isVerified || userData?.isVerified,
-    userId: userData?._id || userData,
+    userId: userData?._id || userData || artisan.id || artisan._id,
     skills: artisan.skills || [],
     bio: artisan.bio,
     experienceYears: artisan.experienceYears,
@@ -423,7 +432,7 @@ const transformArtisanData = (artisan: any): any | null => {
     },
     hourlyRate: artisan.hourlyRate || artisan.rate?.amount,
     ratePeriod: artisan.ratePeriod || artisan.rate?.period,
-    isAvailable: artisan.availability?.status === 'available' || artisan.isAvailable,
+    isAvailable: artisan.availabilityStatus === 'available' || artisan.isAvailable,
     availabilityStatus: artisan.availabilityStatus || artisan.availability?.status,
     nextAvailableDate: artisan.nextAvailableDate || artisan.availability?.nextAvailableDate,
     workRadius: artisan.workRadius,
@@ -540,6 +549,10 @@ export const artisanApi = {
   }) => {
     const response = await api.get<ApiResponse<{ artisans: any[]; pagination: any }>>('/artisans', { params });
 
+    console.log('[API] getAll raw response.data:', JSON.stringify(response.data, null, 2));
+
+    // FIXED: Backend now returns { success: true, data: { artisans: [...], pagination: {...} } }
+    // transformArtisanData handles both flat (backend-transformed) and nested structures
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
         .map(transformArtisanData)
@@ -550,7 +563,7 @@ export const artisanApi = {
   },
 
   // ==========================================
-  // ✅ FIXED: getMyProfile with proper typing and response handling
+  // FIXED: getMyProfile with proper typing and response handling
   // ==========================================
   getMyProfile: async () => {
     const response = await api.get<ApiResponse<any>>('/artisans/me');
@@ -590,6 +603,8 @@ export const artisanApi = {
       params: { q: query, ...params } 
     });
 
+    console.log('[API] search raw response.data:', JSON.stringify(response.data, null, 2));
+
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
         .map(transformArtisanData)
@@ -604,6 +619,8 @@ export const artisanApi = {
       params: { lat, lng, radius, ...params } 
     });
 
+    console.log('[API] getNearby raw response.data:', JSON.stringify(response.data, null, 2));
+
     if (response.data?.data?.artisans) {
       response.data.data.artisans = response.data.data.artisans
         .map(transformArtisanData)
@@ -615,6 +632,8 @@ export const artisanApi = {
 
   getById: async (id: string) => {
     const response = await api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`);
+
+    console.log('[API] getById raw response.data:', JSON.stringify(response.data, null, 2));
 
     if (response.data?.data?.artisan) {
       response.data.data.artisan = transformArtisanData(response.data.data.artisan);
