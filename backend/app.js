@@ -41,6 +41,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://trustedhand-app.vercel.app',
+  'https://trustedhand-app.netlify.app',
   'https://trustedhands.onrender.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
@@ -62,8 +63,8 @@ const corsOptions = {
     }
 
     // Allow Netlify deploy previews
-    if (typeof origin === 'string' && origin.includes('vercel.app')) {
-      console.log('[CORS] Allowed (Vercel):', origin);
+    if (typeof origin === 'string' && origin.includes('netlify.app')) {
+      console.log('[CORS] Allowed (Netlify):', origin);
       return callback(null, true);
     }
 
