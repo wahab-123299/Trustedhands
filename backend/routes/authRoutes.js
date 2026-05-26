@@ -36,7 +36,7 @@ router.get('/facebook/callback/login', (req, res) => {
     path: req.path,
     timestamp: new Date().toISOString()
   });
-  const frontendUrl = process.env.FRONTEND_URL || 'https://trustedhand-app.netlify.app';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://trustedhand-app.vercel.app';
   res.redirect(`${frontendUrl}/login?error=${error}&provider=facebook`);
 });
 

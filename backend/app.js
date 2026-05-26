@@ -35,12 +35,12 @@ app.use(helmet({
 }));
 
 // ==========================================
-// CORS — FIXED FOR RENDER/NETLIFY PROXY
+// CORS — FIXED FOR RENDER/VERCEL PROXY
 // ==========================================
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  'https://trustedhand-app.netlify.app',
+  'https://trustedhand-app.vercel.app',
   'https://trustedhands.onrender.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
@@ -62,8 +62,8 @@ const corsOptions = {
     }
 
     // Allow Netlify deploy previews
-    if (typeof origin === 'string' && origin.includes('netlify.app')) {
-      console.log('[CORS] Allowed (Netlify):', origin);
+    if (typeof origin === 'string' && origin.includes('vercel.app')) {
+      console.log('[CORS] Allowed (Vercel):', origin);
       return callback(null, true);
     }
 
