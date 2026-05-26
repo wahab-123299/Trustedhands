@@ -5,14 +5,28 @@ const { uploadToCloudinary } = require('../utils/cloudinary');
 
 // ✅ HELPER: Transform artisan data to match frontend expectations
 const transformArtisan = (artisan) => {
-  if (!artisan || !artisan.userId) return null;
+  if (!artisan) {
+    console.log('[transformArtisan] NULL artisan passed');
+    return null;
+  }
 
   // Handle both populated and unpopulated userId
-  const userData = typeof artisan.userId === 'object' ? artisan.userId : null;
-  const userId = userData ? userData._id?.toString() : artisan.userId?.toString();
+  const userData = typeof artisan.userId === 'object' && artisan.userId !== null 
+    ? artisan.userId 
+    : null;
+  
+  const userId = userData 
+    ? userData._id?.toString() 
+    : (artisan.userId?.toString ? artisan.userId.toString() : artisan.userId);
+
+  // DEBUG: Log what we're working with
+  if (!userData) {
+    console.log(`[transformArtisan] No userData for artisan ${artisan._id}, userId type: ${typeof artisan.userId}`);
+  }
 
   return {
     id: artisan._id.toString(),
+    _id: artisan._id.toString(),
     profession: artisan.profession,
     skills: artisan.skills || [],
     bio: artisan.bio,
@@ -24,11 +38,11 @@ const transformArtisan = (artisan) => {
     averageRating: artisan.averageRating || 0,
     totalReviews: artisan.totalReviews || 0,
     completedJobs: artisan.completedJobs || 0,
-    name: userData?.fullName || 'Unknown',
-    fullName: userData?.fullName || 'Unknown',
+    name: userData?.fullName || 'Unknown Artisan',
+    fullName: userData?.fullName || 'Unknown Artisan',
     email: userData?.email,
     phone: userData?.phone,
-    location: userData?.location,
+    location: userData?.location || artisan.location || { city: '', state: '' },
     profileImage: userData?.profileImage,
     isVerified: userData?.isVerified,
     userId: userId,
@@ -98,17 +112,34 @@ exports.getArtisans = async (req, res, next) => {
       sortBy = 'averageRating'
     } = req.query;
 
+    console.log('=== GET ARTISANS ===');
+    console.log('Query params:', req.query);
+
     const query = {};
 
-    if (availability) query['availability.status'] = availability;
-    if (minRating) query.averageRating = { $gte: parseFloat(minRating) };
-    if (maxRate) query['rate.amount'] = { $lte: parseFloat(maxRate) };
-    if (experienceYears) query.experienceYears = experienceYears;
+    // Only add availability filter if explicitly provided
+    if (availability && availability !== 'all') {
+      query['availability.status'] = availability;
+    }
+    
+    if (minRating && minRating !== 'all') {
+      query.averageRating = { $gte: parseFloat(minRating) };
+    }
+    
+    if (maxRate && maxRate !== 'all') {
+      query['rate.amount'] = { $lte: parseFloat(maxRate) };
+    }
+    
+    if (experienceYears && experienceYears !== 'all') {
+      query.experienceYears = experienceYears;
+    }
 
-    if (skills) {
+    if (skills && skills !== 'All Skills') {
       const skillsArray = skills.split(',').map(s => s.trim());
       query.skills = { $in: skillsArray };
     }
+
+    console.log('MongoDB query filter:', JSON.stringify(query));
 
     let sort = {};
     if (sortBy === 'rating') sort = { averageRating: -1 };
@@ -119,36 +150,78 @@ exports.getArtisans = async (req, res, next) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
+    // DEBUG: Check total in DB before any filters
+    const totalInDb = await ArtisanProfile.countDocuments();
+    console.log('Total ArtisanProfile documents in DB:', totalInDb);
+
+    // Get artisans with populated user data
     let artisans = await ArtisanProfile.find(query)
       .populate({
         path: 'userId',
         model: 'User',
         select: 'fullName location profileImage isVerified phone isActive email',
-        match: { isActive: true }
+        // ❌ REMOVED: match: { isActive: true } — this was causing null userId for inactive users
       })
       .sort(sort)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean(); // Use lean for better performance
 
-    artisans = artisans.filter(a => a.userId !== null);
-
-    if (state) {
-      artisans = artisans.filter(a => 
-        a.userId.location?.state?.toLowerCase() === state.toLowerCase()
-      );
+    console.log('Raw artisans fetched:', artisans.length);
+    
+    if (artisans.length > 0) {
+      console.log('First artisan userId:', artisans[0].userId ? 'EXISTS' : 'NULL');
+      console.log('First artisan userId type:', typeof artisans[0].userId);
+      if (artisans[0].userId && typeof artisans[0].userId === 'object') {
+        console.log('First artisan user fullName:', artisans[0].userId.fullName);
+      }
     }
 
+    // Filter out artisans with null userId (orphaned profiles)
+    // BUT keep them if we can still display basic info
+    artisans = artisans.filter(a => {
+      if (!a.userId) {
+        console.log(`[Filter] Removing artisan ${a._id} - no userId`);
+        return false;
+      }
+      return true;
+    });
+
+    console.log('After userId null filter:', artisans.length);
+
+    // Apply state filter ONLY if state is provided and not "All States"
+    if (state && state !== 'All States') {
+      console.log(`Filtering by state: ${state}`);
+      const beforeCount = artisans.length;
+      artisans = artisans.filter(a => 
+        a.userId?.location?.state?.toLowerCase() === state.toLowerCase()
+      );
+      console.log(`State filter: ${beforeCount} -> ${artisans.length}`);
+    }
+
+    // Apply city filter ONLY if city is provided
     if (city) {
+      console.log(`Filtering by city: ${city}`);
       artisans = artisans.filter(a => 
-        a.userId.location?.city?.toLowerCase() === city.toLowerCase()
+        a.userId?.location?.city?.toLowerCase() === city.toLowerCase()
       );
     }
 
+    // Count total matching documents (for pagination)
     const total = await ArtisanProfile.countDocuments(query);
 
     const formattedArtisans = artisans
-      .map(transformArtisan)
+      .map(artisan => {
+        const transformed = transformArtisan(artisan);
+        if (!transformed) {
+          console.log(`[transform] Failed for artisan ${artisan._id}`);
+        }
+        return transformed;
+      })
       .filter(a => a !== null);
+
+    console.log('Formatted artisans count:', formattedArtisans.length);
+    console.log('=== END GET ARTISANS ===');
 
     res.json({
       success: true,
@@ -163,6 +236,7 @@ exports.getArtisans = async (req, res, next) => {
       }
     });
   } catch (error) {
+    console.error('ERROR in getArtisans:', error);
     next(error);
   }
 };
@@ -652,6 +726,3 @@ module.exports = {
   uploadPortfolioImages: exports.uploadPortfolioImages,
   deletePortfolioImage: exports.deletePortfolioImage
 };
-
-// Debug: Verify all exports are defined
-console.log('Artisan Controller Exports:', Object.keys(module.exports).map(k => `${k}: ${typeof module.exports[k]}`));

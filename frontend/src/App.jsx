@@ -18,13 +18,13 @@ import VerifyEmailPage from '@/pages/VerifyEmailPage';
 import AuthSuccessPage from './pages/AuthSuccesspage.tsx';
 import OAuthCallback from './pages/OAuthCallback';
 import BookArtisan from '@/pages/BookArtisan';
+import ScrollToTop from "@/components/ScrollToTop";
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import ArtisansPage from '@/pages/ArtisansPage';
 import ArtisanProfilePage from '@/pages/ArtisanProfilePage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailsPage from '@/pages/JobDetailsPage';
-
 
 // Lazy loaded dashboard pages for better performance
 const CustomerDashboard = lazy(() => import('@/pages/customer/Dashboard'));
@@ -54,7 +54,6 @@ import NotFoundPage from '@/pages/NotFoundPage';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import RoleRoute from '@/components/auth/RoleRoute';
 import { TierGate } from '@/components/auth/TierGate';
-
 
 // ==========================================
 // LOADING COMPONENT
@@ -91,6 +90,9 @@ function App() {
           />
           
           <Suspense fallback={<PageLoader />}>
+            {/* ✅ ScrollToTop placed inside Router, before Routes */}
+            <ScrollToTop />
+            
             <Routes>
               {/* ==========================================
                   PUBLIC ROUTES (with MainLayout)
@@ -162,7 +164,7 @@ function App() {
               <Route element={<ProtectedRoute />}>
                 <Route element={<RoleRoute allowedRoles={['artisan']} />}>
                   
-                  {/* ✅ FIXED: Standalone setup page — NO DashboardLayout */}
+                  {/* Standalone setup page — NO DashboardLayout */}
                   <Route path="/setup-profile" element={<SetupProfile />} />
                   
                   {/* Dashboard routes WITH layout */}
