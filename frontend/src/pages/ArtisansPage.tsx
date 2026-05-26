@@ -107,18 +107,49 @@ const ArtisansPage = () => {
         response = await artisanApi.getAll(params);
       }
 
-      console.log('API Response:', response.data);
+      // ==========================================
+      // DEBUG: Log the full response structure
+      // ==========================================
+      console.log('=== FRONTEND API RESPONSE ===');
+      console.log('response:', response);
+      console.log('response.data:', response.data);
+      console.log('response.data?.data:', response.data?.data);
+      console.log('response.data?.data?.artisans:', response.data?.data?.artisans);
+      console.log('Type of artisans:', typeof response.data?.data?.artisans);
+      console.log('Is Array:', Array.isArray(response.data?.data?.artisans));
+      console.log('=== END DEBUG ===');
 
-      // ✅ CRITICAL: Filter out null/invalid artisans and normalize data
-      const rawArtisans =
-        response.data?.data?.artisans ||
-        response.data?.artisans ||
-        response.data?.data ||
-        [];
-
-      console.log("RAW ARTISAN:", rawArtisans);
-
+      // ==========================================
+      // FIXED: Robust extraction with multiple fallbacks
+      // ==========================================
+      let rawArtisans: any[] = [];
       
+      if (response.data && typeof response.data === 'object') {
+        // Try nested structure first: { data: { artisans: [...] } }
+        if (response.data.data && typeof response.data.data === 'object') {
+          if (Array.isArray(response.data.data.artisans)) {
+            rawArtisans = response.data.data.artisans;
+            console.log('✅ Extracted from response.data.data.artisans, count:', rawArtisans.length);
+          } else if (Array.isArray(response.data.data)) {
+            // Fallback: { data: [...] } array directly
+            rawArtisans = response.data.data;
+            console.log('✅ Extracted from response.data.data (array), count:', rawArtisans.length);
+          }
+        }
+        
+        // Try flat structure: { artisans: [...] }
+        if (rawArtisans.length === 0 && Array.isArray(response.data.artisans)) {
+          rawArtisans = response.data.artisans;
+          console.log('✅ Extracted from response.data.artisans, count:', rawArtisans.length);
+        }
+      }
+
+      console.log('Raw artisans extracted:', rawArtisans.length);
+      if (rawArtisans.length > 0) {
+        console.log('First raw artisan:', JSON.stringify(rawArtisans[0], null, 2));
+      }
+
+      // Filter out null/invalid artisans and normalize data
       const validArtisans = rawArtisans
         .filter((a: any) => a !== null && a !== undefined && typeof a === 'object')
         .map((a: any) => ({
@@ -134,8 +165,21 @@ const ArtisansPage = () => {
           totalReviews: a.totalReviews || a.reviewCount || 0,
         }));
 
+      console.log('Valid artisans after transform:', validArtisans.length);
+      if (validArtisans.length > 0) {
+        console.log('First valid artisan:', JSON.stringify(validArtisans[0], null, 2));
+      }
+
       setArtisans(validArtisans);
-      setPagination(response.data?.data?.pagination || { page: 1, limit: 12, total: validArtisans.length, pages: 1 });
+      
+      // FIXED: Better pagination extraction
+      const responsePagination = response.data?.data?.pagination || response.data?.pagination;
+      setPagination(responsePagination || { 
+        page: 1, 
+        limit: 12, 
+        total: validArtisans.length, 
+        pages: Math.max(1, Math.ceil(validArtisans.length / 12)) 
+      });
     } catch (error: any) {
       console.error('Error fetching artisans:', error);
       toast.error('Failed to load artisans. Please try again.');
