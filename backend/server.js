@@ -1,6 +1,5 @@
 const http = require('http');
 require('dotenv').config();
-require('./config/passport');
 
 
 
@@ -8,7 +7,7 @@ const app = require('./app');
 const connectDB = require('./config/database');
 const { init: initSocket } = require('./config/socket');
 const chatSocket = require('./socket/chatSocket');
-const mongoose = require('mongoose');
+
 
 
 
@@ -17,6 +16,7 @@ const startServer = async () => {
     await connectDB();
     console.log('Database connection established');
 
+    
     const server = http.createServer(app);
 
 
@@ -34,7 +34,6 @@ const startServer = async () => {
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
-
 
 
   } catch (error) {

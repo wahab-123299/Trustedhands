@@ -8,19 +8,35 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
-const verificationRoutes = require('./routes/verificationRoutes');
+const session = require('express-session');
+const passport = require('passport');
 const mongoose = require('mongoose');
+
+require('./config/passport');
 
 const { errorHandler } = require('./middleware');
 
-
-
 const app = express();
-
 app.set('trust proxy', 1);
-
 require('./cron/autoRelease');
 
+// SESSION
+app.use(session({
+  secret: process.env.COOKIE_SECRET || 'default-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000
+  }
+}));
+
+// PASSPORT
+app.use(passport.initialize());
+app.use(passport.session());
+
+// HELMET
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -34,13 +50,12 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// ==========================================
-// CORS — FIXED FOR RENDER/VERCEL PROXY
-// ==========================================
+// CORS
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  'https://trustedhand-app.vercel.app',
+  'https://trustedhand.org',
+  'https://www.trustedhand.org',
   'https://trustedhand-app.netlify.app',
   'https://trustedhands.onrender.com',
   process.env.FRONTEND_URL
@@ -51,23 +66,9 @@ const corsOptions = {
     if (process.env.NODE_ENV === 'development') {
       console.log('[CORS] Request from origin:', origin || 'undefined');
     }
-
-    if (!origin) {
-      console.log('[CORS] Allowed (no origin)');
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.includes(origin)) {
-      console.log('[CORS] Allowed (exact match):', origin);
-      return callback(null, true);
-    }
-
-    // Allow Netlify deploy previews
-    if (typeof origin === 'string' && origin.includes('netlify.app')) {
-      console.log('[CORS] Allowed (Netlify):', origin);
-      return callback(null, true);
-    }
-
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (typeof origin === 'string' && origin.includes('netlify.app')) return callback(null, true);
     console.log('[CORS] Blocked:', origin);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
@@ -83,10 +84,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// ==========================================
 // RATE LIMITING
-// ==========================================
-
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -94,10 +92,7 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     success: false,
-    error: {
-      code: 'RATE_LIMIT',
-      message: 'Too many requests. Please try again later.'
-    }
+    error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' }
   },
   skip: (req) => req.path === '/health' || req.path === '/api'
 });
@@ -109,52 +104,29 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
   message: {
     success: false,
-    error: {
-      code: 'AUTH_RATE_LIMIT',
-      message: 'Too many auth attempts. Please try again later.'
-    }
+    error: { code: 'AUTH_RATE_LIMIT', message: 'Too many auth attempts. Please try again later.' }
   }
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 
-// ==========================================
 // BODY PARSING
-// ==========================================
-
-app.use(express.json({ 
-  limit: '10mb',
-  strict: true
-}));
-app.use(express.urlencoded({ 
-  extended: true, 
-  limit: '10mb',
-  parameterLimit: 1000
-}));
-
+app.use(express.json({ limit: '10mb', strict: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb', parameterLimit: 1000 }));
 app.use(cookieParser(process.env.COOKIE_SECRET || 'default-secret-change-in-production'));
 
-// ==========================================
 // DATA SANITIZATION
-// ==========================================
-
 app.use(mongoSanitize({
   replaceWith: '_',
   onSanitize: ({ req, key }) => {
     console.warn(`Sanitized key: ${key} from IP: ${req.ip}`);
   }
 }));
-
 app.use(xss());
-app.use(hpp({
-  allowedParams: ['skills', 'status', 'category', 'sortBy']
-}));
+app.use(hpp({ allowedParams: ['skills', 'status', 'category', 'sortBy'] }));
 
-// ==========================================
 // COMPRESSION & LOGGING
-// ==========================================
-
 app.use(compression({
   level: 6,
   filter: (req, res) => {
@@ -169,9 +141,7 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// ==========================================
 // DEBUG LOGGING FOR OAUTH
-// ==========================================
 app.use((req, res, next) => {
   if (req.path.includes('auth') || req.path.includes('facebook') || req.path.includes('google')) {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
@@ -183,19 +153,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// ==========================================
-// HEALTH & API STATUS
-// ==========================================
-
+// HEALTH
 app.get('/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
-  const dbStatus = {
-    0: 'disconnected',
-    1: 'connected',
-    2: 'connecting',
-    3: 'disconnecting'
-  }[dbState] || 'unknown';
-
+  const dbStatus = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' }[dbState] || 'unknown';
   const isResponding = dbState === 1 || dbState === 2;
 
   res.status(isResponding ? 200 : 503).json({
@@ -206,11 +167,7 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
     uptime: process.uptime(),
-    database: {
-      status: dbStatus,
-      connected: dbState === 1,
-      state: dbState
-    },
+    database: { status: dbStatus, connected: dbState === 1, state: dbState },
     memory: {
       used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
       total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
@@ -218,9 +175,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// ==========================================
-// PRIVACY & TERMS ROUTES (Required by Facebook)
-// ==========================================
+// PRIVACY & TERMS
 app.get('/privacy', (req, res) => {
   res.send(`
     <h1>Privacy Policy</h1>
@@ -247,10 +202,7 @@ app.get('/privacy', (req, res) => {
   `);
 });
 
-// ==========================================
 // ROUTES
-// ==========================================
-
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/artisans', require('./routes/artisanRoutes'));
@@ -258,29 +210,17 @@ app.use('/api/jobs', require('./routes/jobRoutes'));
 app.use('/api/applications', require('./routes/applicationRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
-app.use('/api/verification', verificationRoutes);
-
-//=========================================
-// NEW FEATURE ROUTES
-//=========================================
-
+app.use('/api/verification', require('./routes/verificationRoutes'));
 app.use('/api/availability', require('./routes/availabilityRoutes'));
 app.use('/api/favorites', require('./routes/favoriteRoutes'));
-// ✅ FIXED: Added missing leading slash
 app.use('/api/milestones', require('./routes/milestoneRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 
-// ==========================================
 // ERROR HANDLING
-// ==========================================
-
 app.use((req, res, next) => {
   res.status(404).json({
     success: false,
-    error: {
-      code: 'NOT_FOUND',
-      message: `Route ${req.method} ${req.originalUrl} not found`
-    }
+    error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.originalUrl} not found` }
   });
 });
 

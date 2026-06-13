@@ -9,8 +9,9 @@ module.exports = {
         origin: [
           'http://localhost:5173',
           'http://localhost:3000',
+          'https://trustedhand.org',
+          'https://www.trustedhand.org',
           'https://trustedhand-app.netlify.app',
-          'https://trustedhands-app.vercel.app',
           'https://trustedhands.onrender.com',
           process.env.FRONTEND_URL
         ].filter(Boolean),
