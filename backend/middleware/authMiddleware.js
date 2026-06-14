@@ -97,7 +97,7 @@ exports.authenticate = async (req, res, next) => {
 
     // Check blacklist
     console.log('[Auth Middleware] Checking blacklist...');
-    const userWithTokens = await User.findById(decoded.userId)
+    const userWithTokens = await User.findById(userId)
       .select('blacklistedTokens')
       .lean();
     
