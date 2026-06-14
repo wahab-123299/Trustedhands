@@ -40,7 +40,15 @@ const verifyToken = (token) => {
   try {
     console.log('[Auth Middleware] Verifying token with secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('[Auth Middleware] Token verified, userId:', decoded.userId);
+    
+    // FIX: Support both 'id' and 'userId' in token payload
+    const userId = decoded.id || decoded.userId || decoded._id;
+    console.log('[Auth Middleware] Token verified, userId:', userId, '| Token fields:', Object.keys(decoded));
+    
+    if (!userId) {
+      throw new Error('No user identifier found in token');
+    }
+    
     return decoded;
   } catch (error) {
     console.error('[Auth Middleware] Token verification failed:', error.name, error.message);
@@ -74,16 +82,20 @@ exports.authenticate = async (req, res, next) => {
     }
 
     const decoded = verifyToken(token);
+    
+    // FIX: Extract userId from multiple possible field names
+    const userId = decoded.id || decoded.userId || decoded._id;
 
-    console.log('[Auth Middleware] Finding user:', decoded.userId);
+    console.log('[Auth Middleware] Finding user with ID:', userId);
     
     // FIXED: Use .lean() to get plain object, not Mongoose document
-    const user = await User.findById(decoded.userId)
+    const user = await User.findById(userId)
       .select('_id email role fullName phone isActive profileImage location')
       .lean();
 
     if (!user) {
-      console.log('[Auth Middleware] User not found:', decoded.userId);
+      console.log('[Auth Middleware] User not found in database:', userId);
+      console.log('[Auth Middleware] === AUTHENTICATION FAILED === User associated with this token no longer exists.');
       throw new AppError('USER_NOT_FOUND', 'User associated with this token no longer exists.');
     }
 
@@ -92,13 +104,13 @@ exports.authenticate = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated. Contact support.');
     }
 
-    // Check blacklist
+    // Check blacklist - FIX: use userId variable instead of decoded.userId
     console.log('[Auth Middleware] Checking blacklist...');
-    const userWithTokens = await User.findById(decoded.userId)
+    const userWithTokens = await User.findById(userId)
       .select('blacklistedTokens')
       .lean();
     
-    const isBlacklisted = userWithTokens.blacklistedTokens?.some(
+    const isBlacklisted = userWithTokens?.blacklistedTokens?.some(
       bt => bt.token === token
     );
     
@@ -112,6 +124,7 @@ exports.authenticate = async (req, res, next) => {
     
     req.user = user;
     req.token = token;
+    req.tokenPayload = decoded; // Store decoded payload for reference
     
     console.log('[Auth Middleware] === AUTHENTICATION SUCCESS ===');
     console.log('[Auth Middleware] req.user._id:', req.user._id, 'type:', typeof req.user._id);
@@ -123,7 +136,7 @@ exports.authenticate = async (req, res, next) => {
 };
 
 // ==========================================
-// GENERIC ROLE AUTHORIZATION (NEW - ADD THIS)
+// GENERIC ROLE AUTHORIZATION
 // ==========================================
 
 /**
@@ -208,15 +221,19 @@ exports.optionalAuth = async (req, res, next) => {
     try {
       const decoded = verifyToken(token);
       
-      const user = await User.findById(decoded.userId)
+      // FIX: Extract userId from multiple possible field names
+      const userId = decoded.id || decoded.userId || decoded._id;
+      
+      const user = await User.findById(userId)
         .select('_id email role fullName isActive')
         .lean();
 
       if (user && user.isActive) {
-        const userWithTokens = await User.findById(decoded.userId)
+        // FIX: use userId variable instead of decoded.userId
+        const userWithTokens = await User.findById(userId)
           .select('blacklistedTokens');
           
-        const isBlacklisted = userWithTokens.blacklistedTokens?.some(
+        const isBlacklisted = userWithTokens?.blacklistedTokens?.some(
           bt => bt.token === token
         );
         
@@ -263,7 +280,10 @@ exports.verifyRefreshToken = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token.');
     }
 
-    const user = await User.findById(decoded.userId).select('+refreshTokens');
+    // FIX: Support both 'id' and 'userId' in refresh token too
+    const userId = decoded.id || decoded.userId || decoded._id;
+
+    const user = await User.findById(userId).select('+refreshTokens');
 
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found.');
