@@ -57,8 +57,8 @@ const registerValidation = [
     .matches(/^(0[7-9][0-1]\d{8}|\+234[7-9][0-1]\d{8})$/)
     .withMessage('Please provide a valid Nigerian phone number (e.g., 08012345678)'),
   body('role')
-    .isIn(['customer', 'artisan'])
-    .withMessage('Role must be customer or artisan'),
+    .isIn(['customer', 'artisan', 'admin'])
+    .withMessage('Role must be customer, artisan or admin'),
   body('fullName')
     .trim()
     .notEmpty()
