@@ -7,9 +7,33 @@ const { protect } = require('../middleware');
 
 const router = express.Router();
 
+// ==========================================
+// FACEBOOK CODE DEDUPLICATION (prevent duplicate requests)
+// ==========================================
+const usedFacebookCodes = new Map(); // code -> timestamp
+const CODE_EXPIRY_MS = 60000; // 60 seconds
+
+// Clean up old codes periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, timestamp] of usedFacebookCodes.entries()) {
+    if (now - timestamp > CODE_EXPIRY_MS) {
+      usedFacebookCodes.delete(code);
+    }
+  }
+}, 30000);
+
+// ==========================================
+// JWT HELPER - FIXED: Include BOTH id and userId for compatibility
+// ==========================================
 const generateToken = (user) => {
   return jwt.sign(
-    { id: user._id, role: user.role, email: user.email },
+    { 
+      id: user._id.toString(),           // For OAuth compatibility
+      userId: user._id.toString(),      // For regular login compatibility
+      role: user.role, 
+      email: user.email 
+    },
     process.env.JWT_SECRET || 'fallback-jwt-secret',
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
@@ -17,7 +41,10 @@ const generateToken = (user) => {
 
 const generateRefreshToken = (user) => {
   return jwt.sign(
-    { id: user._id },
+    { 
+      id: user._id.toString(),
+      userId: user._id.toString()
+    },
     process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'fallback-jwt-secret',
     { expiresIn: process.env.JWT_REFRESH_EXPIRE || '30d' }
   );
@@ -35,7 +62,9 @@ const setTokenCookies = (res, token, refreshToken) => {
   });
 };
 
+// ==========================================
 // REGISTER
+// ==========================================
 router.post('/register', async (req, res) => {
   try {
     const { fullName, email, password, role, phone, location } = req.body;
@@ -77,7 +106,9 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// ==========================================
 // LOGIN
+// ==========================================
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -132,7 +163,9 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ==========================================
 // REFRESH TOKEN
+// ==========================================
 router.post('/refresh-token', async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
@@ -144,7 +177,9 @@ router.post('/refresh-token', async (req, res) => {
     }
 
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'fallback-jwt-secret');
-    const user = await User.findById(decoded.id);
+    // FIXED: Support both id and userId in refresh token
+    const userId = decoded.id || decoded.userId;
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'User not found' } });
     }
@@ -159,7 +194,9 @@ router.post('/refresh-token', async (req, res) => {
   }
 });
 
+// ==========================================
 // LOGOUT
+// ==========================================
 router.post('/logout', (req, res) => {
   res.clearCookie('token');
   res.clearCookie('refreshToken');
@@ -167,17 +204,22 @@ router.post('/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// GET ME
+// ==========================================
+// GET ME - FIXED: Use req.user._id (from authMiddleware)
+// ==========================================
 router.get('/me', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    // FIXED: req.user from authMiddleware has _id as string
+    const user = await User.findById(req.user._id || req.user.id).select('-password');
     res.json({ success: true, user });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 });
 
+// ==========================================
 // FORGOT PASSWORD
+// ==========================================
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -199,7 +241,9 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
+// ==========================================
 // RESET PASSWORD
+// ==========================================
 router.put('/reset-password/:token', async (req, res) => {
   try {
     const { password } = req.body;
@@ -225,7 +269,9 @@ router.put('/reset-password/:token', async (req, res) => {
   }
 });
 
+// ==========================================
 // GOOGLE OAUTH
+// ==========================================
 router.get('/google', passport.authenticate('google', {
   scope: ['profile', 'email'],
   prompt: 'select_account'
@@ -247,13 +293,51 @@ router.get('/google/callback',
   }
 );
 
-// FACEBOOK OAUTH
+// ==========================================
+// FACEBOOK OAUTH (FIXED: Block crawler BEFORE passport and deduplication)
+// ==========================================
 router.get('/facebook', passport.authenticate('facebook', {
   scope: ['email', 'public_profile']
 }));
 
 router.get('/facebook/callback',
-  passport.authenticate('facebook', { session: false, failureRedirect: '/login?error=facebook_failed' }),
+  // CRITICAL FIX 1: Block Facebook crawler IMMEDIATELY - before anything else
+  (req, res, next) => {
+    const userAgent = req.headers['user-agent'] || '';
+
+    // Block Facebook crawler - must return here, do NOT call next() for crawlers
+    if (userAgent.includes('facebookexternalhit') || userAgent.includes('Facebot') || userAgent.includes('facebook')) {
+      console.log('[Facebook Callback] BLOCKING crawler, UA:', userAgent.substring(0, 80));
+      return res.status(200).send('OK'); // END response here!
+    }
+
+    next(); // Only continue for real browser requests
+  },
+  // CRITICAL FIX 2: Deduplication - check if code already used
+  (req, res, next) => {
+    const code = req.query.code;
+
+    console.log('[Facebook Callback] Browser request:', {
+      code: code ? code.substring(0, 20) + '...' : 'none',
+      hasCode: !!code
+    });
+
+    // Check if code was already used
+    if (code && usedFacebookCodes.has(code)) {
+      console.log('[Facebook Callback] Code already used, redirecting to login');
+      return res.redirect(`${process.env.FRONTEND_URL || 'https://trustedhand.org'}/login?error=facebook_failed`);
+    }
+
+    if (code) {
+      usedFacebookCodes.set(code, Date.now());
+    }
+
+    next();
+  },
+  passport.authenticate('facebook', { 
+    session: false, 
+    failureRedirect: '/login?error=facebook_failed' 
+  }),
   (req, res) => {
     try {
       const user = req.user;
