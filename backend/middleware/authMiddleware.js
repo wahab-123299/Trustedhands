@@ -40,7 +40,11 @@ const verifyToken = (token) => {
   try {
     console.log('[Auth Middleware] Verifying token with secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('[Auth Middleware] Token verified, userId:', decoded.userId);
+    const userId = decoded.id || decoded.userId || decoded._id;
+    console.log('[Auth Middleware] Token verified, userId:', userId, '| Token fields:', Object.keys(decoded));
+    if (!userId) {
+      throw new Error('No user identifier found in token');
+    }
     return decoded;
   } catch (error) {
     console.error('[Auth Middleware] Token verification failed:', error.name, error.message);
@@ -75,10 +79,9 @@ exports.authenticate = async (req, res, next) => {
 
     const decoded = verifyToken(token);
 
-    console.log('[Auth Middleware] Finding user:', decoded.userId);
-    
-    // FIXED: Use .lean() to get plain object, not Mongoose document
-    const user = await User.findById(decoded.userId)
+    const userId = decoded.id || decoded.userId || decoded._id;
+    console.log('[Auth Middleware] Finding user with ID:', userId);
+    const user = await User.findById(userId)
       .select('_id email role fullName phone isActive profileImage location')
       .lean();
 
@@ -207,8 +210,8 @@ exports.optionalAuth = async (req, res, next) => {
 
     try {
       const decoded = verifyToken(token);
-      
-      const user = await User.findById(decoded.userId)
+      const userId = decoded.id || decoded.userId || decoded._id;
+      const user = await User.findById(userId)
         .select('_id email role fullName isActive')
         .lean();
 
@@ -263,8 +266,8 @@ exports.verifyRefreshToken = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token.');
     }
 
-    const user = await User.findById(decoded.userId).select('+refreshTokens');
-
+    const userId = decoded.id || decoded.userId || decoded._id;
+    const user = await User.findById(userId).select('+refreshTokens');
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found.');
     }
