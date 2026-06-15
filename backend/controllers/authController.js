@@ -16,8 +16,34 @@ const generateTokens = (userId) => {
   console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
   console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
 
+  // Include BOTH id and userId for backward compatibility
+  const payload = {
+    id: userId.toString(),
+    userId: userId.toString()
+  };
+
   const accessToken = jwt.sign(
-    { userId },
+    payload,
+    process.env.JWT_SECRET,
+    { 
+      expiresIn: process.env.JWT_EXPIRE || '15m',
+      issuer: 'trustedhand-api',
+      audience: 'trustedhand-client'
+    }
+  );
+
+  const refreshToken = jwt.sign(
+    { userId: userId.toString() },
+    process.env.JWT_REFRESH_SECRET,
+    { 
+      expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
+      issuer: 'trustedhand-api',
+      audience: 'trustedhand-client'
+    }
+  );
+
+  return { accessToken, refreshToken };
+};
     process.env.JWT_SECRET,
     { 
       expiresIn: process.env.JWT_EXPIRE || '15m',

@@ -435,7 +435,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.login({ email, password });
         const res = response.data as ApiResponse<AuthResponseData>;
 
-        const { user, artisanProfile, dashboardRoute, accessToken } = res.data;
+        const responseData = res.data || {};
+	const { user, artisanProfile, dashboardRoute, accessToken } = responseData;
 
         if (!accessToken) {
           throw new Error('No access token received from server');
