@@ -37,12 +37,17 @@ interface AuthResponseData {
   hasProfile?: boolean;
   dashboardRoute?: string;
   accessToken?: string;
+  token?: string;
+  refreshToken?: string;
 }
 
 interface ApiResponse<T> {
   success: boolean;
   data: T;
   message?: string;
+  token?: string;
+  refreshToken?: string;
+  user?: User;
 }
 
 interface AuthContextType {
@@ -223,30 +228,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       addLog('[ExtractArtisan] No data in response');
       return null;
     }
-    
+
     const data = response.data.data;
-    
+
     if (data.artisanProfile) {
       addLog('[ExtractArtisan] Found artisanProfile in response');
       return data.artisanProfile as ArtisanProfile;
     }
-    
+
     if (data.artisan) {
       addLog('[ExtractArtisan] Found artisan in data.artisan');
       return data.artisan as ArtisanProfile;
     }
-    
+
     if (data.userId || data.profession !== undefined || data.skills || data.bio !== undefined) {
       addLog('[ExtractArtisan] Found artisan directly in data');
       return data as ArtisanProfile;
     }
-    
+
     addLog(`[ExtractArtisan] Could not find artisan. Keys: ${Object.keys(data).join(', ')}`);
     return null;
   }, []);
 
   // ==========================================
-  // FIXED: initAuth — Proper hasProfile handling
+  // FIXED: initAuth — Handles flat backend response
   // ==========================================
   useEffect(() => {
     if (hasInitialized.current) {
@@ -285,21 +290,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await userApi.getMe();
 
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 150)}...`);
-        const res = response.data as ApiResponse<AuthResponseData>;
-        
-        // ✅ FIXED: Properly extract from nested data structure
-        const responseData = res.data;
-        const user = responseData.user;
-        const hasProfile = responseData.hasProfile;
-        let artisanProfile = responseData.artisanProfile;
+
+        // ✅ FIXED: Handle flat backend response { user, token, ... }
+        const res = response.data;
+        const user = res.user || res.data?.user;
+        const hasProfile = res.hasProfile || res.data?.hasProfile;
+        let artisanProfile = res.artisanProfile || res.data?.artisanProfile;
+
+        if (!user) {
+          throw new Error('No user data in response');
+        }
 
         addLog(`[Init] User: ${user.email}, Role: ${user.role}, hasProfile: ${hasProfile}`);
         addLog(`[Init] artisanProfile from getMe: ${artisanProfile ? 'EXISTS' : 'NULL'}`);
 
-        // ✅ FIXED: Only redirect if hasProfile is EXPLICITLY false
         if (user.role === 'artisan' && hasProfile === false) {
           addLog('[Init] Artisan authenticated but needs profile setup');
-          
+
           setState({
             user,
             token,
@@ -310,29 +317,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           });
 
           connectSocket(user._id, token);
-          
-          // Only redirect if not already on setup page
+
           if (!location.pathname.includes('/setup') && !location.pathname.includes('/profile')) {
             addLog('[Init] Redirecting to profile setup');
             navigate('/setup-profile', { replace: true });
           } else {
             addLog('[Init] Already on setup/profile page, no redirect needed');
           }
-          
+
           addLog('[Init] === AUTH INITIALIZATION COMPLETE (needs profile) ===');
           return;
         }
 
-        // Normal flow: user has profile or is a customer
         let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-        
-        // Fallback: if getMe didn't include artisanProfile but user is artisan, try fetching directly
+
         if (user.role === 'artisan' && !finalArtisanProfile && hasProfile !== false) {
           addLog('[Init] User is artisan, hasProfile is not false, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
             finalArtisanProfile = extractArtisanFromResponse(artisanRes);
-            
+
             if (finalArtisanProfile) {
               addLog('[Init] Artisan profile loaded from /artisans/me');
             }
@@ -422,7 +426,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: login — Proper hasProfile handling
+  // FIXED: login — Handles flat backend response
   // ==========================================
   const login = useCallback(
     async (email: string, password: string, rememberMe: boolean = true) => {
@@ -433,10 +437,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Login] Starting login for: ${email}`);
 
         const response = await authApi.login({ email, password });
-        const res = response.data as ApiResponse<AuthResponseData>;
+        const res = response.data;
 
-        const responseData = res.data || {};
-	const { user, artisanProfile, dashboardRoute, accessToken } = responseData;
+        // ✅ FIXED: Backend sends flat structure: { success, message, token, refreshToken, user }
+        const user = res.user;
+        const accessToken = res.token || res.accessToken;
+        const dashboardRoute = res.dashboardRoute || '/';
 
         if (!accessToken) {
           throw new Error('No access token received from server');
@@ -444,16 +450,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         storeToken(accessToken, rememberMe);
 
-        let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
+        let finalArtisanProfile: ArtisanProfile | null = null;
         let needsProfileSetup = false;
 
-        // Check if artisan needs profile setup
-        if (user.role === 'artisan' && !finalArtisanProfile) {
+        if (user.role === 'artisan') {
           addLog('[Login] User is artisan but no profile in login response, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
             finalArtisanProfile = extractArtisanFromResponse(artisanRes);
-            
+
             if (finalArtisanProfile) {
               addLog('[Login] Artisan profile loaded successfully');
             }
@@ -485,7 +490,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog('[Login] Navigating now...');
         isLoggingIn.current = false;
 
-        // Redirect to setup if artisan has no profile
         if (needsProfileSetup) {
           addLog('[Login] Redirecting to profile setup');
           navigate('/setup-profile', { replace: true });
@@ -506,6 +510,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage, extractArtisanFromResponse]
   );
 
+  // ==========================================
+  // FIXED: register — Handles flat backend response
+  // ==========================================
   const register = useCallback(
     async (data: RegisterData, rememberMe: boolean = true) => {
       try {
@@ -513,10 +520,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setState((prev) => ({ ...prev, isLoading: true }));
 
         const response = await authApi.register(data);
-        const res = response.data as ApiResponse<AuthResponseData>;
+        const res = response.data;
 
-        const responseData = res.data || {};
-	const { user, artisanProfile, dashboardRoute, accessToken } = responseData;
+        // ✅ FIXED: Backend sends flat structure: { success, message, token, refreshToken, user }
+        const user = res.user;
+        const accessToken = res.token || res.accessToken;
+        const dashboardRoute = res.dashboardRoute || '/';
 
         if (!accessToken) {
           throw new Error('No access token received from server');
@@ -527,7 +536,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setState({
           user,
           token: accessToken,
-          artisanProfile: artisanProfile || null,
+          artisanProfile: null,
           isAuthenticated: true,
           isLoading: false,
           isInitialized: true,
@@ -592,15 +601,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     connectSocket(user._id, token);
   }, [connectSocket]);
 
+  // ==========================================
+  // FIXED: refreshUser — Handles flat backend response
+  // ==========================================
   const refreshUser = useCallback(async () => {
     try {
       addLog('[RefreshUser] Refreshing...');
       const response = await userApi.getMe();
-      const res = response.data as ApiResponse<AuthResponseData>;
-      const { user, artisanProfile, hasProfile } = res.data;
+      const res = response.data;
+
+      // ✅ FIXED: Handle flat response
+      const user = res.user || res.data?.user;
+      const artisanProfile = res.artisanProfile || res.data?.artisanProfile;
+      const hasProfile = res.hasProfile || res.data?.hasProfile;
 
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-        
+
       if (user.role === 'artisan' && !finalArtisanProfile && hasProfile !== false) {
         addLog('[RefreshUser] Fetching /artisans/me...');
         try {
