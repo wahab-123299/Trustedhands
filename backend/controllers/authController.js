@@ -9,14 +9,14 @@ const NotificationService = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
 // ==========================================
-// TOKEN GENERATION
+// TOKEN GENERATION - FIXED: includes BOTH id and userId
 // ==========================================
 
 const generateTokens = (userId) => {
   console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
   console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
 
-  // Include BOTH id and userId for backward compatibility
+  // Include BOTH id and userId for backward compatibility with auth middleware
   const payload = {
     id: userId.toString(),
     userId: userId.toString()
@@ -44,29 +44,9 @@ const generateTokens = (userId) => {
 
   return { accessToken, refreshToken };
 };
-    process.env.JWT_SECRET,
-    { 
-      expiresIn: process.env.JWT_EXPIRE || '15m',
-      issuer: 'trustedhand-api',
-      audience: 'trustedhand-client'
-    }
-  );
-
-  const refreshToken = jwt.sign(
-    { userId },
-    process.env.JWT_REFRESH_SECRET,
-    { 
-      expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
-      issuer: 'trustedhand-api',
-      audience: 'trustedhand-client'
-    }
-  );
-
-  return { accessToken, refreshToken };
-};
 
 // ==========================================
-// VALIDATION RULES
+// VALIDATION RULES - FIXED: allows 'admin' role
 // ==========================================
 
 const registerValidation = [
@@ -84,7 +64,7 @@ const registerValidation = [
     .withMessage('Please provide a valid Nigerian phone number (e.g., 08012345678)'),
   body('role')
     .isIn(['customer', 'artisan', 'admin'])
-    .withMessage('Role must be customer, artisan or admin'),
+    .withMessage('Role must be customer, artisan, or admin'),
   body('fullName')
     .trim()
     .notEmpty()
@@ -177,7 +157,7 @@ exports.register = [
       const existingUser = await User.findOne({
         $or: [
           { email: email.toLowerCase() },
-          { phone: { $in: [phone, normalizedPhone, '+234' + normalizedPhone.slice(1)] } }
+          { phone: { $in: [phone, normalizedPhone, '\+234' + normalizedPhone.slice(1)] } }
         ]
       });
 
@@ -236,7 +216,7 @@ exports.register = [
 
         const minRate = minRates[experienceYears] || 500;
         if (rate.amount < minRate) {
-          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
+          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is \u20A6${minRate}.`);
         }
 
         const artisanProfile = await ArtisanProfile.create({
@@ -411,7 +391,7 @@ exports.login = async (req, res, next) => {
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-    // ✅ FIXED: Login notification (security alert) - NOW IN CORRECT PLACE (login, not register)
+    // Login notification (security alert)
     try {
       const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
       const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
@@ -586,7 +566,7 @@ exports.verifyEmail = async (req, res, next) => {
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    // ✅ Email verified notification
+    // Email verified notification
     try {
       await NotificationService.send({
         userId: user._id,
@@ -766,7 +746,7 @@ exports.resetPassword = async (req, res, next) => {
     user.refreshTokens = [];
     await user.save();
 
-    // ✅ ADDED: Notify user of password change
+    // Notify user of password change
     try {
       await NotificationService.send({
         userId: user._id,
