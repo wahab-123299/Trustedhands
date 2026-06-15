@@ -45,10 +45,6 @@ const getId = (field: string | { _id: string } | undefined | null): string | und
   return field._id;
 };
 
-const getName = (field: { fullName?: string } | undefined | null): string => {
-  return field?.fullName || 'Unknown';
-};
-
 const isPopulated = (field: any): field is { _id: string; fullName: string } => {
   return field && typeof field === 'object' && '_id' in field;
 };
