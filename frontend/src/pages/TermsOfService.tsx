@@ -1,0 +1,45 @@
+﻿import React from 'react';
+
+const TermsOfService: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-gray-950 text-white">
+      <section className="bg-gradient-to-br from-emerald-900/30 to-gray-900 py-20 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl md:text-5xl font-bold mb-6">Terms of Service</h1>
+          <p className="text-gray-400">Last updated: June 15, 2026</p>
+        </div>
+      </section>
+
+      <section className="py-16 px-6 max-w-4xl mx-auto">
+        <div className="space-y-8 text-gray-300 leading-relaxed">
+          <section>
+            <h2 className="text-2xl font-bold text-white mb-4">1. Acceptance of Terms</h2>
+            <p>By accessing TrustedHand, you agree to be bound by these Terms.</p>
+          </section>
+          <section>
+            <h2 className="text-2xl font-bold text-white mb-4">2. User Accounts</h2>
+            <ul className="list-disc pl-6 space-y-2 text-gray-400">
+              <li>Provide accurate information</li>
+              <li>Keep password secure</li>
+              <li>Notify us of unauthorized use</li>
+            </ul>
+          </section>
+          <section>
+            <h2 className="text-2xl font-bold text-white mb-4">3. Payments</h2>
+            <ul className="list-disc pl-6 space-y-2 text-gray-400">
+              <li>5% service fee for clients</li>
+              <li>10% commission for artisans</li>
+              <li>Escrow until job completion</li>
+            </ul>
+          </section>
+          <section>
+            <h2 className="text-2xl font-bold text-white mb-4">4. Contact</h2>
+            <p>Email: <span className="text-emerald-400">Trustedhand100@gmail.com</span> | Phone: <span className="text-emerald-400">+234 8089659183</span></p>
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default TermsOfService;
