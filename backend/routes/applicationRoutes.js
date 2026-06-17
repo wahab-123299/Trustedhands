@@ -10,7 +10,7 @@ const {
 // All routes are protected
 router.use(authenticate);
 
-// Get my applications
+// applications
 router.get('/my-applications', getMyApplications);
 
 // Get single application

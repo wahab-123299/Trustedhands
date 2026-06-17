@@ -292,7 +292,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 150)}...`);
 
         // ✅ FIXED: Handle flat backend response { user, token, ... }
-        const res = response.data;
+        const res = response.data as any;
         const user = res.user || res.data?.user;
         const hasProfile = res.hasProfile || res.data?.hasProfile;
         let artisanProfile = res.artisanProfile || res.data?.artisanProfile;
@@ -522,9 +522,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.register(data);
         const res = response.data;
 
-        // ✅ FIXED: Backend sends flat structure: { success, message, token, refreshToken, user }
+        // ✅ FIXED: Backend sends flat structure: { success, message, accessToken, refreshToken, user }
         const user = res.user;
-        const accessToken = res.token || res.accessToken;
+        const accessToken = res.accessToken;
         const dashboardRoute = res.dashboardRoute || '/';
 
         if (!accessToken) {
