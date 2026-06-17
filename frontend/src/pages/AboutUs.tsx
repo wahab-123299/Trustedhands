@@ -1,4 +1,4 @@
-// src/pages/AboutUs.tsx
+
 import { Shield, Users, Target, Heart } from 'lucide-react';
 
 const AboutUs = () => {

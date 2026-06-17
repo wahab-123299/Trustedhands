@@ -1,4 +1,4 @@
-// src/pages/Safety.jsx
+
 import { Shield, Eye, Lock, MessageSquare, Phone, AlertTriangle, CheckCircle } from 'lucide-react';
 
 const Safety = () => {
@@ -87,7 +87,7 @@ const Safety = () => {
           <a href="mailto:safety@trustedhand.ng" className="bg-red-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
             <AlertTriangle className="w-4 h-4" /> Report an Issue
           </a>
-          <a href="tel:+2349034567890" className="bg-slate-800 text-white px-6 py-3 rounded-lg font-medium hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
+          <a href="tel:+234 808 965 9183" className="bg-slate-800 text-white px-6 py-3 rounded-lg font-medium hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
             <Phone className="w-4 h-4" /> Emergency Line
           </a>
         </div>
