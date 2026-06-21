@@ -18,6 +18,8 @@ import { getInitials } from '@/lib/utils';
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, isAuthenticated, logout } = useAuth();
+  // role may include 'admin' at runtime even if the User type doesn't reflect it
+  const role = (user as any)?.role;
   const { unreadCount } = useSocket();
   const navigate = useNavigate();
 
@@ -28,15 +30,31 @@ const Navbar = () => {
     navigate('/');
   };
 
+  // FIXED: Added admin role check
   const getDashboardLink = () => {
-    if (user?.role === 'artisan') return '/artisan/dashboard';
+    if (role === 'admin') return '/admin/dashboard';
+    if (role === 'artisan') return '/artisan/dashboard';
     return '/customer/dashboard';
+  };
+
+  // FIXED: Added admin role check for profile
+  const getProfileLink = () => {
+    if (role === 'admin') return '/admin/profile';
+    if (role === 'artisan') return '/artisan/profile';
+    return '/customer/profile';
+  };
+
+  // FIXED: Added admin role check for messages
+  const getMessagesLink = () => {
+    if (role === 'admin') return '/admin/messages';
+    if (role === 'artisan') return '/artisan/messages';
+    return '/customer/messages';
   };
 
   const navLinks = [
     { name: 'Home', href: '/' },
     { name: 'Find Jobs', href: '/jobs' },
-    { name: 'Post a Job', href: '/customer/post-job', hide: !isAuthenticated || user?.role === 'artisan' },
+    { name: 'Post a Job', href: '/customer/post-job', hide: !isAuthenticated || role === 'artisan' || role === 'admin' },
     { name: 'Find Artisans', href: '/artisans' },
   ];
 
@@ -74,7 +92,7 @@ const Navbar = () => {
             {isAuthenticated ? (
               <>
                 {/* Messages */}
-                <Link to={`/${user?.role}/messages`} className="relative p-2 text-gray-600 hover:text-emerald-600">
+                <Link to={getMessagesLink()} className="relative p-2 text-gray-600 hover:text-emerald-600">
                   <MessageSquare className="w-5 h-5" />
                   {unreadCount > 0 && (
                     <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-red-500 text-white text-xs">
@@ -102,11 +120,11 @@ const Navbar = () => {
                       <User className="mr-2 h-4 w-4" />
                       Dashboard
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate(`/${user?.role}/profile`)}>
+                    <DropdownMenuItem onClick={() => navigate(getProfileLink())}>
                       <User className="mr-2 h-4 w-4" />
                       Profile
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate(`/${user?.role}/messages`)}>
+                    <DropdownMenuItem onClick={() => navigate(getMessagesLink())}>
                       <MessageSquare className="mr-2 h-4 w-4" />
                       Messages
                       {unreadCount > 0 && (
@@ -171,7 +189,7 @@ const Navbar = () => {
                   Dashboard
                 </Link>
                 <Link
-                  to={`/${user?.role}/messages`}
+                  to={getMessagesLink()}
                   className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-emerald-600 hover:bg-gray-50"
                   onClick={() => setIsMenuOpen(false)}
                 >

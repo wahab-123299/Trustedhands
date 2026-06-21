@@ -56,7 +56,7 @@ const RegisterPage = () => {
     address: '',
 
     // Artisan fields
-    profession: '', // Initialize as empty string, never undefined/null
+    profession: '',
     skills: [] as string[],
     experienceYears: '',
     rateAmount: '',
@@ -68,26 +68,18 @@ const RegisterPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // FIXED: Ensure profession is always a string
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-
-    // Debug log
-    console.log(`Field ${name} changed to:`, value);
-
     setFormData((prev) => ({ 
       ...prev, 
-      [name]: value ?? '' // Ensure never undefined/null
+      [name]: value ?? ''
     }));
-
-    // Clear error for this field
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
   const handleSelectChange = (name: string, value: string) => {
-    console.log(`Select changed: ${name} = ${value}`);
     setFormData((prev) => ({ ...prev, [name]: value ?? '' }));
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
@@ -103,7 +95,6 @@ const RegisterPage = () => {
     });
   };
 
-  // Handler for adding custom skill
   const handleAddCustomSkill = () => {
     if (customSkill.trim() && !formData.skills.includes(customSkill.trim())) {
       setFormData((prev) => ({
@@ -115,7 +106,6 @@ const RegisterPage = () => {
     }
   };
 
-  // Handler for removing skill
   const handleRemoveSkill = (skillToRemove: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -178,7 +168,6 @@ const RegisterPage = () => {
 
     const newErrors: Record<string, string> = {};
 
-    // FIXED: Check for empty string properly
     if (!formData.profession || formData.profession.trim() === '') {
       newErrors.profession = 'Please enter your profession or work title';
     }
@@ -197,27 +186,18 @@ const RegisterPage = () => {
       newErrors.rateAmount = 'Minimum rate is ₦500';
     }
 
-    console.log('Step 3 validation:', { formData, newErrors });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleNext = () => {
-    console.log('handleNext called, current step:', step);
-    console.log('Current formData:', formData);
-    console.log('Profession value:', formData.profession); // Debug log
-
     let isValid = false;
 
     if (step === 1) {
       isValid = validateStep1();
-      console.log('Step 1 validation result:', isValid);
-      if (isValid) {
-        setStep(2);
-      }
+      if (isValid) setStep(2);
     } else if (step === 2) {
       isValid = validateStep2();
-      console.log('Step 2 validation result:', isValid);
       if (isValid) {
         if (role === 'artisan') {
           setStep(3);
@@ -227,27 +207,19 @@ const RegisterPage = () => {
       }
     } else if (step === 3) {
       isValid = validateStep3();
-      console.log('Step 3 validation result:', isValid);
-      if (isValid) {
-        handleSubmit();
-      }
+      if (isValid) handleSubmit();
     }
 
     if (!isValid) {
-      console.log('Validation failed, current errors:', errors);
       toast.error('Please check your input and try again');
     }
   };
 
   const handleBack = () => {
-    if (step > 1) {
-      setStep(step - 1);
-    }
+    if (step > 1) setStep(step - 1);
   };
 
   const handleSubmit = async () => {
-    console.log('handleSubmit called');
-    console.log('FormData before submit:', formData); // Debug log
     setIsLoading(true);
     setErrors({});
 
@@ -266,7 +238,6 @@ const RegisterPage = () => {
       };
 
       if (role === 'artisan') {
-        // FIXED: Ensure profession is always a string and trimmed
         data.profession = (formData.profession || '').trim();
         data.skills = formData.skills;
         data.experienceYears = formData.experienceYears;
@@ -278,18 +249,10 @@ const RegisterPage = () => {
         data.workRadius = formData.workRadius || 'any';
       }
 
-      console.log('Sending registration data:', data);
-
-      const result = await register(data);
-      console.log('Registration result:', result);
-
-      toast.success('Registration successful! Please check your email to verify your account.');
-      navigate('/login');
+      await register(data);
+      // ✅ REMOVED: navigate('/login') — AuthContext.register() already navigates to dashboard
+      toast.success('Registration successful! Welcome to TrustedHand.');
     } catch (error: any) {
-      console.error('Registration error:', error);
-      console.error('Error response:', error.response);
-
-      // Handle validation errors from backend
       if (error.response?.data?.error?.details) {
         const backendErrors: Record<string, string> = {};
         error.response.data.error.details.forEach((err: any) => {
@@ -311,7 +274,6 @@ const RegisterPage = () => {
 
   const renderStep1 = () => (
     <div className="space-y-4">
-      {/* Role Selection */}
       <div className="space-y-2">
         <Label>I want to:</Label>
         <RadioGroup
@@ -345,7 +307,6 @@ const RegisterPage = () => {
         </RadioGroup>
       </div>
 
-      {/* Full Name */}
       <div className="space-y-2">
         <Label htmlFor="fullName">Full Name</Label>
         <div className="relative">
@@ -362,7 +323,6 @@ const RegisterPage = () => {
         {errors.fullName && <p className="text-sm text-red-500">{errors.fullName}</p>}
       </div>
 
-      {/* Email */}
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <div className="relative">
@@ -380,7 +340,6 @@ const RegisterPage = () => {
         {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
       </div>
 
-      {/* Phone */}
       <div className="space-y-2">
         <Label htmlFor="phone">Phone Number</Label>
         <div className="relative">
@@ -398,7 +357,6 @@ const RegisterPage = () => {
         {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
       </div>
 
-      {/* Password */}
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
         <div className="relative">
@@ -423,7 +381,6 @@ const RegisterPage = () => {
         {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
       </div>
 
-      {/* Confirm Password */}
       <div className="space-y-2">
         <Label htmlFor="confirmPassword">Confirm Password</Label>
         <div className="relative">
@@ -500,7 +457,6 @@ const RegisterPage = () => {
 
   const renderStep3 = () => (
     <div className="space-y-4">
-      {/* Profession/Work Title - FIXED VERSION */}
       <div className="space-y-2">
         <Label htmlFor="profession">Profession / Work Title *</Label>
         <div className="relative">
@@ -511,18 +467,17 @@ const RegisterPage = () => {
             type="text"
             placeholder="e.g., Solar Panel Installer, CNC Machinist, Drone Operator"
             className="pl-10"
-            value={formData.profession || ''} // FIXED: Ensure never undefined/null
+            value={formData.profession || ''}
             onChange={handleChange}
             autoComplete="off"
           />
         </div>
         <p className="text-xs text-gray-500">
-          Enter your specific profession or work title. You can type anything that describes what you do.
+          Enter your specific profession or work title.
         </p>
         {errors.profession && <p className="text-sm text-red-500">{errors.profession}</p>}
       </div>
 
-      {/* Selected Skills Display */}
       {formData.skills.length > 0 && (
         <div className="space-y-2">
           <Label>Selected Skills ({formData.skills.length})</Label>
@@ -547,7 +502,6 @@ const RegisterPage = () => {
         </div>
       )}
 
-      {/* Predefined Skills */}
       <div className="space-y-2">
         <Label>Select from Common Skills</Label>
         <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-2">
@@ -569,7 +523,6 @@ const RegisterPage = () => {
         {errors.skills && <p className="text-sm text-red-500">{errors.skills}</p>}
       </div>
 
-      {/* Add Custom Skill */}
       <div className="space-y-2">
         <Label>Can't find your skill?</Label>
         {!showCustomSkillInput ? (
@@ -585,7 +538,7 @@ const RegisterPage = () => {
         ) : (
           <div className="flex gap-2">
             <Input
-              placeholder="Enter your skill (e.g., Solar Panel Installation)"
+              placeholder="Enter your skill"
               value={customSkill}
               onChange={(e) => setCustomSkill(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustomSkill())}
@@ -613,7 +566,6 @@ const RegisterPage = () => {
         )}
       </div>
 
-      {/* Experience Years */}
       <div className="space-y-2">
         <Label htmlFor="experienceYears">Years of Experience</Label>
         <Select
@@ -634,7 +586,6 @@ const RegisterPage = () => {
         {errors.experienceYears && <p className="text-sm text-red-500">{errors.experienceYears}</p>}
       </div>
 
-      {/* Rate */}
       <div className="space-y-2">
         <Label>Rate</Label>
         <div className="flex gap-2">
@@ -663,15 +614,14 @@ const RegisterPage = () => {
         {errors.rateAmount && <p className="text-sm text-red-500">{errors.rateAmount}</p>}
       </div>
 
-      {/* Bio */}
       <div className="space-y-2">
         <Label htmlFor="bio">Bio (Optional)</Label>
         <textarea
           id="bio"
           name="bio"
-          placeholder="Tell us about yourself and your work experience"
+          placeholder="Tell us about yourself"
           maxLength={500}
-          className="w-full min-h-[100px] px-3 py-2 rounded-md border border-input bg-transparent text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full min-h-[100px] px-3 py-2 rounded-md border border-input bg-transparent text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           value={formData.bio}
           onChange={handleChange}
         />
@@ -683,7 +633,6 @@ const RegisterPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-lg mx-auto">
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
             <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
@@ -703,7 +652,6 @@ const RegisterPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {/* Progress Indicator */}
             <div className="flex items-center justify-center gap-2 mb-6">
               {[1, 2, 3].map((s) => (
                 <div
@@ -721,12 +669,10 @@ const RegisterPage = () => {
               ))}
             </div>
 
-            {/* Form Steps */}
             {step === 1 && renderStep1()}
             {step === 2 && renderStep2()}
             {step === 3 && renderStep3()}
 
-            {/* Navigation Buttons */}
             <div className="flex gap-4 mt-6">
               {step > 1 && (
                 <Button
@@ -760,7 +706,6 @@ const RegisterPage = () => {
               </Button>
             </div>
 
-            {/* Sign In Link */}
             <p className="text-center text-sm text-gray-600 mt-6">
               Already have an account?{' '}
               <Link to="/login" className="text-emerald-600 hover:text-emerald-700 font-medium">

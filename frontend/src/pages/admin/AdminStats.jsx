@@ -1,34 +1,10 @@
 import { useEffect, useState } from 'react';
 import { adminApi } from '@/services/api';
-import { Users, Briefcase, ShieldCheck, DollarSign, AlertTriangle } from 'lucide-react';
+import { Users, Briefcase, ShieldCheck, DollarSign, AlertTriangle, TrendingUp, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-type AdminStatsData = {
-  users?: {
-    total?: number;
-    customers?: number;
-    artisans?: number;
-    newThisMonth?: number;
-  };
-  jobs?: {
-    total?: number;
-    completed?: number;
-    pending?: number;
-    completionRate?: number;
-    inProgress?: number;
-    disputed?: number;
-  };
-  disputes?: {
-    active?: number;
-  };
-  revenue?: {
-    totalVolume?: number;
-    totalFees?: number;
-  };
-};
-
 const AdminStats = () => {
-  const [stats, setStats] = useState<AdminStatsData | null>(null);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,54 +33,14 @@ const AdminStats = () => {
   }
 
   const statCards = [
-    { 
-      label: 'Total Users', 
-      value: stats?.users?.total || 0, 
-      icon: Users,
-      color: 'bg-blue-50 text-blue-700'
-    },
-    { 
-      label: 'Customers', 
-      value: stats?.users?.customers || 0, 
-      icon: Users,
-      color: 'bg-green-50 text-green-700'
-    },
-    { 
-      label: 'Artisans', 
-      value: stats?.users?.artisans || 0, 
-      icon: Briefcase,
-      color: 'bg-purple-50 text-purple-700'
-    },
-    { 
-      label: 'Total Jobs', 
-      value: stats?.jobs?.total || 0, 
-      icon: Briefcase,
-      color: 'bg-orange-50 text-orange-700'
-    },
-    { 
-      label: 'Completed Jobs', 
-      value: stats?.jobs?.completed || 0, 
-      icon: ShieldCheck,
-      color: 'bg-emerald-50 text-emerald-700'
-    },
-    { 
-      label: 'Active Disputes', 
-      value: stats?.disputes?.active || 0, 
-      icon: AlertTriangle,
-      color: 'bg-red-50 text-red-700'
-    },
-    { 
-      label: 'Total Revenue', 
-      value: `₦${(stats?.revenue?.totalVolume || 0).toLocaleString()}`, 
-      icon: DollarSign,
-      color: 'bg-cyan-50 text-cyan-700'
-    },
-    { 
-      label: 'Platform Fees', 
-      value: `₦${(stats?.revenue?.totalFees || 0).toLocaleString()}`, 
-      icon: DollarSign,
-      color: 'bg-yellow-50 text-yellow-700'
-    },
+    { label: 'Total Users', value: stats?.users?.total || 0, icon: Users, color: 'bg-blue-50 text-blue-700' },
+    { label: 'Customers', value: stats?.users?.customers || 0, icon: Users, color: 'bg-green-50 text-green-700' },
+    { label: 'Artisans', value: stats?.users?.artisans || 0, icon: Briefcase, color: 'bg-purple-50 text-purple-700' },
+    { label: 'Total Jobs', value: stats?.jobs?.total || 0, icon: Briefcase, color: 'bg-orange-50 text-orange-700' },
+    { label: 'Completed', value: stats?.jobs?.completed || 0, icon: CheckCircle, color: 'bg-emerald-50 text-emerald-700' },
+    { label: 'Active Disputes', value: stats?.disputes?.active || 0, icon: AlertTriangle, color: 'bg-red-50 text-red-700' },
+    { label: 'Total Revenue', value: `₦${(stats?.revenue?.totalVolume || 0).toLocaleString()}`, icon: DollarSign, color: 'bg-cyan-50 text-cyan-700' },
+    { label: 'Completion Rate', value: `${stats?.jobs?.completionRate || 0}%`, icon: TrendingUp, color: 'bg-yellow-50 text-yellow-700' },
   ];
 
   return (
@@ -130,7 +66,6 @@ const AdminStats = () => {
         })}
       </div>
 
-      {/* Quick Actions */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Pending Actions</h3>
@@ -158,12 +93,8 @@ const AdminStats = () => {
               <span className="font-medium">{stats?.jobs?.completionRate || 0}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-emerald-500 h-2 rounded-full" 
-                style={{ width: `${stats?.jobs?.completionRate || 0}%` }}
-              />
+              <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${stats?.jobs?.completionRate || 0}%` }} />
             </div>
-
             <div className="flex justify-between text-sm mt-4">
               <span className="text-gray-500">In Progress</span>
               <span className="font-medium">{stats?.jobs?.inProgress || 0}</span>

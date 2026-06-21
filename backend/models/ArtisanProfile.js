@@ -5,8 +5,8 @@ const artisanProfileSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: [true, 'User ID is required'],
-    unique: true,
-    index: true
+    unique: true
+    // ❌ REMOVED: index: true (unique: true already creates the index)
   },
   profession: {
     type: String,
@@ -15,7 +15,6 @@ const artisanProfileSchema = new mongoose.Schema({
     minlength: [2, 'Profession must be at least 2 characters'],
     maxlength: [100, 'Profession cannot exceed 100 characters']
   },
-  // ✅ FIXED: Removed strict enum, added length validation
   skills: [{
     type: String,
     required: [true, 'At least one skill is required'],
@@ -222,7 +221,7 @@ artisanProfileSchema.pre('save', function(next) {
 // Static method to find available artisans by skill
 artisanProfileSchema.statics.findAvailableBySkill = function(skill, options = {}) {
   const query = {
-    skills: { $regex: new RegExp(skill, 'i') }, // ✅ Case-insensitive search
+    skills: { $regex: new RegExp(skill, 'i') },
     'availability.status': 'available'
   };
   

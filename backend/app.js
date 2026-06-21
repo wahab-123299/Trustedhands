@@ -1,4 +1,4 @@
-const express = require('express');
+  const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -20,7 +20,9 @@ const app = express();
 app.set('trust proxy', 1);
 require('./cron/autoRelease');
 
+// ============================================
 // SESSION
+// ============================================
 app.use(session({
   secret: process.env.COOKIE_SECRET || 'default-secret-change-in-production',
   resave: false,
@@ -32,11 +34,15 @@ app.use(session({
   }
 }));
 
+// ============================================
 // PASSPORT
+// ============================================
 app.use(passport.initialize());
 app.use(passport.session());
 
+// ============================================
 // HELMET
+// ============================================
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -50,7 +56,9 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
+// ============================================
 // CORS
+// ============================================
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
@@ -84,7 +92,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+// ============================================
 // RATE LIMITING
+// ============================================
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -111,12 +121,16 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 
+// ============================================
 // BODY PARSING
+// ============================================
 app.use(express.json({ limit: '10mb', strict: true }));
 app.use(express.urlencoded({ extended: true, limit: '10mb', parameterLimit: 1000 }));
 app.use(cookieParser(process.env.COOKIE_SECRET || 'default-secret-change-in-production'));
 
+// ============================================
 // DATA SANITIZATION
+// ============================================
 app.use(mongoSanitize({
   replaceWith: '_',
   onSanitize: ({ req, key }) => {
@@ -126,7 +140,9 @@ app.use(mongoSanitize({
 app.use(xss());
 app.use(hpp({ allowedParams: ['skills', 'status', 'category', 'sortBy'] }));
 
+// ============================================
 // COMPRESSION & LOGGING
+// ============================================
 app.use(compression({
   level: 6,
   filter: (req, res) => {
@@ -141,7 +157,9 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
+// ============================================
 // DEBUG LOGGING FOR OAUTH
+// ============================================
 app.use((req, res, next) => {
   if (req.path.includes('auth') || req.path.includes('facebook') || req.path.includes('google')) {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
@@ -153,7 +171,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// HEALTH
+// ============================================
+// HEALTH CHECK ENDPOINT — keeps Render awake
+// ============================================
 app.get('/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
   const dbStatus = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' }[dbState] || 'unknown';
@@ -175,7 +195,14 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Optional: HEAD version for lighter pings
+app.head('/health', (req, res) => {
+  res.status(200).end();
+});
+
+// ============================================
 // PRIVACY & TERMS
+// ============================================
 app.get('/privacy', (req, res) => {
   res.send(`
     <h1>Privacy Policy</h1>
@@ -202,7 +229,9 @@ app.get('/privacy', (req, res) => {
   `);
 });
 
+// ============================================
 // ROUTES
+// ============================================
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/artisans', require('./routes/artisanRoutes'));
@@ -216,7 +245,9 @@ app.use('/api/favorites', require('./routes/favoriteRoutes'));
 app.use('/api/milestones', require('./routes/milestoneRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 
+// ============================================
 // ERROR HANDLING
+// ============================================
 app.use((req, res, next) => {
   res.status(404).json({
     success: false,

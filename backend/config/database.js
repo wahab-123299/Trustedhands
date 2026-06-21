@@ -8,18 +8,14 @@ const connectDB = async () => {
       throw new Error('MONGODB_URI environment variable is not defined');
     }
 
-    const uri = process.env.MONGODB_URI;
+    const uri = process.env.MONGODB_URI.trim();
 
     console.log('🔌 Connecting to MongoDB...');
-
     const safeUri = uri.replace(/:([^@]+)@/, ':****@');
     console.log('📍 URI:', safeUri);
 
-    const conn = await mongoose.connect(uri, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 30000,
-      socketTimeoutMS: 45000,
-    });
+    // ✅ Simple connect — same as your working test
+    const conn = await mongoose.connect(uri);
 
     console.log(`✅ MongoDB Connected`);
     console.log(`📊 Database Name: ${conn.connection.name}`);

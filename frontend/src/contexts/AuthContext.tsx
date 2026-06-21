@@ -31,25 +31,6 @@ if (typeof window !== 'undefined') {
   };
 }
 
-interface AuthResponseData {
-  user: User;
-  artisanProfile?: ArtisanProfile | null;
-  hasProfile?: boolean;
-  dashboardRoute?: string;
-  accessToken?: string;
-  token?: string;
-  refreshToken?: string;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  message?: string;
-  token?: string;
-  refreshToken?: string;
-  user?: User;
-}
-
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -291,7 +272,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 150)}...`);
 
-        // ✅ FIXED: Handle flat backend response { user, token, ... }
+        // FIXED: Handle flat backend response { user, token, ... }
         const res = response.data as any;
         const user = res.user || res.data?.user;
         const hasProfile = res.hasProfile || res.data?.hasProfile;
@@ -303,6 +284,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         addLog(`[Init] User: ${user.email}, Role: ${user.role}, hasProfile: ${hasProfile}`);
         addLog(`[Init] artisanProfile from getMe: ${artisanProfile ? 'EXISTS' : 'NULL'}`);
+
+        // FIXED: Store user in localStorage
+        localStorage.setItem('user', JSON.stringify(user));
 
         if (user.role === 'artisan' && hasProfile === false) {
           addLog('[Init] Artisan authenticated but needs profile setup');
@@ -439,7 +423,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.login({ email, password });
         const res = response.data;
 
-        // ✅ FIXED: Backend sends flat structure: { success, message, token, refreshToken, user }
+        // FIXED: Backend sends flat structure: { success, message, token, refreshToken, user }
         const user = res.user;
         const accessToken = res.token || res.accessToken;
         const dashboardRoute = res.dashboardRoute || '/';
@@ -449,6 +433,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         storeToken(accessToken, rememberMe);
+        // FIXED: Store user in localStorage
+        localStorage.setItem('user', JSON.stringify(user));
 
         let finalArtisanProfile: ArtisanProfile | null = null;
         let needsProfileSetup = false;
@@ -522,7 +508,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.register(data);
         const res = response.data;
 
-        // ✅ FIXED: Backend sends flat structure: { success, message, accessToken, refreshToken, user }
+        // FIXED: Backend sends flat structure: { success, message, accessToken, refreshToken, user }
         const user = res.user;
         const accessToken = res.accessToken;
         const dashboardRoute = res.dashboardRoute || '/';
@@ -532,6 +518,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         storeToken(accessToken, rememberMe);
+        // FIXED: Store user in localStorage
+        localStorage.setItem('user', JSON.stringify(user));
 
         setState({
           user,
@@ -588,6 +576,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     localStorage.setItem('token', token);
     localStorage.setItem('rememberMe', 'true');
+    // FIXED: Store user in localStorage
+    localStorage.setItem('user', JSON.stringify(user));
 
     setState({
       user,
@@ -610,7 +600,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const response = await userApi.getMe();
       const res = response.data;
 
-      // ✅ FIXED: Handle flat response
+      // FIXED: Handle flat response
       const user = res.user || res.data?.user;
       const artisanProfile = res.artisanProfile || res.data?.artisanProfile;
       const hasProfile = res.hasProfile || res.data?.hasProfile;
@@ -638,6 +628,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         artisanProfile: finalArtisanProfile,
         isAuthenticated: true,
       }));
+      // FIXED: Store updated user in localStorage
+      localStorage.setItem('user', JSON.stringify(user));
       addLog('[RefreshUser] Success');
     } catch (error: any) {
       addLog(`[RefreshUser] Failed: ${error.message}`);

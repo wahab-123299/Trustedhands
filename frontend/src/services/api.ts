@@ -302,38 +302,101 @@ api.interceptors.response.use(
   }
 );
 
-export const wakeUpServer = async (): Promise<boolean> => {
-  try {
-    addLog('[WakeUp] Pinging server...');
-    await axios.get(`${API_URL.replace('/api', '')}/health`, { 
-      timeout: 10000,
-      withCredentials: true 
-    });
-    addLog('[WakeUp] Server is awake');
-    return true;
-  } catch (error: any) {
+// ==========================================
+// WAKE UP SERVER BEFORE OAUTH
+// Prevents Render "waking up" screen during OAuth login
+// ==========================================
+
+/**
+ * Pings backend /health endpoint to wake up Render instance
+ * Shows user-friendly loading state while waiting via callback
+ */
+export const wakeUpServer = async (onStatus?: (msg: string) => void): Promise<boolean> => {
+  const baseUrl = API_URL.replace('/api', '');
+  const healthUrl = `${baseUrl}/health`;
+
+  addLog('[WakeUp] Pinging server to wake up...');
+  onStatus?.('Connecting to server...');
+
+  const maxWaitMs = 35000; // Render cold start ~15-30s
+  const startTime = Date.now();
+  let attempt = 0;
+
+  while (Date.now() - startTime < maxWaitMs) {
+    attempt++;
     try {
-      await axios.get(API_URL.replace('/api', ''), { 
-        timeout: 10000,
-        withCredentials: true 
+      // Use axios directly (not our api instance) to avoid interceptors
+      const res = await axios.get(healthUrl, { 
+        timeout: 8000,
+        withCredentials: false // health endpoint doesn't need auth
       });
-      addLog('[WakeUp] Server responded (root)');
-      return true;
-    } catch {
-      addLog('[WakeUp] Server ping failed');
-      return false;
+
+      if (res.status === 200) {
+        addLog('[WakeUp] Server is awake!');
+        onStatus?.('Connected! Redirecting...');
+        return true;
+      }
+    } catch (err: any) {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+      if (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK') {
+        addLog(`[WakeUp] Attempt ${attempt}: Server still waking (${elapsed}s)...`);
+        onStatus?.(`Waking up server... (${elapsed}s)`);
+      } else if (err.response?.status === 503) {
+        addLog(`[WakeUp] Attempt ${attempt}: Server starting up (${elapsed}s)...`);
+        onStatus?.(`Starting up... (${elapsed}s)`);
+      } else {
+        addLog(`[WakeUp] Attempt ${attempt}: ${err.message}`);
+      }
     }
+
+    // Wait 2.5s before next attempt
+    await new Promise(r => setTimeout(r, 2500));
   }
+
+  addLog('[WakeUp] Timed out waiting for server');
+  onStatus?.('Server is taking too long. Please try again.');
+  return false;
 };
 
-export const loginWithGoogle = (): void => {
+/**
+ * Login with Google — wakes server first, then redirects
+ * Prevents users seeing Render's "waking up" spinner during OAuth
+ */
+export const loginWithGoogle = async (onStatus?: (msg: string) => void): Promise<boolean> => {
   const baseUrl = API_URL.replace('/api', '');
+
+  onStatus?.('Checking server...');
+  const isAwake = await wakeUpServer(onStatus);
+
+  if (!isAwake) {
+    addLog('[OAuth] Server wake-up failed, aborting Google login');
+    return false;
+  }
+
+  addLog('[OAuth] Redirecting to Google OAuth...');
   window.location.href = `${baseUrl}/auth/google`;
+  return true;
 };
 
-export const loginWithFacebook = (): void => {
+/**
+ * Login with Facebook — wakes server first, then redirects
+ * Prevents users seeing Render's "waking up" spinner during OAuth
+ */
+export const loginWithFacebook = async (onStatus?: (msg: string) => void): Promise<boolean> => {
   const baseUrl = API_URL.replace('/api', '');
+
+  onStatus?.('Checking server...');
+  const isAwake = await wakeUpServer(onStatus);
+
+  if (!isAwake) {
+    addLog('[OAuth] Server wake-up failed, aborting Facebook login');
+    return false;
+  }
+
+  addLog('[OAuth] Redirecting to Facebook OAuth...');
   window.location.href = `${baseUrl}/auth/facebook`;
+  return true;
 };
 
 export const handleOAuthCallback = (accessToken: string, refreshToken: string, rememberMe = false): void => {
@@ -350,6 +413,12 @@ export const authStorage = {
 };
 
 export interface ApiResponse<T = any> {
+  hasProfile: any;
+  artisanProfile: any;
+  dashboardRoute: string;
+  token: any;
+  accessToken: any;
+  user: any;
   success: boolean;
   message?: string;
   data: T;
@@ -548,13 +617,13 @@ export const artisanApi = {
   // ==========================================
   getMyProfile: async () => {
     const response = await api.get<ApiResponse<any>>('/artisans/me');
-    
+
     console.log('[API] getMyProfile raw response:', JSON.stringify(response.data, null, 2));
-    
+
     // Extract artisan data from response - handle both structures
     const responseData = response.data?.data;
     let artisanData: any = null;
-    
+
     if (responseData?.artisan) {
       // Structure: { data: { artisan: {...} } }
       artisanData = responseData.artisan;
@@ -567,7 +636,7 @@ export const artisanApi = {
         console.log('[API] getMyProfile: Found artisan directly in data');
       }
     }
-    
+
     if (artisanData) {
       const transformed = transformArtisanData(artisanData);
       // Ensure response has consistent structure for AuthContext
@@ -575,7 +644,7 @@ export const artisanApi = {
     } else {
       console.log('[API] getMyProfile: No artisan data found');
     }
-    
+
     return response;
   },
 
@@ -922,6 +991,37 @@ export const disputeApi = {
     api.put(`/jobs/admin/disputes/${disputeId}/resolve`, resolution),
 };
 
+export const adminApi = {
+  // Stats
+  getStats: () => api.get('/admin/dashboard'),
+
+  // Users
+  getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string; isActive?: string }) => 
+    api.get('/admin/users', { params }),
+  getUserById: (id: string) => api.get(`/admin/users/${id}`),
+  updateUserStatus: (id: string, isActive: boolean) => 
+    api.patch(`/admin/users/${id}/status`, { isActive }),
+
+  // Verifications
+  getPendingVerifications: (params?: { page?: number; limit?: number }) => 
+    api.get('/admin/verifications/pending', { params }),
+  verifyArtisan: (id: string, action: 'approve' | 'reject', reason?: string) => 
+    api.post(`/admin/verifications/${id}`, { action, reason }),
+
+  // Artisans
+  getAllArtisans: (params?: { page?: number; limit?: number }) => 
+    api.get('/admin/artisans', { params }),
+
+  // Transactions
+  getTransactions: (params?: { page?: number; limit?: number; type?: string; status?: string; startDate?: string; endDate?: string }) =>
+    api.get('/admin/transactions', { params }),
+
+  // Disputes
+  getDisputes: (params?: { status?: string; page?: number; limit?: number }) =>
+    api.get('/admin/disputes', { params }),
+  resolveDispute: (jobId: string, resolution: any) =>
+    api.post(`/admin/disputes/${jobId}/resolve`, resolution),
+};
 
 export { api };
 export default api;

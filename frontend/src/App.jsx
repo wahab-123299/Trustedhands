@@ -8,14 +8,14 @@ import { SocketProvider } from '@/contexts/SocketContext';
 // Layouts
 import MainLayout from '@/components/layout/MainLayout';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import SetupProfile from '@/pages/SetupProfile';
+import AdminDashboardLayout from '@/components/layout/AdminDashboardLayout';
 
-// Public Pages (Eager loaded for faster initial render)
+// Public Pages
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
-import AuthSuccessPage from './pages/AuthSuccesspage.tsx';
+import AuthSuccessPage from './pages/AuthSuccesspage';
 import OAuthCallback from './pages/OAuthCallback';
 import BookArtisan from '@/pages/BookArtisan';
 import ScrollToTop from "@/components/ScrollToTop";
@@ -26,7 +26,17 @@ import ArtisanProfilePage from '@/pages/ArtisanProfilePage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailsPage from '@/pages/JobDetailsPage';
 
-// Lazy loaded dashboard pages for better performance
+// Static Pages
+import AboutUs from '@/pages/AboutUs';
+import HowItWorks from '@/pages/HowItWorks';
+import Careers from '@/pages/Careers';
+import Press from '@/pages/Press';
+import HelpCenter from '@/pages/HelpCenter';
+import Safety from '@/pages/Safety';
+import TermsOfService from '@/pages/TermsOfService';
+import PrivacyPolicy from '@/pages/PrivacyPolicy';
+
+// Lazy loaded pages
 const CustomerDashboard = lazy(() => import('@/pages/customer/Dashboard'));
 const CustomerJobs = lazy(() => import('@/pages/customer/Jobs'));
 const CustomerJobDetails = lazy(() => import('@/pages/customer/JobDetails'));
@@ -44,6 +54,15 @@ const ArtisanMessages = lazy(() => import('@/pages/artisan/Messages'));
 const ArtisanProfile = lazy(() => import('@/pages/artisan/Profile'));
 const ArtisanWallet = lazy(() => import('@/pages/artisan/Wallet'));
 const ArtisanVerificationPage = lazy(() => import('@/pages/artisan/Verification'));
+const SetupProfile = lazy(() => import('@/pages/SetupProfile'));
+
+// Admin Pages
+const AdminStats = lazy(() => import('@/pages/admin/AdminStats'));
+const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'));
+const AdminVerifications = lazy(() => import('@/pages/admin/AdminVerifications'));
+const AdminArtisans = lazy(() => import('@/pages/admin/AdminArtisans'));
+const AdminMessages = lazy(() => import('@/pages/admin/AdminMessages'));
+const AdminProfile = lazy(() => import('@/pages/admin/AdminProfile'));
 
 // Shared Pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
@@ -82,20 +101,17 @@ function App() {
             richColors
             closeButton
             toastOptions={{
-              style: {
-                fontFamily: 'inherit',
-              },
+              style: { fontFamily: 'inherit' },
               duration: 4000,
             }}
           />
-          
+
           <Suspense fallback={<PageLoader />}>
-            {/* ✅ ScrollToTop placed inside Router, before Routes */}
             <ScrollToTop />
-            
+
             <Routes>
               {/* ==========================================
-                  PUBLIC ROUTES (with MainLayout)
+                  PUBLIC ROUTES
                   ========================================== */}
               <Route element={<MainLayout />}>
                 <Route path="/" element={<HomePage />} />
@@ -109,19 +125,24 @@ function App() {
                 <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
                 <Route path="/artisans" element={<ArtisansPage />} />
                 <Route path="/artisans/:artisanId" element={<ArtisanProfilePage />} />
-                
-                {/* Public job browsing */}
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:id" element={<JobDetailsPage />} />
+
+                {/* STATIC PAGES */}
+                <Route path="/about" element={<AboutUs />} />
+                <Route path="/how-it-works" element={<HowItWorks />} />
+                <Route path="/careers" element={<Careers />} />
+                <Route path="/press" element={<Press />} />
+                <Route path="/help" element={<HelpCenter />} />
+                <Route path="/safety" element={<Safety />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
               </Route>
 
-              {/* ==========================================
-                  PAYMENT CALLBACK (no layout - popup handling)
-                  ========================================== */}
               <Route path="/payment/callback" element={<PaymentCallbackPage />} />
 
               {/* ==========================================
-                  PROTECTED CUSTOMER ROUTES
+                  CUSTOMER ROUTES
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<RoleRoute allowedRoles={['customer']} />}>
@@ -133,41 +154,19 @@ function App() {
                     <Route path="/customer/messages" element={<CustomerMessages />} />
                     <Route path="/customer/messages/:conversationId" element={<ChatPage />} />
                     <Route path="/customer/profile" element={<CustomerProfile />} />
-                    
-                    {/* Tier-gated job posting */}
-                    <Route 
-                      path="/customer/post-job" 
-                      element={
-                        <TierGate maxAmount={10000}>
-                          <PostJobPage />
-                        </TierGate>
-                      } 
-                    />
-                    <Route 
-                      path="/customer/post-job/:artisanId" 
-                      element={
-                        <TierGate maxAmount={10000}>
-                          <PostJobPage />
-                        </TierGate>
-                      } 
-                    />
-                    
-                    {/* Verification upgrade page */}
+                    <Route path="/customer/post-job" element={<TierGate maxAmount={10000}><PostJobPage /></TierGate>} />
+                    <Route path="/customer/post-job/:artisanId" element={<TierGate maxAmount={10000}><PostJobPage /></TierGate>} />
                     <Route path="/customer/verify" element={<CustomerVerificationPage />} />
                   </Route>
                 </Route>
               </Route>
 
               {/* ==========================================
-                  PROTECTED ARTISAN ROUTES
+                  ARTISAN ROUTES
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<RoleRoute allowedRoles={['artisan']} />}>
-                  
-                  {/* Standalone setup page — NO DashboardLayout */}
                   <Route path="/setup-profile" element={<SetupProfile />} />
-                  
-                  {/* Dashboard routes WITH layout */}
                   <Route element={<DashboardLayout />}>
                     <Route path="/artisan/dashboard" element={<ArtisanDashboard />} />
                     <Route path="/artisan/jobs" element={<ArtisanJobs />} />
@@ -179,12 +178,25 @@ function App() {
                     <Route path="/artisan/wallet" element={<ArtisanWallet />} />
                     <Route path="/artisan/verify" element={<ArtisanVerificationPage />} />
                   </Route>
-                  
                 </Route>
               </Route>
 
               {/* ==========================================
-                  SHARED PROTECTED ROUTES (both roles)
+                  ADMIN ROUTES — Uses AdminDashboardLayout
+                  ========================================== */}
+              <Route element={<ProtectedRoute />}>
+                <Route element={<AdminDashboardLayout />}>
+                  <Route path="/admin/dashboard" element={<AdminStats />} />
+                  <Route path="/admin/users" element={<AdminUsers />} />
+                  <Route path="/admin/verifications" element={<AdminVerifications />} />
+                  <Route path="/admin/artisans" element={<AdminArtisans />} />
+                  <Route path="/admin/messages" element={<AdminMessages />} />
+                  <Route path="/admin/profile" element={<AdminProfile />} />
+                </Route>
+              </Route>
+
+              {/* ==========================================
+                  SHARED PROTECTED ROUTES
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/chat/:conversationId" element={<ChatPage />} />
@@ -196,8 +208,8 @@ function App() {
                   ========================================== */}
               <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
               <Route path="/artisan" element={<Navigate to="/artisan/dashboard" replace />} />
-              
-              {/* Legacy redirects */}
+              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+
               <Route path="/dashboard" element={<NavigateToDashboard />} />
               <Route path="/profile" element={<NavigateToProfile />} />
               <Route path="/wallet" element={<NavigateToWallet />} />
@@ -215,7 +227,7 @@ function App() {
 }
 
 // ==========================================
-// REDIRECT HELPER COMPONENTS
+// REDIRECT HELPERS
 // ==========================================
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -223,7 +235,7 @@ import { useAuth } from '@/contexts/AuthContext';
 function NavigateToMessages() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  
+  if (user.role === 'admin') return <Navigate to="/admin/messages" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/messages" replace />
     : <Navigate to="/customer/messages" replace />;
@@ -232,7 +244,7 @@ function NavigateToMessages() {
 function NavigateToDashboard() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  
+  if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/dashboard" replace />
     : <Navigate to="/customer/dashboard" replace />;
@@ -241,7 +253,7 @@ function NavigateToDashboard() {
 function NavigateToProfile() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  
+  if (user.role === 'admin') return <Navigate to="/admin/profile" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/profile" replace />
     : <Navigate to="/customer/profile" replace />;
@@ -250,11 +262,8 @@ function NavigateToProfile() {
 function NavigateToWallet() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  
-  if (user.role !== 'artisan') {
-    return <Navigate to="/customer/dashboard" replace />;
-  }
-  
+  if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
+  if (user.role !== 'artisan') return <Navigate to="/customer/dashboard" replace />;
   return <Navigate to="/artisan/wallet" replace />;
 }
 

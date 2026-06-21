@@ -4,8 +4,8 @@ const jobSchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Customer ID is required'],
-    index: true
+    required: [true, 'Customer ID is required']
+    // ❌ REMOVED: index: true (duplicate with compound index below)
   },
   artisanId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -70,8 +70,8 @@ const jobSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'disputed'],
-    default: 'pending',
-    index: true
+    default: 'pending'
+    // ❌ REMOVED: index: true (duplicate with compound index below)
   },
   paymentStatus: {
     type: String,
@@ -109,6 +109,12 @@ const jobSchema = new mongoose.Schema({
     default: false
   },
   
+  // ✅ MOVED: hasMilestones is now a proper field, not in options
+  hasMilestones: {
+    type: Boolean,
+    default: false
+  },
+  
   // ESCROW MILESTONES
   escrowMilestones: [{
     name: String,
@@ -135,7 +141,7 @@ const jobSchema = new mongoose.Schema({
     }
   }],
   
-  // ✅ NEW: FULL DISPUTE SYSTEM (matches disputeController)
+  // FULL DISPUTE SYSTEM
   dispute: {
     filedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -177,7 +183,7 @@ const jobSchema = new mongoose.Schema({
     }
   },
 
-  // ✅ NEW: CANCELLATION FIELDS (enhanced)
+  // CANCELLATION FIELDS
   cancelledAt: Date,
   cancellationReason: {
     type: String,
@@ -248,14 +254,10 @@ const jobSchema = new mongoose.Schema({
   },
   artisanConfirmedAt: Date
 }, {
+  // ✅ SINGLE options object — timestamps, virtuals only
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
-}, {
-  hasMilestones: {
-    type: Boolean,
-    default: false
-  }
 });
 
 // Indexes
@@ -268,7 +270,7 @@ jobSchema.index({ budget: 1, status: 1 });
 jobSchema.index({ createdAt: -1 });
 jobSchema.index({ scheduledDate: 1 });
 jobSchema.index({ tier: 1, trustScore: -1 });
-jobSchema.index({ 'dispute.status': 1 }); // ✅ NEW: For dispute queries
+jobSchema.index({ 'dispute.status': 1 });
 
 // Virtuals
 jobSchema.virtual('duration').get(function() {
@@ -289,7 +291,6 @@ jobSchema.virtual('confirmationStatus').get(function() {
   return 'pending_confirmation';
 });
 
-// ✅ NEW: Virtual for dispute status
 jobSchema.virtual('hasActiveDispute').get(function() {
   return this.dispute && this.dispute.status === 'pending';
 });
@@ -385,7 +386,6 @@ jobSchema.methods.acceptApplication = async function(applicationIndex) {
   return await this.save();
 };
 
-// ✅ NEW: Method to check if dispute can be filed
 jobSchema.methods.canFileDispute = function(userId) {
   const isCustomer = this.customerId.toString() === userId.toString();
   const isArtisan = this.artisanId?.toString() === userId.toString();

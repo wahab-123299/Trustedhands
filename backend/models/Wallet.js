@@ -33,6 +33,7 @@ const walletSchema = new mongoose.Schema({
     ref: 'User',
     required: [true, 'Artisan ID is required'],
     unique: true
+    // ❌ REMOVED: index: true (unique: true already creates the index)
   },
   balance: {
     type: Number,
@@ -85,7 +86,6 @@ const walletSchema = new mongoose.Schema({
     },
     verifiedAt: Date
   },
-  // FIXED: Removed invalid enum, added transactionType field if needed
   transactions: [{
     transaction: {
       type: mongoose.Schema.Types.ObjectId,
@@ -114,7 +114,9 @@ const walletSchema = new mongoose.Schema({
 // INDEXES
 // ==========================================
 
-walletSchema.index({ artisanId: 1 });
+// ❌ REMOVED: walletSchema.index({ artisanId: 1 });
+// unique: true on the artisanId field already creates this index automatically
+
 walletSchema.index({ 'bankDetails.paystackRecipientCode': 1 });
 walletSchema.index({ 'withdrawalHistory.status': 1, 'withdrawalHistory.requestedAt': -1 });
 
@@ -147,7 +149,7 @@ walletSchema.methods.addEarnings = async function(amount, transactionId, type = 
   if (transactionId) {
     this.transactions.push({
       transaction: transactionId,
-      type: 'credit'  // Earnings are credits
+      type: 'credit'
     });
   }
 
@@ -157,7 +159,7 @@ walletSchema.methods.addEarnings = async function(amount, transactionId, type = 
     this.stats.averageJobValue = totalValue / this.stats.totalJobsCompleted;
   }
 
-  return this.save();  // Returns promise
+  return this.save();
 };
 
 walletSchema.methods.releasePendingBalance = async function(amount) {
@@ -316,9 +318,7 @@ walletSchema.methods.cancelWithdrawal = async function(withdrawalId) {
   return this.save();
 };
 
-// FIXED: Added validation and proper merging
 walletSchema.methods.updateBankDetails = async function(bankDetails) {
-  // Validate required fields if provided
   if (bankDetails.accountNumber && !/^\d{10}$/.test(bankDetails.accountNumber)) {
     throw new Error('Account number must be 10 digits');
   }
@@ -362,7 +362,7 @@ walletSchema.methods.getSummary = function() {
 
 walletSchema.statics.findByArtisan = function(artisanId) {
   return this.findOne({ artisanId })
-    .populate('transactions.transaction', 'amount type status createdAt')  // FIXED: populate path
+    .populate('transactions.transaction', 'amount type status createdAt')
     .populate('artisanId', 'fullName email phone');
 };
 
