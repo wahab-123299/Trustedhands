@@ -8,9 +8,7 @@ import {
   Menu, 
   LogOut,
   Home,
-  Briefcase,
-  MessageSquare,
-  User
+  Briefcase
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,12 +19,10 @@ const AdminDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const menuItems = [
-    { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3 },
+    { path: '/admin', label: 'Dashboard', icon: BarChart3 },
     { path: '/admin/users', label: 'Users', icon: Users },
     { path: '/admin/verifications', label: 'Verifications', icon: ShieldCheck },
     { path: '/admin/artisans', label: 'Artisans', icon: Briefcase },
-    { path: '/admin/messages', label: 'Messages', icon: MessageSquare },
-    { path: '/admin/profile', label: 'Profile', icon: User },
   ];
 
   const handleLogout = async () => {
@@ -46,7 +42,7 @@ const AdminDashboard = () => {
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 
+        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
@@ -81,7 +77,7 @@ const AdminDashboard = () => {
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-white">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
               <span className="text-sm font-medium text-emerald-700">
@@ -103,8 +99,8 @@ const AdminDashboard = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main Content - FIXED: Added lg:ml-64 to push content right on desktop */}
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
         {/* Header */}
         <header className="bg-white border-b border-gray-200 px-4 py-4 lg:px-8 flex items-center justify-between">
           <button
@@ -113,9 +109,6 @@ const AdminDashboard = () => {
           >
             <Menu size={20} />
           </button>
-          <h2 className="text-lg font-semibold text-gray-900 hidden lg:block">
-            {menuItems.find(m => m.path === location.pathname)?.label || 'Admin'}
-          </h2>
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/')}

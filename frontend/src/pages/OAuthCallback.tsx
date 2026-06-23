@@ -12,7 +12,24 @@ const OAuthCallback = () => {
   useEffect(() => {
     const handleOAuth = async () => {
       const token = searchParams.get('token');
-      
+      const refreshToken = searchParams.get('refreshToken');
+      const error = searchParams.get('error');
+
+      // Handle backend OAuth errors first
+      if (error) {
+        console.error('[OAuthCallback] Backend error:', error);
+        
+        const errorMessages: Record<string, string> = {
+          google_failed: 'Google login failed. Please try again.',
+          facebook_failed: 'Facebook login failed. Please try again.',
+          oauth_error: 'Login failed. Please try again.',
+        };
+        
+        toast.error(errorMessages[error] || 'Authentication failed.');
+        navigate('/login?error=' + error, { replace: true });
+        return;
+      }
+
       if (!token) {
         toast.error('Authentication failed. No token received.');
         navigate('/login?error=oauth_failed', { replace: true });
@@ -20,32 +37,41 @@ const OAuthCallback = () => {
       }
 
       try {
-        // Store token immediately so API calls work
+        // Store tokens
         localStorage.setItem('token', token);
+        if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
         localStorage.setItem('rememberMe', 'true');
 
-        // Fetch real user data from backend
+        // Fetch user data
         console.log('[OAuthCallback] Fetching user data...');
         const response = await userApi.getMe();
-        const { user, hasProfile } = response.data.data;
+        const respData = response?.data?.data;
+        if (!respData || !respData.user) {
+          console.error('[OAuthCallback] Invalid response from /me:', response);
+          toast.error('Failed to retrieve user data from server. Please try logging in again.');
+          navigate('/login?error=oauth_failed', { replace: true });
+          return;
+        }
+        const { user } = respData;
 
-        console.log(`[OAuthCallback] User: ${user.email}, role: ${user.role}, hasProfile: ${hasProfile}`);
+        console.log(`[OAuthCallback] User: ${user.email}, role: ${user.role}`);
 
-        // Update auth context with real user (async — handles socket, profile check, redirect)
         await updateUserFromOAuth(user, token);
 
-        // If we reach here, updateUserFromOAuth didn't redirect (user has profile)
+
         const dashboardRoute = user.role === 'artisan' 
           ? '/artisan/dashboard' 
           : '/customer/dashboard';
 
-        console.log(`[OAuthCallback] Redirecting to ${dashboardRoute}`);
         navigate(dashboardRoute, { replace: true });
 
       } catch (error: any) {
         console.error('OAuth callback error:', error);
         
-        if (error.response?.status === 401 || error.response?.status === 403) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        
+        if (error.response?.status === 401) {
           toast.error('Session expired. Please log in again.');
         } else {
           toast.error('Login failed. Please try again.');
@@ -61,9 +87,8 @@ const OAuthCallback = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
-        <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-gray-600 text-lg">Completing login...</p>
-        <p className="text-gray-400 text-sm mt-2">Please wait while we set up your account</p>
       </div>
     </div>
   );

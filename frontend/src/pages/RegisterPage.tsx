@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { 
   Eye, 
   EyeOff, 
@@ -33,7 +33,6 @@ import { NIGERIAN_STATES, SKILL_CATEGORIES } from '@/types';
 import { toast } from 'sonner';
 
 const RegisterPage = () => {
-  const navigate = useNavigate();
   const { register } = useAuth();
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<'customer' | 'artisan'>('customer');

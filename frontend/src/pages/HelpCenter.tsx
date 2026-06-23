@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
 import { Search, ChevronDown, MessageCircle, Book, Shield, CreditCard, User } from 'lucide-react';
 
+import { useState } from 'react';
 const HelpCenter = () => {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

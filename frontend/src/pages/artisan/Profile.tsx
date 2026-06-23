@@ -13,7 +13,6 @@ import {
   Star,
   Briefcase,
   CheckCircle,
-  RefreshCw,
   Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,13 +35,14 @@ const NIGERIAN_STATES = [
 ];
 
 const Profile: React.FC = () => {
-  const { user, artisanProfile, updateUser, updateArtisanProfile, refreshUser } = useAuth();
+  const { user, artisanProfile, updateUser, updateArtisanProfile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  
   const [localArtisanProfile, setLocalArtisanProfile] = useState<any>(null);
 
   const [formData, setFormData] = useState({
@@ -202,17 +202,6 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handleRefreshProfile = async () => {
-    try {
-      setIsLoadingProfile(true);
-      await refreshUser();
-      toast.success('Profile refreshed');
-    } catch (error) {
-      toast.error('Failed to refresh profile');
-    } finally {
-      setIsLoadingProfile(false);
-    }
-  };
 
   const getInitials = (name: string) => {
     return name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U';

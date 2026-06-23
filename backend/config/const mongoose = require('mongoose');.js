@@ -9,21 +9,15 @@ const NotificationService = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
 // ==========================================
-// TOKEN GENERATION - FIXED: includes BOTH id and userId
+// TOKEN GENERATION
 // ==========================================
 
 const generateTokens = (userId) => {
   console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
   console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
 
-  // Include BOTH id and userId for backward compatibility with auth middleware
-  const payload = {
-    id: userId.toString(),
-    userId: userId.toString()
-  };
-
   const accessToken = jwt.sign(
-    payload,
+    { userId },
     process.env.JWT_SECRET,
     { 
       expiresIn: process.env.JWT_EXPIRE || '15m',
@@ -33,7 +27,7 @@ const generateTokens = (userId) => {
   );
 
   const refreshToken = jwt.sign(
-    { userId: userId.toString() },
+    { userId },
     process.env.JWT_REFRESH_SECRET,
     { 
       expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
@@ -46,7 +40,7 @@ const generateTokens = (userId) => {
 };
 
 // ==========================================
-// VALIDATION RULES - FIXED: allows 'admin' role
+// VALIDATION RULES
 // ==========================================
 
 const registerValidation = [
@@ -63,8 +57,8 @@ const registerValidation = [
     .matches(/^(0[7-9][0-1]\d{8}|\+234[7-9][0-1]\d{8})$/)
     .withMessage('Please provide a valid Nigerian phone number (e.g., 08012345678)'),
   body('role')
-    .isIn(['customer', 'artisan', 'admin'])
-    .withMessage('Role must be customer, artisan, or admin'),
+    .isIn(['customer', 'artisan'])
+    .withMessage('Role must be customer or artisan'),
   body('fullName')
     .trim()
     .notEmpty()
@@ -110,7 +104,7 @@ const getCookieOptions = (maxAge) => {
 };
 
 // ==========================================
-// REGISTRATION - FIXED: Handles frontend data format
+// REGISTRATION
 // ==========================================
 
 exports.register = [
@@ -141,11 +135,8 @@ exports.register = [
         location,
         profileImage,
         skills,
-        profession,
         experienceYears,
         rate,
-        rateAmount,
-        ratePeriod,
         idVerification,
         bio,
         portfolioImages,
@@ -173,12 +164,12 @@ exports.register = [
 
       // Convert coordinates to GeoJSON
       let locationData = {
-        state: location?.state || '',
-        city: location?.city || '',
-        address: location?.address || ''
+        state: location.state,
+        city: location.city,
+        address: location.address || ''
       };
 
-      if (location?.coordinates?.lat && location?.coordinates?.lng) {
+      if (location.coordinates?.lat && location.coordinates?.lng) {
         locationData.coordinates = {
           type: 'Point',
           coordinates: [
@@ -201,37 +192,12 @@ exports.register = [
 
       // Create artisan profile
       if (role === 'artisan') {
-        // FIXED: Convert frontend profession to skills array
-        let skillsArray = [];
-        if (skills && Array.isArray(skills) && skills.length > 0) {
-          skillsArray = skills;
-        } else if (profession && typeof profession === 'string') {
-          skillsArray = [profession.trim()];
-        }
-        
-        if (skillsArray.length === 0) {
+        if (!skills || !Array.isArray(skills) || skills.length === 0) {
           throw new AppError('VALIDATION_ERROR', 'At least one skill is required for artisans.');
         }
 
-        // FIXED: Build rate object from frontend data (handles both formats)
-        let rateData = { amount: 0, period: 'job' };
-        
-        if (rate && typeof rate === 'object' && rate.amount) {
-          // Backend format: { amount: 200000, period: 'job' }
-          rateData = {
-            amount: parseFloat(rate.amount),
-            period: rate.period || 'job'
-          };
-        } else if (rateAmount) {
-          // Frontend format: rateAmount = 200000
-          rateData = {
-            amount: parseFloat(rateAmount),
-            period: ratePeriod || 'job'
-          };
-        }
-
-        if (!rateData.amount || rateData.amount <= 0) {
-          throw new AppError('VALIDATION_ERROR', 'Rate amount is required for artisans.');
+        if (!rate || !rate.amount || !rate.period) {
+          throw new AppError('VALIDATION_ERROR', 'Rate amount and period are required for artisans.');
         }
 
         const minRates = {
@@ -243,16 +209,19 @@ exports.register = [
         };
 
         const minRate = minRates[experienceYears] || 500;
-        if (rateData.amount < minRate) {
+        if (rate.amount < minRate) {
           throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
         }
 
         const artisanProfile = await ArtisanProfile.create({
           userId: user._id,
-          profession: skillsArray[0] || 'General Service',
-          skills: skillsArray,
+          profession: skills?.[0] || 'General Service',
+          skills,
           experienceYears: experienceYears || '0-1',
-          rate: rateData,
+          rate: {
+            amount: parseFloat(rate.amount),
+            period: rate.period
+          },
           idVerification: idVerification || {},
           bio: bio || '',
           portfolioImages: portfolioImages || [],
@@ -416,7 +385,7 @@ exports.login = async (req, res, next) => {
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-    // Login notification (security alert)
+    // ✅ FIXED: Login notification (security alert) - NOW IN CORRECT PLACE (login, not register)
     try {
       const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
       const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
@@ -591,7 +560,7 @@ exports.verifyEmail = async (req, res, next) => {
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    // Email verified notification
+    // ✅ Email verified notification
     try {
       await NotificationService.send({
         userId: user._id,
@@ -771,7 +740,7 @@ exports.resetPassword = async (req, res, next) => {
     user.refreshTokens = [];
     await user.save();
 
-    // Notify user of password change
+    // ✅ ADDED: Notify user of password change
     try {
       await NotificationService.send({
         userId: user._id,

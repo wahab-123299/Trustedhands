@@ -302,101 +302,38 @@ api.interceptors.response.use(
   }
 );
 
-// ==========================================
-// WAKE UP SERVER BEFORE OAUTH
-// Prevents Render "waking up" screen during OAuth login
-// ==========================================
-
-/**
- * Pings backend /health endpoint to wake up Render instance
- * Shows user-friendly loading state while waiting via callback
- */
-export const wakeUpServer = async (onStatus?: (msg: string) => void): Promise<boolean> => {
-  const baseUrl = API_URL.replace('/api', '');
-  const healthUrl = `${baseUrl}/health`;
-
-  addLog('[WakeUp] Pinging server to wake up...');
-  onStatus?.('Connecting to server...');
-
-  const maxWaitMs = 35000; // Render cold start ~15-30s
-  const startTime = Date.now();
-  let attempt = 0;
-
-  while (Date.now() - startTime < maxWaitMs) {
-    attempt++;
+export const wakeUpServer = async (): Promise<boolean> => {
+  try {
+    addLog('[WakeUp] Pinging server...');
+    await axios.get(`${API_URL.replace('/api', '')}/health`, { 
+      timeout: 10000,
+      withCredentials: true 
+    });
+    addLog('[WakeUp] Server is awake');
+    return true;
+  } catch (error: any) {
     try {
-      // Use axios directly (not our api instance) to avoid interceptors
-      const res = await axios.get(healthUrl, { 
-        timeout: 8000,
-        withCredentials: false // health endpoint doesn't need auth
+      await axios.get(API_URL.replace('/api', ''), { 
+        timeout: 10000,
+        withCredentials: true 
       });
-
-      if (res.status === 200) {
-        addLog('[WakeUp] Server is awake!');
-        onStatus?.('Connected! Redirecting...');
-        return true;
-      }
-    } catch (err: any) {
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-
-      if (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK') {
-        addLog(`[WakeUp] Attempt ${attempt}: Server still waking (${elapsed}s)...`);
-        onStatus?.(`Waking up server... (${elapsed}s)`);
-      } else if (err.response?.status === 503) {
-        addLog(`[WakeUp] Attempt ${attempt}: Server starting up (${elapsed}s)...`);
-        onStatus?.(`Starting up... (${elapsed}s)`);
-      } else {
-        addLog(`[WakeUp] Attempt ${attempt}: ${err.message}`);
-      }
+      addLog('[WakeUp] Server responded (root)');
+      return true;
+    } catch {
+      addLog('[WakeUp] Server ping failed');
+      return false;
     }
-
-    // Wait 2.5s before next attempt
-    await new Promise(r => setTimeout(r, 2500));
   }
-
-  addLog('[WakeUp] Timed out waiting for server');
-  onStatus?.('Server is taking too long. Please try again.');
-  return false;
 };
 
-/**
- * Login with Google — wakes server first, then redirects
- * Prevents users seeing Render's "waking up" spinner during OAuth
- */
-export const loginWithGoogle = async (onStatus?: (msg: string) => void): Promise<boolean> => {
+export const loginWithGoogle = (): void => {
   const baseUrl = API_URL.replace('/api', '');
-
-  onStatus?.('Checking server...');
-  const isAwake = await wakeUpServer(onStatus);
-
-  if (!isAwake) {
-    addLog('[OAuth] Server wake-up failed, aborting Google login');
-    return false;
-  }
-
-  addLog('[OAuth] Redirecting to Google OAuth...');
   window.location.href = `${baseUrl}/auth/google`;
-  return true;
 };
 
-/**
- * Login with Facebook — wakes server first, then redirects
- * Prevents users seeing Render's "waking up" spinner during OAuth
- */
-export const loginWithFacebook = async (onStatus?: (msg: string) => void): Promise<boolean> => {
+export const loginWithFacebook = (): void => {
   const baseUrl = API_URL.replace('/api', '');
-
-  onStatus?.('Checking server...');
-  const isAwake = await wakeUpServer(onStatus);
-
-  if (!isAwake) {
-    addLog('[OAuth] Server wake-up failed, aborting Facebook login');
-    return false;
-  }
-
-  addLog('[OAuth] Redirecting to Facebook OAuth...');
   window.location.href = `${baseUrl}/auth/facebook`;
-  return true;
 };
 
 export const handleOAuthCallback = (accessToken: string, refreshToken: string, rememberMe = false): void => {
@@ -617,13 +554,13 @@ export const artisanApi = {
   // ==========================================
   getMyProfile: async () => {
     const response = await api.get<ApiResponse<any>>('/artisans/me');
-
+    
     console.log('[API] getMyProfile raw response:', JSON.stringify(response.data, null, 2));
-
+    
     // Extract artisan data from response - handle both structures
     const responseData = response.data?.data;
     let artisanData: any = null;
-
+    
     if (responseData?.artisan) {
       // Structure: { data: { artisan: {...} } }
       artisanData = responseData.artisan;
@@ -636,7 +573,7 @@ export const artisanApi = {
         console.log('[API] getMyProfile: Found artisan directly in data');
       }
     }
-
+    
     if (artisanData) {
       const transformed = transformArtisanData(artisanData);
       // Ensure response has consistent structure for AuthContext
@@ -644,7 +581,7 @@ export const artisanApi = {
     } else {
       console.log('[API] getMyProfile: No artisan data found');
     }
-
+    
     return response;
   },
 

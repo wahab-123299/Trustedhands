@@ -8,15 +8,15 @@ import { SocketProvider } from '@/contexts/SocketContext';
 // Layouts
 import MainLayout from '@/components/layout/MainLayout';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import AdminDashboardLayout from '@/components/layout/AdminDashboardLayout';
+import SetupProfile from '@/pages/SetupProfile';
 
 // Public Pages
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
-import AuthSuccessPage from './pages/AuthSuccesspage';
-import OAuthCallback from './pages/OAuthCallback';
+import AuthSuccessPage from './pages/AuthSuccesspage.tsx';
+import OAuthCallback from './pages/OAuthCallback.tsx';
 import BookArtisan from '@/pages/BookArtisan';
 import ScrollToTop from "@/components/ScrollToTop";
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
@@ -26,7 +26,7 @@ import ArtisanProfilePage from '@/pages/ArtisanProfilePage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailsPage from '@/pages/JobDetailsPage';
 
-// Static Pages
+// ✅ NEW STATIC PAGES
 import AboutUs from '@/pages/AboutUs';
 import HowItWorks from '@/pages/HowItWorks';
 import Careers from '@/pages/Careers';
@@ -54,15 +54,12 @@ const ArtisanMessages = lazy(() => import('@/pages/artisan/Messages'));
 const ArtisanProfile = lazy(() => import('@/pages/artisan/Profile'));
 const ArtisanWallet = lazy(() => import('@/pages/artisan/Wallet'));
 const ArtisanVerificationPage = lazy(() => import('@/pages/artisan/Verification'));
-const SetupProfile = lazy(() => import('@/pages/SetupProfile'));
 
 // Admin Pages
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminStats = lazy(() => import('@/pages/admin/AdminStats'));
 const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'));
 const AdminVerifications = lazy(() => import('@/pages/admin/AdminVerifications'));
-const AdminArtisans = lazy(() => import('@/pages/admin/AdminArtisans'));
-const AdminMessages = lazy(() => import('@/pages/admin/AdminMessages'));
-const AdminProfile = lazy(() => import('@/pages/admin/AdminProfile'));
 
 // Shared Pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
@@ -86,6 +83,20 @@ const PageLoader = () => (
     </div>
   </div>
 );
+
+// ==========================================
+// ADMIN ROUTE PROTECTOR
+// ==========================================
+
+const AdminRoute = ({ children }) => {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+
+  return <>{children}</>;
+};
 
 // ==========================================
 // MAIN APP COMPONENT
@@ -128,7 +139,7 @@ function App() {
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:id" element={<JobDetailsPage />} />
 
-                {/* STATIC PAGES */}
+                {/* NEW STATIC PAGES */}
                 <Route path="/about" element={<AboutUs />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/careers" element={<Careers />} />
@@ -182,16 +193,15 @@ function App() {
               </Route>
 
               {/* ==========================================
-                  ADMIN ROUTES — Uses AdminDashboardLayout
+                  ADMIN ROUTES - FIXED: Now uses DashboardLayout
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
-                <Route element={<AdminDashboardLayout />}>
-                  <Route path="/admin/dashboard" element={<AdminStats />} />
-                  <Route path="/admin/users" element={<AdminUsers />} />
-                  <Route path="/admin/verifications" element={<AdminVerifications />} />
-                  <Route path="/admin/artisans" element={<AdminArtisans />} />
-                  <Route path="/admin/messages" element={<AdminMessages />} />
-                  <Route path="/admin/profile" element={<AdminProfile />} />
+                <Route element={<RoleRoute allowedRoles={['admin']} />}>
+                  <Route element={<DashboardLayout />}>
+                    <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                    <Route path="/admin/users" element={<AdminUsers />} />
+                    <Route path="/admin/verifications" element={<AdminVerifications />} />
+                  </Route>
                 </Route>
               </Route>
 
@@ -235,7 +245,7 @@ import { useAuth } from '@/contexts/AuthContext';
 function NavigateToMessages() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'admin') return <Navigate to="/admin/messages" replace />;
+
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/messages" replace />
     : <Navigate to="/customer/messages" replace />;
@@ -244,7 +254,6 @@ function NavigateToMessages() {
 function NavigateToDashboard() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/dashboard" replace />
     : <Navigate to="/customer/dashboard" replace />;
@@ -253,7 +262,6 @@ function NavigateToDashboard() {
 function NavigateToProfile() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'admin') return <Navigate to="/admin/profile" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/profile" replace />
     : <Navigate to="/customer/profile" replace />;
@@ -262,7 +270,6 @@ function NavigateToProfile() {
 function NavigateToWallet() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
   if (user.role !== 'artisan') return <Navigate to="/customer/dashboard" replace />;
   return <Navigate to="/artisan/wallet" replace />;
 }

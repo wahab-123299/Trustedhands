@@ -43,7 +43,7 @@ export default function SetupProfile() {
 
           <div className="space-y-3">
             <Button 
-              onClick={() => navigate('/artisan/profile/edit')}
+              onClick={() => navigate('/artisan/profile')}  // ✅ FIXED
               className="w-full bg-emerald-600 hover:bg-emerald-700 h-12"
             >
               <UserCheck className="w-5 h-5 mr-2" />

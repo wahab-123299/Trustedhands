@@ -3,8 +3,10 @@ const { User, ArtisanProfile, Job, Wallet } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 
-// ✅ HELPER: Transform artisan data to match frontend expectations
-// FIXED: Handles null/undefined userId gracefully instead of returning null
+// ==========================================
+// HELPER: Transform artisan data to match frontend expectations
+// ==========================================
+
 const transformArtisan = (artisan) => {
   if (!artisan) {
     console.log('[transformArtisan] NULL artisan passed');
@@ -20,7 +22,6 @@ const transformArtisan = (artisan) => {
     ? userData._id?.toString() 
     : (artisan.userId?.toString ? artisan.userId.toString() : artisan.userId);
 
-  // DEBUG: Log what we're working with
   if (!userData) {
     console.log(`[transformArtisan] No userData for artisan ${artisan._id}, userId value: ${artisan.userId}`);
   }
@@ -46,7 +47,7 @@ const transformArtisan = (artisan) => {
     location: userData?.location || artisan.location || { city: '', state: '' },
     profileImage: userData?.profileImage || null,
     isVerified: userData?.isVerified || false,
-    userId: userId || artisan._id.toString(), // Fallback to artisan ID
+    userId: userId || artisan._id.toString(),
     availability: {
       status: artisan.availability?.status || 'available',
       nextAvailableDate: artisan.availability?.nextAvailableDate
@@ -67,6 +68,10 @@ const transformArtisan = (artisan) => {
     updatedAt: artisan.updatedAt
   };
 };
+
+// ==========================================
+// GET MY PROFILE (for logged-in artisan)
+// ==========================================
 
 exports.getMyProfile = async (req, res, next) => {
   try {
@@ -89,7 +94,8 @@ exports.getMyProfile = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        artisan: transformArtisan(artisanProfile)
+        artisan: transformArtisan(artisanProfile),
+        artisanProfile: transformArtisan(artisanProfile)
       }
     });
   } catch (error) {
@@ -97,8 +103,10 @@ exports.getMyProfile = async (req, res, next) => {
   }
 };
 
-// Get all artisans with filters
-// FIXED: Removed userId null filter that was dropping all artisans with broken references
+// ==========================================
+// GET ALL ARTISANS (with filters)
+// ==========================================
+
 exports.getArtisans = async (req, res, next) => {
   try {
     const {
@@ -119,7 +127,6 @@ exports.getArtisans = async (req, res, next) => {
 
     const query = {};
 
-    // Only add availability filter if explicitly provided and not 'all'
     if (availability && availability !== 'all') {
       query['availability.status'] = availability;
     }
@@ -152,11 +159,9 @@ exports.getArtisans = async (req, res, next) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // DEBUG: Check total in DB before any filters
     const totalInDb = await ArtisanProfile.countDocuments();
     console.log('Total ArtisanProfile documents in DB:', totalInDb);
 
-    // Get artisans with populated user data
     let artisans = await ArtisanProfile.find(query)
       .populate({
         path: 'userId',
@@ -176,10 +181,6 @@ exports.getArtisans = async (req, res, next) => {
       console.log('First artisan ID:', artisans[0]._id);
     }
 
-    // FIXED: Removed the userId null filter that was causing empty results
-    // transformArtisan now handles null userId gracefully
-
-    // Apply state filter ONLY if state is provided and not "All States"
     if (state && state !== 'All States') {
       console.log(`Filtering by state: ${state}`);
       const beforeCount = artisans.length;
@@ -189,7 +190,6 @@ exports.getArtisans = async (req, res, next) => {
       console.log(`State filter: ${beforeCount} -> ${artisans.length}`);
     }
 
-    // Apply city filter ONLY if city is provided
     if (city) {
       console.log(`Filtering by city: ${city}`);
       artisans = artisans.filter(a => 
@@ -230,7 +230,10 @@ exports.getArtisans = async (req, res, next) => {
   }
 };
 
-// Search artisans by name or skill
+// ==========================================
+// SEARCH ARTISANS
+// ==========================================
+
 exports.searchArtisans = async (req, res, next) => {
   try {
     const { q, page = 1, limit = 10 } = req.query;
@@ -301,7 +304,10 @@ exports.searchArtisans = async (req, res, next) => {
   }
 };
 
-// Get nearby artisans
+// ==========================================
+// GET NEARBY ARTISANS
+// ==========================================
+
 exports.getNearbyArtisans = async (req, res, next) => {
   try {
     const { lat, lng, radius = 10, page = 1, limit = 10 } = req.query;
@@ -370,7 +376,10 @@ exports.getNearbyArtisans = async (req, res, next) => {
   }
 };
 
-// Get single artisan details
+// ==========================================
+// GET SINGLE ARTISAN BY ID
+// ==========================================
+
 exports.getArtisanById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -418,7 +427,10 @@ exports.getArtisanById = async (req, res, next) => {
   }
 };
 
-// Get artisan reviews
+// ==========================================
+// GET ARTISAN REVIEWS
+// ==========================================
+
 exports.getArtisanReviews = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -477,7 +489,10 @@ exports.getArtisanReviews = async (req, res, next) => {
   }
 };
 
-// Update artisan profile (artisan only)
+// ==========================================
+// UPDATE ARTISAN PROFILE
+// ==========================================
+
 exports.updateProfile = async (req, res, next) => {
   try {
     const userId = req.user._id;
@@ -530,7 +545,10 @@ exports.updateProfile = async (req, res, next) => {
   }
 };
 
-// Update availability (artisan only)
+// ==========================================
+// UPDATE AVAILABILITY
+// ==========================================
+
 exports.updateAvailability = async (req, res, next) => {
   try {
     const userId = req.user._id;
@@ -573,7 +591,10 @@ exports.updateAvailability = async (req, res, next) => {
   }
 };
 
-// Update bank details (artisan only)
+// ==========================================
+// UPDATE BANK DETAILS
+// ==========================================
+
 exports.updateBankDetails = async (req, res, next) => {
   try {
     const userId = req.user._id;
@@ -620,7 +641,10 @@ exports.updateBankDetails = async (req, res, next) => {
   }
 };
 
-// Upload portfolio images (artisan only)
+// ==========================================
+// UPLOAD PORTFOLIO IMAGES
+// ==========================================
+
 exports.uploadPortfolioImages = async (req, res, next) => {
   try {
     const userId = req.user._id;
@@ -665,7 +689,10 @@ exports.uploadPortfolioImages = async (req, res, next) => {
   }
 };
 
-// Delete portfolio image (artisan only)
+// ==========================================
+// DELETE PORTFOLIO IMAGE
+// ==========================================
+
 exports.deletePortfolioImage = async (req, res, next) => {
   try {
     const userId = req.user._id;
@@ -697,21 +724,4 @@ exports.deletePortfolioImage = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
-
-// ==========================================
-// EXPORT ALL FUNCTIONS
-// ==========================================
-module.exports = {
-  getMyProfile: exports.getMyProfile,
-  getArtisans: exports.getArtisans,
-  searchArtisans: exports.searchArtisans,
-  getNearbyArtisans: exports.getNearbyArtisans,
-  getArtisanById: exports.getArtisanById,
-  getArtisanReviews: exports.getArtisanReviews,
-  updateProfile: exports.updateProfile,
-  updateAvailability: exports.updateAvailability,
-  updateBankDetails: exports.updateBankDetails,
-  uploadPortfolioImages: exports.uploadPortfolioImages,
-  deletePortfolioImage: exports.deletePortfolioImage
 };
