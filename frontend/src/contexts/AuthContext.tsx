@@ -42,7 +42,7 @@ interface AuthContextType {
   register: (data: RegisterData, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
-  updateUserFromOAuth: (user: User, token: string) => void;
+  updateUserFromOAuth: (user: User, token: string, refreshToken?: string) => void;
   updateArtisanProfile: (data: Partial<ArtisanProfile>) => void;
   refreshUser: () => Promise<void>;
   socket: Socket | null;
@@ -88,6 +88,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return localStorage.getItem('token') || sessionStorage.getItem('token');
   }, []);
 
+  const getRefreshToken = useCallback((): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
+  }, []);
+
   const storeToken = useCallback((token: string, rememberMe: boolean = true): void => {
     if (typeof window === 'undefined') return;
 
@@ -97,6 +102,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } else {
       sessionStorage.setItem('token', token);
       localStorage.removeItem('rememberMe');
+    }
+  }, []);
+
+  const storeRefreshToken = useCallback((refreshToken: string, rememberMe: boolean = true): void => {
+    if (typeof window === 'undefined') return;
+    if (rememberMe) {
+      localStorage.setItem('refreshToken', refreshToken);
+    } else {
+      sessionStorage.setItem('refreshToken', refreshToken);
     }
   }, []);
 
@@ -232,7 +246,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: initAuth — Handles flat backend response
+  // FIXED: initAuth — Handles nested backend response { data: { user, ... } }
   // ==========================================
   useEffect(() => {
     if (hasInitialized.current) {
@@ -272,11 +286,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 150)}...`);
 
-        // FIXED: Handle flat backend response { user, token, ... }
+        // FIXED: Handle nested backend response { data: { user, hasProfile, artisanProfile } }
         const res = response.data as any;
-        const user = res.user || res.data?.user;
-        const hasProfile = res.hasProfile || res.data?.hasProfile;
-        let artisanProfile = res.artisanProfile || res.data?.artisanProfile;
+        const data = res.data || res;
+        const user = data.user;
+        const hasProfile = data.hasProfile;
+        let artisanProfile = data.artisanProfile;
 
         if (!user) {
           throw new Error('No user data in response');
@@ -285,7 +300,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Init] User: ${user.email}, Role: ${user.role}, hasProfile: ${hasProfile}`);
         addLog(`[Init] artisanProfile from getMe: ${artisanProfile ? 'EXISTS' : 'NULL'}`);
 
-        // FIXED: Store user in localStorage
         localStorage.setItem('user', JSON.stringify(user));
 
         if (user.role === 'artisan' && hasProfile === false) {
@@ -387,12 +401,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const code = err.response.data.error.code;
       const codeMap: Record<string, string> = {
         'AUTH_INVALID_CREDENTIALS': 'Email or password is incorrect',
-        'AUTH_USER_NOT_FOUND': 'No account found with this email',
         'AUTH_ACCOUNT_LOCKED': 'Account temporarily locked. Try again later',
         'AUTH_EMAIL_NOT_VERIFIED': 'Please verify your email before logging in',
         'AUTH_TOO_MANY_ATTEMPTS': 'Too many attempts. Please try again later',
         'AUTH_TOKEN_EXPIRED': 'Session expired. Please log in again.',
         'AUTH_UNAUTHORIZED': 'Access denied. Please log in again.',
+        'USER_EXISTS': 'An account with this email already exists',
+        'USER_PHONE_EXISTS': 'This phone number is already registered',
       };
       const mapped = codeMap[code];
       if (mapped) return mapped;
@@ -410,7 +425,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: login — Handles flat backend response
+  // FIXED: login — Handles nested backend response { data: { user, accessToken, refreshToken } }
   // ==========================================
   const login = useCallback(
     async (email: string, password: string, rememberMe: boolean = true) => {
@@ -420,27 +435,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         addLog(`[Login] Starting login for: ${email}`);
 
-        const response = await authApi.login({ email, password });
+        const response = await authApi.login({ email, password }, rememberMe);
         const res = response.data;
 
-        // FIXED: Backend sends flat structure: { success, message, token, refreshToken, user }
-        const user = res.user;
-        const accessToken = res.token || res.accessToken;
-        const dashboardRoute = res.dashboardRoute || '/';
+        // FIXED: Backend sends nested structure: { success, message, data: { user, accessToken, refreshToken, dashboardRoute } }
+        const data = res.data || res;
+        const user = data.user;
+        const accessToken = data.accessToken || data.token;
+        const refreshToken = data.refreshToken;
+        const dashboardRoute = data.dashboardRoute || '/';
 
         if (!accessToken) {
           throw new Error('No access token received from server');
         }
 
+        if (!user) {
+          throw new Error('No user data received from server');
+        }
+
         storeToken(accessToken, rememberMe);
-        // FIXED: Store user in localStorage
+        if (refreshToken) {
+          storeRefreshToken(refreshToken, rememberMe);
+        }
         localStorage.setItem('user', JSON.stringify(user));
 
         let finalArtisanProfile: ArtisanProfile | null = null;
         let needsProfileSetup = false;
 
         if (user.role === 'artisan') {
-          addLog('[Login] User is artisan but no profile in login response, fetching /artisans/me...');
+          addLog('[Login] User is artisan, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
             finalArtisanProfile = extractArtisanFromResponse(artisanRes);
@@ -488,16 +511,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (err: any) {
         const message = extractErrorMessage(err);
         isLoggingIn.current = false;
-        setState((prev) => ({ ...prev, isLoading: false }));
+        setState((prev) => ({ 
+          ...prev, 
+          isLoading: false,
+          isInitialized: true,  // FIXED: Ensure initialized even on error
+        }));
         toast.error(message);
         throw new Error(message);
       }
     },
-    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage, extractArtisanFromResponse]
+    [connectSocket, navigate, location.state, storeToken, storeRefreshToken, extractErrorMessage, extractArtisanFromResponse]
   );
 
   // ==========================================
-  // FIXED: register — Handles flat backend response
+  // FIXED: register — Handles nested backend response + artisan profile check
   // ==========================================
   const register = useCallback(
     async (data: RegisterData, rememberMe: boolean = true) => {
@@ -505,26 +532,58 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isLoggingIn.current = true;
         setState((prev) => ({ ...prev, isLoading: true }));
 
-        const response = await authApi.register(data);
+        const response = await authApi.register(data, rememberMe);
         const res = response.data;
 
-        // FIXED: Backend sends flat structure: { success, message, accessToken, refreshToken, user }
-        const user = res.user;
-        const accessToken = res.accessToken;
-        const dashboardRoute = res.dashboardRoute || '/';
+        // FIXED: Backend sends nested structure: { success, message, data: { user, accessToken, refreshToken, dashboardRoute } }
+        const responseData = res.data || res;
+        const user = responseData.user;
+        const accessToken = responseData.accessToken || responseData.token;
+        const refreshToken = responseData.refreshToken;
+        const dashboardRoute = responseData.dashboardRoute || '/';
 
         if (!accessToken) {
           throw new Error('No access token received from server');
         }
 
+        if (!user) {
+          throw new Error('No user data received from server');
+        }
+
         storeToken(accessToken, rememberMe);
-        // FIXED: Store user in localStorage
+        if (refreshToken) {
+          storeRefreshToken(refreshToken, rememberMe);
+        }
         localStorage.setItem('user', JSON.stringify(user));
+
+        // FIXED: Check artisan profile for new registrations too
+        let finalArtisanProfile: ArtisanProfile | null = null;
+        let needsProfileSetup = false;
+
+        if (user.role === 'artisan') {
+          addLog('[Register] User is artisan, fetching /artisans/me...');
+          try {
+            const artisanRes = await artisanApi.getMyProfile();
+            finalArtisanProfile = extractArtisanFromResponse(artisanRes);
+
+            if (finalArtisanProfile) {
+              addLog('[Register] Artisan profile loaded successfully');
+            }
+          } catch (err: any) {
+            if (err.response?.status === 404) {
+              addLog('[Register] Artisan profile not found (404) — needs setup');
+              needsProfileSetup = true;
+            } else {
+              addLog(`[Register] Failed to load artisan profile: ${err.message}`);
+            }
+            finalArtisanProfile = null;
+          }
+        }
 
         setState({
           user,
           token: accessToken,
-          artisanProfile: null,
+          artisanProfile: finalArtisanProfile,
           isAuthenticated: true,
           isLoading: false,
           isInitialized: true,
@@ -533,19 +592,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         connectSocket(user._id, accessToken);
         toast.success("Registration successful");
 
-        const destination = dashboardRoute || '/';
         isLoggingIn.current = false;
-        navigate(destination, { replace: true });
+
+        // FIXED: Redirect to profile setup for artisans without profile
+        if (needsProfileSetup) {
+          addLog('[Register] Redirecting to profile setup');
+          navigate('/setup-profile', { replace: true });
+        } else {
+          const destination = dashboardRoute || '/';
+          navigate(destination, { replace: true });
+        }
 
       } catch (err: any) {
         const message = extractErrorMessage(err);
         isLoggingIn.current = false;
-        setState((prev) => ({ ...prev, isLoading: false }));
+        setState((prev) => ({ 
+          ...prev, 
+          isLoading: false,
+          isInitialized: true,  // FIXED: Ensure initialized even on error
+        }));
         toast.error(message);
         throw new Error(message);
       }
     },
-    [connectSocket, navigate, storeToken, extractErrorMessage]
+    [connectSocket, navigate, storeToken, storeRefreshToken, extractErrorMessage, extractArtisanFromResponse]
   );
 
   const logout = useCallback(async () => {
@@ -571,12 +641,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     toast.success("Logged out successfully");
   }, [disconnectSocket, navigate, clearTokens]);
 
-  const updateUserFromOAuth = useCallback((user: User, token: string) => {
+  // FIXED: Accept refreshToken parameter
+  const updateUserFromOAuth = useCallback((user: User, token: string, refreshToken?: string) => {
     addLog(`[OAuth] Updating user from OAuth: ${user.email}`);
 
     localStorage.setItem('token', token);
     localStorage.setItem('rememberMe', 'true');
-    // FIXED: Store user in localStorage
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
+    }
     localStorage.setItem('user', JSON.stringify(user));
 
     setState({
@@ -592,7 +665,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [connectSocket]);
 
   // ==========================================
-  // FIXED: refreshUser — Handles flat backend response
+  // FIXED: refreshUser — Handles nested backend response
   // ==========================================
   const refreshUser = useCallback(async () => {
     try {
@@ -600,10 +673,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const response = await userApi.getMe();
       const res = response.data;
 
-      // FIXED: Handle flat response
-      const user = res.user || res.data?.user;
-      const artisanProfile = res.artisanProfile || res.data?.artisanProfile;
-      const hasProfile = res.hasProfile || res.data?.hasProfile;
+      // FIXED: Handle nested response
+      const data = res.data || res;
+      const user = data.user;
+      const artisanProfile = data.artisanProfile;
+      const hasProfile = data.hasProfile;
 
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
 
@@ -628,7 +702,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         artisanProfile: finalArtisanProfile,
         isAuthenticated: true,
       }));
-      // FIXED: Store updated user in localStorage
       localStorage.setItem('user', JSON.stringify(user));
       addLog('[RefreshUser] Success');
     } catch (error: any) {

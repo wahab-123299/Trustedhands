@@ -1,25 +1,47 @@
 const express = require('express');
 const router = express.Router();
-const artisanController = require('../controllers/artisanController');  // ✅ FIXED: Direct import
-const { authenticate, authorize } = require('../middleware/authMiddleware');
-const { uploadMultiple } = require('../middleware/uploadMiddleware');
+const artisanController = require('../controllers/artisanController');
+const { authenticate: protect } = require('../middleware/authMiddleware');
 
-// Public routes
+// ==========================================
+// PUBLIC ROUTES (no auth needed)
+// ==========================================
+
+// Get all artisans (with filters)
 router.get('/', artisanController.getArtisans);
+
+// Search artisans
 router.get('/search', artisanController.searchArtisans);
+
+// Get nearby artisans
 router.get('/nearby', artisanController.getNearbyArtisans);
 
-// ✅ FIXED: Get current artisan's own profile (MUST be before /:id)
-router.get('/me', authenticate, authorize('artisan'), artisanController.getMyProfile);
-
+// Get single artisan public profile by ID
 router.get('/:id', artisanController.getArtisanById);
+
+// Get artisan reviews
 router.get('/:id/reviews', artisanController.getArtisanReviews);
 
-// Protected routes - Artisan only
-router.put('/profile', authenticate, authorize('artisan'), artisanController.updateProfile);
-router.put('/availability', authenticate, authorize('artisan'), artisanController.updateAvailability);
-router.put('/bank-details', authenticate, authorize('artisan'), artisanController.updateBankDetails);
-router.post('/portfolio-images', authenticate, authorize('artisan'), uploadMultiple('images', 6), artisanController.uploadPortfolioImages);
-router.delete('/portfolio-image', authenticate, authorize('artisan'), artisanController.deletePortfolioImage);
+// ==========================================
+// PROTECTED ROUTES (auth required)
+// ==========================================
+
+// Get my artisan profile
+router.get('/me', protect, artisanController.getMyProfile);
+
+// Update my profile
+router.put('/me', protect, artisanController.updateProfile);
+
+// Update availability
+router.put('/me/availability', protect, artisanController.updateAvailability);
+
+// Update bank details
+router.put('/me/bank', protect, artisanController.updateBankDetails);
+
+// Upload portfolio images
+router.post('/me/portfolio', protect, artisanController.uploadPortfolioImages);
+
+// Delete portfolio image
+router.delete('/me/portfolio', protect, artisanController.deletePortfolioImage);
 
 module.exports = router;

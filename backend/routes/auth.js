@@ -1,4 +1,3 @@
-// controllers/authController.js
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -8,20 +7,14 @@ const { User, ArtisanProfile, Wallet } = require('../models');
 const { sendEmail } = require('../utils/email');
 const { AppError } = require('../utils/errorHandler');
 
-// Lazy-load NotificationService — don't crash if missing
-let NotificationService;
-try {
-  NotificationService = require('../services/notificationService');
-} catch (e) {
-  console.warn('[AuthController] NotificationService not available:', e.message);
-  NotificationService = null;
-}
-
 // ==========================================
-// TOKEN GENERATION
+// TOKEN GENERATION — Standardized
 // ==========================================
 
 const generateTokens = (userId) => {
+  console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
+  console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
+
   const accessToken = jwt.sign(
     { userId: userId.toString() },
     process.env.JWT_SECRET,
@@ -96,6 +89,10 @@ const registerValidation = [
 const getCookieOptions = (maxAge) => {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 
+  console.log('[Cookies] Environment:', isProduction ? 'production' : 'development');
+  console.log('[Cookies] Setting secure:', isProduction);
+  console.log('[Cookies] Setting sameSite:', isProduction ? 'none' : 'lax');
+
   return {
     httpOnly: true,
     secure: isProduction,
@@ -146,8 +143,10 @@ exports.register = [
         bankDetails
       } = req.body;
 
+      // Normalize phone number
       const normalizedPhone = phone.replace(/^\+234/, '0').replace(/\s/g, '');
 
+      // Check if user exists
       const existingUser = await User.findOne({
         $or: [
           { email: email.toLowerCase() },
@@ -162,6 +161,7 @@ exports.register = [
         throw new AppError('USER_PHONE_EXISTS', 'This phone number is already registered.');
       }
 
+      // Convert coordinates to GeoJSON
       let locationData = {
         state: location.state,
         city: location.city,
@@ -178,6 +178,7 @@ exports.register = [
         };
       }
 
+      // Create user
       const user = await User.create({
         email: email.toLowerCase(),
         password,
@@ -188,6 +189,7 @@ exports.register = [
         profileImage: profileImage || '/default-avatar.png'
       });
 
+      // Create artisan profile
       if (role === 'artisan') {
         if (!skills || !Array.isArray(skills) || skills.length === 0) {
           throw new AppError('VALIDATION_ERROR', 'At least one skill is required for artisans.');
@@ -207,7 +209,7 @@ exports.register = [
 
         const minRate = minRates[experienceYears] || 500;
         if (rate.amount < minRate) {
-          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
+          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is \u20A6${minRate}.`);
         }
 
         const artisanProfile = await ArtisanProfile.create({
@@ -226,6 +228,7 @@ exports.register = [
           bankDetails: bankDetails || {}
         });
 
+        // Create wallet
         const wallet = await Wallet.create({
           artisanId: user._id,
           bankDetails: bankDetails || {}
@@ -235,6 +238,7 @@ exports.register = [
         await artisanProfile.save();
       }
 
+      // Generate verification token
       const verificationToken = crypto.randomBytes(32).toString('hex');
       const hashedVerificationToken = crypto
         .createHash('sha256')
@@ -245,7 +249,7 @@ exports.register = [
       user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
       await user.save();
 
-      // Send verification email
+      // Send email
       try {
         const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
         await sendEmail({
@@ -271,35 +275,24 @@ exports.register = [
         console.error('Failed to send verification email:', emailError);
       }
 
-      // Send welcome notification (defensive)
-      if (NotificationService) {
-        try {
-          await NotificationService.send({
-            user: user.toJSON(),  // ← FIXED: pass user object, not userId
-            type: 'welcome',
-            channels: ['in_app', 'email'],
-            data: { name: user.fullName, role: user.role }
-          });
-        } catch (notifError) {
-          console.error('[Register] Notification failed:', notifError.message);
-        }
-      }
-
+      // Generate tokens
       const { accessToken, refreshToken } = generateTokens(user._id);
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'unknown');
 
+      // Set cookies
       res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
       res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-      console.log('[Register] Success for user:', user.email);
+      console.log('[Register] Success - Token sent, length:', accessToken.length);
 
-      // SECURITY: Don't send refreshToken in body, only in httpOnly cookie
+      // FIXED: Return refreshToken in body too
       res.status(201).json({
         success: true,
         message: 'Registration successful. Please check your email to verify.',
         data: {
           user: user.toJSON(),
           accessToken,
+          refreshToken,
           dashboardRoute: role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
         }
       });
@@ -310,7 +303,7 @@ exports.register = [
 ];
 
 // ==========================================
-// LOGIN
+// LOGIN — WITH DEBUG LOGGING
 // ==========================================
 
 exports.login = async (req, res, next) => {
@@ -371,34 +364,21 @@ exports.login = async (req, res, next) => {
       unreadCount = 0;
     }
 
+    // FIXED: Set BOTH cookies
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
-
-    // Security alert notification (defensive)
-    if (NotificationService) {
-      try {
-        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-        const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
-        await NotificationService.send({
-          user: user.toJSON(),
-          type: 'login_alert',
-          channels: ['in_app'],
-          data: { ip, device, time: new Date() }
-        });
-      } catch (e) {
-        console.error('[Login] Notification failed:', e.message);
-      }
-    }
 
     console.log('[Login] SUCCESS for user:', user.email);
     console.log('===================');
 
+    // FIXED: Return refreshToken in body
     res.json({
       success: true,
       message: 'Login successful',
       data: {
         user: user.toJSON(),
         accessToken,
+        refreshToken,
         unreadMessageCount: unreadCount,
         dashboardRoute: user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
       }
@@ -410,7 +390,7 @@ exports.login = async (req, res, next) => {
 };
 
 // ==========================================
-// GET ME
+// GET ME — Returns current user
 // ==========================================
 
 exports.getMe = async (req, res, next) => {
@@ -418,7 +398,7 @@ exports.getMe = async (req, res, next) => {
     console.log('=== [AUTH /ME] START ===');
     console.log('req.user:', req.user);
 
-    // authMiddleware sets req.user with _id (string) from JWT userId
+    // authMiddleware sets req.user with _id as string
     const userId = req.user._id || req.user.userId || req.user.id;
     console.log('[AUTH /ME] Looking up user:', userId);
 
@@ -429,6 +409,7 @@ exports.getMe = async (req, res, next) => {
       throw new AppError('USER_NOT_FOUND', 'User not found');
     }
 
+    // Check if artisan has profile
     let hasProfile = null;
     let artisanProfile = null;
 
@@ -553,10 +534,12 @@ exports.refresh = async (req, res, next) => {
     res.cookie('accessToken', tokens.accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', tokens.refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
+    // FIXED: Return both tokens
     res.json({
       success: true,
       data: {
-        accessToken: tokens.accessToken
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken
       }
     });
   } catch (error) {
@@ -592,20 +575,6 @@ exports.verifyEmail = async (req, res, next) => {
     user.emailVerificationToken = undefined;
     user.emailVerificationExpires = undefined;
     await user.save();
-
-    // Email verified notification (defensive)
-    if (NotificationService) {
-      try {
-        await NotificationService.send({
-          user: user.toJSON(),
-          type: 'email_verified',
-          channels: ['in_app', 'email'],
-          data: { name: user.fullName }
-        });
-      } catch (e) {
-        console.error('[verifyEmail] Notification failed:', e.message);
-      }
-    }
 
     res.json({
       success: true,
@@ -772,20 +741,6 @@ exports.resetPassword = async (req, res, next) => {
     user.passwordResetExpires = undefined;
     user.refreshTokens = [];
     await user.save();
-
-    // Password changed notification (defensive)
-    if (NotificationService) {
-      try {
-        await NotificationService.send({
-          user: user.toJSON(),
-          type: 'password_changed',
-          channels: ['in_app', 'email'],
-          data: { name: user.fullName, changedAt: new Date() }
-        });
-      } catch (e) {
-        console.error('[resetPassword] Notification failed:', e.message);
-      }
-    }
 
     res.json({
       success: true,

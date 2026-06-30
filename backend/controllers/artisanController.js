@@ -377,7 +377,7 @@ exports.getNearbyArtisans = async (req, res, next) => {
 };
 
 // ==========================================
-// GET SINGLE ARTISAN BY ID
+// GET SINGLE ARTISAN PUBLIC PROFILE BY ID
 // ==========================================
 
 exports.getArtisanById = async (req, res, next) => {
@@ -388,15 +388,17 @@ exports.getArtisanById = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'Invalid artisan ID format.');
     }
 
-    const artisan = await ArtisanProfile.findOne({ userId: id })
+    // Search by ArtisanProfile._id (NOT userId)
+    const artisan = await ArtisanProfile.findById(id)
       .populate('userId', 'fullName location profileImage isVerified phone email createdAt isActive');
 
     if (!artisan || !artisan.userId || !artisan.userId.isActive) {
       throw new AppError('ARTISAN_NOT_FOUND', 'Artisan not found or account is inactive.');
     }
 
+    // Fetch reviews from completed jobs (use artisan.userId._id for Job.artisanId)
     const reviews = await Job.find({
-      artisanId: id,
+      artisanId: artisan.userId._id,
       status: 'completed',
       'review.rating': { $exists: true }
     })

@@ -176,7 +176,7 @@ api.interceptors.request.use(
 );
 
 // ==========================================
-// RESPONSE INTERCEPTOR
+// RESPONSE INTERCEPTOR — FIXED
 // ==========================================
 api.interceptors.response.use(
   (response: AxiosResponse) => {
@@ -186,6 +186,7 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _retryCount?: number };
 
+    // ========== NETWORK ERROR (no response at all) ==========
     if (!error.response) {
       addLog(`[Response] Network error: ${error.message}`);
 
@@ -199,8 +200,8 @@ api.interceptors.response.use(
 
       return Promise.reject({
         ...error,
-        message: 'Server is waking up. Please try again.',
-        isWakeUpError: true,
+        message: 'Unable to connect to server. Please check your internet connection and try again.',
+        isNetworkError: true,
       });
     }
 
@@ -254,11 +255,13 @@ api.interceptors.response.use(
           }
 
           const response = await api.post('/auth/refresh', { refreshToken });
-          const { accessToken } = response.data.data || response.data;
+          const resData = response.data.data || response.data;
+          const accessToken = resData.accessToken;
+          const newRefreshToken = resData.refreshToken;
 
           addLog(`[Response] Token refreshed: ${accessToken.substring(0, 15)}...`);
 
-          storeTokens(accessToken, refreshToken, isRememberMe());
+          storeTokens(accessToken, newRefreshToken, isRememberMe());
           onTokenRefreshed(accessToken);
           return accessToken;
         } catch (refreshError: any) {
@@ -291,6 +294,33 @@ api.interceptors.response.use(
         ...error,
         message: errorMessage || 'Access denied.',
         code: errorCode || 'FORBIDDEN',
+      });
+    }
+
+    // ========== HANDLE 409 CONFLICT (Email exists) ==========
+    if (status === 409) {
+      return Promise.reject({
+        ...error,
+        message: errorMessage || 'An account with this email already exists. Please sign in instead.',
+        code: 'EMAIL_EXISTS',
+      });
+    }
+
+    // ========== HANDLE 400 BAD REQUEST ==========
+    if (status === 400) {
+      return Promise.reject({
+        ...error,
+        message: errorMessage || 'Invalid request. Please check your information and try again.',
+        code: errorCode || 'BAD_REQUEST',
+      });
+    }
+
+    // ========== HANDLE 500 SERVER ERROR ==========
+    if (status >= 500) {
+      return Promise.reject({
+        ...error,
+        message: 'Server error. Please try again later.',
+        code: 'SERVER_ERROR',
       });
     }
 
@@ -336,9 +366,23 @@ export const loginWithFacebook = (): void => {
   window.location.href = `${baseUrl}/auth/facebook`;
 };
 
-export const handleOAuthCallback = (accessToken: string, refreshToken: string, rememberMe = false): void => {
+export const handleOAuthCallback = async (accessToken: string, refreshToken: string, rememberMe = false): Promise<{ user: any }> => {
   storeTokens(accessToken, refreshToken, rememberMe);
   addLog(`[OAuth] Tokens stored (rememberMe: ${rememberMe})`);
+
+  addLog('[OAuth] Fetching user profile...');
+  const response = await api.get('/auth/me', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  const resData = response.data.data || response.data;
+  const user = resData.user;
+
+  if (user) {
+    localStorage.setItem('user', JSON.stringify(user));
+  }
+
+  return { user };
 };
 
 export const authStorage = {
@@ -396,44 +440,28 @@ export interface RegisterData {
   bio?: string;
 }
 
-// ==========================================
-// FIXED: transformArtisanData - backend now returns flat transformed data
-// This function now just ensures all fields exist with defaults
-// ==========================================
 const transformArtisanData = (artisan: any): any | null => {
   if (!artisan) return null;
 
-  // Backend already returns flat structure with all fields at top level
-  // Just ensure defaults and normalize a few fields
   return {
     ...artisan,
-    // Ensure ID exists
     id: artisan.id || artisan._id,
-    // Ensure name fields exist
     name: artisan.name || artisan.fullName || 'Unknown Artisan',
     fullName: artisan.fullName || artisan.name || 'Unknown Artisan',
-    // Ensure rate exists
     rate: artisan.rate || {
       amount: artisan.hourlyRate || 0,
       period: artisan.ratePeriod || 'job'
     },
-    // Ensure location exists
     location: artisan.location || { city: '', state: '' },
-    // Ensure skills exists
     skills: artisan.skills || [],
-    // Ensure rating fields exist
     averageRating: artisan.averageRating || artisan.rating || 0,
     totalReviews: artisan.totalReviews || artisan.reviewCount || 0,
     rating: artisan.rating || artisan.averageRating || 0,
     reviewCount: artisan.reviewCount || artisan.totalReviews || 0,
-    // Ensure availability
     isAvailable: artisan.availabilityStatus === 'available' || artisan.isAvailable || false,
     availabilityStatus: artisan.availabilityStatus || artisan.availability?.status || 'available',
-    // Ensure counts
     completedJobs: artisan.completedJobs || 0,
-    // Ensure arrays
     portfolioImages: artisan.portfolioImages || [],
-    // Ensure booleans
     isCertified: artisan.isCertified || false,
     isVerified: artisan.isVerified || false,
   };
@@ -444,7 +472,8 @@ export const authApi = {
     addLog(`[Auth] Login attempt (rememberMe: ${rememberMe})`);
     return api.post<ApiResponse<{ user: any; accessToken: string; refreshToken: string; dashboardRoute: string }>>('/auth/login', data)
       .then(response => {
-        const { accessToken, refreshToken } = response.data.data || response.data;
+        const resData = response.data.data || response.data;
+        const { accessToken, refreshToken } = resData;
         if (accessToken) {
           storeTokens(accessToken, refreshToken, rememberMe);
         }
@@ -454,13 +483,26 @@ export const authApi = {
 
   register: (data: RegisterData, rememberMe = false) => {
     addLog(`[Auth] Register attempt (rememberMe: ${rememberMe})`);
-    return api.post<ApiResponse<{ user: any; accessToken: string; refreshToken: string; dashboardRoute: string }>>('/auth/register', data)
+    return api.post<ApiResponse<{ user: any; accessToken?: string; token?: string; refreshToken: string; dashboardRoute: string }>>('/auth/register', data)
       .then(response => {
-        const { accessToken, refreshToken } = response.data.data || response.data;
+        addLog(`[Auth] Register response status: ${response.status}`);
+
+        const resData = response.data.data || response.data;
+        const accessToken = resData.accessToken || resData.token;
+        const refreshToken = resData.refreshToken;
+
         if (accessToken) {
           storeTokens(accessToken, refreshToken, rememberMe);
+          addLog(`[Auth] Register tokens stored`);
+        } else {
+          addLog(`[Auth] WARNING: No accessToken in register response`);
         }
+
         return response;
+      })
+      .catch(error => {
+        addLog(`[Auth] Register error: ${error.message}`);
+        throw error;
       });
   },
 
@@ -469,7 +511,7 @@ export const authApi = {
     return api.post<ApiResponse<void>>('/auth/logout');
   },
 
-  refresh: () => api.post<ApiResponse<{ accessToken: string }>>('/auth/refresh'),
+  refresh: () => api.post<ApiResponse<{ accessToken: string; refreshToken?: string }>>('/auth/refresh'),
 
   verifyEmail: (token: string) => api.post<ApiResponse<void>>(`/auth/verify-email/${token}`),
 
@@ -481,12 +523,10 @@ export const authApi = {
 };
 
 export const userApi = {
-  getMe: () => api.get<ApiResponse<any>>('/users/me'),
+  getMe: () => api.get<ApiResponse<any>>('/auth/me'),
 
   updateMe: (data: Partial<{ fullName: string; phone: string; location: any; profileImage: string }>) => 
     api.put<ApiResponse<any>>('/users/me', data),
-
-  getArtisanById: (id: string) => api.get(`/artisans/${id}`),
 
   updateLocation: (data: { state: string; city: string; address?: string; coordinates?: { lat: number; lng: number } }) => 
     api.put<ApiResponse<any>>('/users/location', data),
@@ -549,39 +589,32 @@ export const artisanApi = {
     return response;
   },
 
-  // ==========================================
-  // FIXED: getMyProfile with proper typing and response handling
-  // ==========================================
   getMyProfile: async () => {
     const response = await api.get<ApiResponse<any>>('/artisans/me');
-    
+
     console.log('[API] getMyProfile raw response:', JSON.stringify(response.data, null, 2));
-    
-    // Extract artisan data from response - handle both structures
+
     const responseData = response.data?.data;
     let artisanData: any = null;
-    
+
     if (responseData?.artisan) {
-      // Structure: { data: { artisan: {...} } }
       artisanData = responseData.artisan;
       console.log('[API] getMyProfile: Found artisan in data.artisan');
     } else if (responseData && !responseData.artisan) {
-      // Structure: { data: {...} } directly - check if it looks like artisan profile
       const possibleArtisan = responseData as any;
       if (possibleArtisan.userId || possibleArtisan.profession !== undefined || possibleArtisan.skills || possibleArtisan.bio !== undefined) {
         artisanData = possibleArtisan;
         console.log('[API] getMyProfile: Found artisan directly in data');
       }
     }
-    
+
     if (artisanData) {
       const transformed = transformArtisanData(artisanData);
-      // Ensure response has consistent structure for AuthContext
       response.data.data = { artisan: transformed };
     } else {
       console.log('[API] getMyProfile: No artisan data found');
     }
-    
+
     return response;
   },
 
@@ -617,10 +650,10 @@ export const artisanApi = {
     return response;
   },
 
-  getById: async (id: string) => {
+  getPublicProfile: async (id: string) => {
     const response = await api.get<ApiResponse<{ artisan: any; reviews: any[] }>>(`/artisans/${id}`);
 
-    console.log('[API] getById raw response:', JSON.stringify(response.data, null, 2));
+    console.log('[API] getPublicProfile raw response:', JSON.stringify(response.data, null, 2));
 
     if (response.data?.data?.artisan) {
       response.data.data.artisan = transformArtisanData(response.data.data.artisan);
@@ -629,26 +662,50 @@ export const artisanApi = {
     return response;
   },
 
+  getById: async (id: string) => {
+    return artisanApi.getPublicProfile(id);
+  },
+
   getReviews: (id: string, params?: { page?: number; limit?: number }) => 
     api.get<ApiResponse<{ reviews: any[]; ratingStats: any[]; pagination: any }>>(`/artisans/${id}/reviews`, { params }),
 
-  updateProfile: (data: ArtisanProfileUpdate) => api.put<ApiResponse<{ artisan: any }>>('/artisans/profile', data),
+  // ==========================================
+  // FIX: Changed from '/artisans/profile' to '/artisans/me'
+  // Backend route: router.put('/me', protect, artisanController.updateProfile);
+  // ==========================================
+  updateProfile: (data: ArtisanProfileUpdate) => api.put<ApiResponse<{ artisan: any }>>('/artisans/me', data),
 
+  // ==========================================
+  // FIX: Changed from '/artisans/availability' to '/artisans/me/availability'
+  // Backend route: router.put('/me/availability', protect, artisanController.updateAvailability);
+  // ==========================================
   updateAvailability: (data: { status: 'available' | 'unavailable' | 'busy'; nextAvailableDate?: string }) => 
-    api.put<ApiResponse<{ availability: any }>>('/artisans/availability', data),
+    api.put<ApiResponse<{ availability: any }>>('/artisans/me/availability', data),
 
-  updateBankDetails: (data: BankDetails) => api.put<ApiResponse<{ bankDetails: BankDetails }>>('/artisans/bank-details', data),
+  // ==========================================
+  // FIX: Changed from '/artisans/bank-details' to '/artisans/me/bank'
+  // Backend route: router.put('/me/bank', protect, artisanController.updateBankDetails);
+  // ==========================================
+  updateBankDetails: (data: BankDetails) => api.put<ApiResponse<{ bankDetails: BankDetails }>>('/artisans/me/bank', data),
 
+  // ==========================================
+  // FIX: Changed from '/artisans/portfolio' to '/artisans/me/portfolio'
+  // Backend route: router.post('/me/portfolio', protect, artisanController.uploadPortfolioImages);
+  // ==========================================
   uploadPortfolioImages: (files: FileList | File[]) => {
     const formData = new FormData();
     Array.from(files).forEach(file => formData.append('images', file));
-    return api.put<ApiResponse<{ portfolioImages: string[] }>>('/artisans/portfolio', formData, {
+    return api.post<ApiResponse<{ portfolioImages: string[] }>>('/artisans/me/portfolio', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
 
+  // ==========================================
+  // FIX: Changed from '/artisans/portfolio' to '/artisans/me/portfolio'
+  // Backend route: router.delete('/me/portfolio', protect, artisanController.deletePortfolioImage);
+  // ==========================================
   deletePortfolioImage: (imageUrl: string) => 
-    api.delete<ApiResponse<{ portfolioImages: string[] }>>('/artisans/portfolio', { data: { imageUrl } }),
+    api.delete<ApiResponse<{ portfolioImages: string[] }>>('/artisans/me/portfolio', { data: { imageUrl } }),
 };
 
 export interface JobCreateData {
@@ -929,31 +986,25 @@ export const disputeApi = {
 };
 
 export const adminApi = {
-  // Stats
   getStats: () => api.get('/admin/dashboard'),
 
-  // Users
   getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string; isActive?: string }) => 
     api.get('/admin/users', { params }),
   getUserById: (id: string) => api.get(`/admin/users/${id}`),
   updateUserStatus: (id: string, isActive: boolean) => 
     api.patch(`/admin/users/${id}/status`, { isActive }),
 
-  // Verifications
   getPendingVerifications: (params?: { page?: number; limit?: number }) => 
     api.get('/admin/verifications/pending', { params }),
   verifyArtisan: (id: string, action: 'approve' | 'reject', reason?: string) => 
     api.post(`/admin/verifications/${id}`, { action, reason }),
 
-  // Artisans
   getAllArtisans: (params?: { page?: number; limit?: number }) => 
     api.get('/admin/artisans', { params }),
 
-  // Transactions
   getTransactions: (params?: { page?: number; limit?: number; type?: string; status?: string; startDate?: string; endDate?: string }) =>
     api.get('/admin/transactions', { params }),
 
-  // Disputes
   getDisputes: (params?: { status?: string; page?: number; limit?: number }) =>
     api.get('/admin/disputes', { params }),
   resolveDispute: (jobId: string, resolution: any) =>

@@ -4,51 +4,45 @@ const { AppError } = require('../utils/errorHandler');
 
 /**
  * Extract token from request (Authorization header or cookies)
- * @param {Object} req - Express request object
- * @returns {String|null} JWT token or null
  */
 const extractToken = (req) => {
-  // Debug log
   console.log('[Auth Middleware] Headers:', JSON.stringify(req.headers, null, 2));
   console.log('[Auth Middleware] Authorization header:', req.headers.authorization);
   console.log('[Auth Middleware] Cookies:', req.cookies);
 
-  // Check Authorization header FIRST (what your frontend sends)
+  // Check Authorization header FIRST
   if (req.headers.authorization?.startsWith('Bearer ')) {
     const token = req.headers.authorization.split(' ')[1];
     console.log('[Auth Middleware] Token extracted from header, length:', token.length);
     return token;
   }
-  
+
   // Fallback to httpOnly cookie
   if (req.cookies?.accessToken) {
     console.log('[Auth Middleware] Token extracted from cookie');
     return req.cookies.accessToken;
   }
-  
+
   console.log('[Auth Middleware] No token found');
   return null;
 };
 
 /**
  * Verify JWT token and return decoded payload
- * @param {String} token - JWT token
- * @returns {Object} Decoded token payload
- * @throws {AppError} If token is invalid or expired
  */
 const verifyToken = (token) => {
   try {
     console.log('[Auth Middleware] Verifying token with secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // FIX: Support both 'id' and 'userId' in token payload
-    const userId = decoded.id || decoded.userId || decoded._id;
+
+    // UNIFIED: Always use userId
+    const userId = decoded.userId;
     console.log('[Auth Middleware] Token verified, userId:', userId, '| Token fields:', Object.keys(decoded));
-    
+
     if (!userId) {
-      throw new Error('No user identifier found in token');
+      throw new Error('No userId found in token');
     }
-    
+
     return decoded;
   } catch (error) {
     console.error('[Auth Middleware] Token verification failed:', error.name, error.message);
@@ -65,15 +59,10 @@ const verifyToken = (token) => {
 // ==========================================
 // MAIN AUTHENTICATION MIDDLEWARE
 // ==========================================
-
-/**
- * Authenticate user - Required authentication
- * Verifies JWT, checks user exists, active, and token not blacklisted
- */
 exports.authenticate = async (req, res, next) => {
   try {
     console.log('[Auth Middleware] === START AUTHENTICATION ===');
-    
+
     const token = extractToken(req);
 
     if (!token) {
@@ -82,15 +71,14 @@ exports.authenticate = async (req, res, next) => {
     }
 
     const decoded = verifyToken(token);
-    
-    // FIX: Extract userId from multiple possible field names
-    const userId = decoded.id || decoded.userId || decoded._id;
+
+    // UNIFIED: Always use userId
+    const userId = decoded.userId;
 
     console.log('[Auth Middleware] Finding user with ID:', userId);
-    
-    // FIXED: Use .lean() to get plain object, not Mongoose document
+
     const user = await User.findById(userId)
-      .select('_id email role fullName phone isActive profileImage location')
+      .select('_id email role fullName phone isActive profileImage location isVerified isEmailVerified')
       .lean();
 
     if (!user) {
@@ -104,28 +92,28 @@ exports.authenticate = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated. Contact support.');
     }
 
-    // Check blacklist - FIX: use userId variable instead of decoded.userId
+    // Check blacklist
     console.log('[Auth Middleware] Checking blacklist...');
     const userWithTokens = await User.findById(userId)
       .select('blacklistedTokens')
       .lean();
-    
+
     const isBlacklisted = userWithTokens?.blacklistedTokens?.some(
       bt => bt.token === token
     );
-    
+
     if (isBlacklisted) {
       console.log('[Auth Middleware] Token is blacklisted');
       throw new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please login again.');
     }
 
-    // CRITICAL FIX: Ensure _id is a string for downstream controllers
+    // Ensure _id is a string for downstream controllers
     user._id = user._id.toString();
-    
+
     req.user = user;
     req.token = token;
-    req.tokenPayload = decoded; // Store decoded payload for reference
-    
+    req.tokenPayload = decoded;
+
     console.log('[Auth Middleware] === AUTHENTICATION SUCCESS ===');
     console.log('[Auth Middleware] req.user._id:', req.user._id, 'type:', typeof req.user._id);
     next();
@@ -136,19 +124,8 @@ exports.authenticate = async (req, res, next) => {
 };
 
 // ==========================================
-// GENERIC ROLE AUTHORIZATION
+// ROLE AUTHORIZATION
 // ==========================================
-
-/**
- * Authorize by role(s)
- * @param {...String} roles - Allowed roles (e.g., 'customer', 'artisan', 'admin')
- * @returns {Function} Express middleware
- * 
- * Usage:
- *   authorize('customer')           // single role
- *   authorize('customer', 'admin')  // multiple roles
- *   authorize(['customer', 'admin']) // array of roles
- */
 exports.authorize = (...roles) => {
   return (req, res, next) => {
     try {
@@ -156,7 +133,6 @@ exports.authorize = (...roles) => {
         throw new AppError('AUTH_UNAUTHORIZED', 'Authentication required.');
       }
 
-      // Flatten roles array (handle both authorize('a', 'b') and authorize(['a', 'b']))
       const allowedRoles = roles.flat();
 
       if (!allowedRoles.includes(req.user.role)) {
@@ -176,10 +152,6 @@ exports.authorize = (...roles) => {
 // ==========================================
 // ARTISAN-SPECIFIC AUTHORIZATION
 // ==========================================
-
-/**
- * Check if user is a verified artisan with complete profile
- */
 exports.requireVerifiedArtisan = async (req, res, next) => {
   try {
     if (req.user.role !== 'artisan') {
@@ -205,45 +177,36 @@ exports.requireVerifiedArtisan = async (req, res, next) => {
 // ==========================================
 // OPTIONAL AUTHENTICATION
 // ==========================================
-
-/**
- * Optional authentication - Attaches user if valid token exists
- * Does NOT fail if no token or invalid token
- */
 exports.optionalAuth = async (req, res, next) => {
   try {
     const token = extractToken(req);
-    
+
     if (!token) {
       return next();
     }
 
     try {
       const decoded = verifyToken(token);
-      
-      // FIX: Extract userId from multiple possible field names
-      const userId = decoded.id || decoded.userId || decoded._id;
-      
+      const userId = decoded.userId;
+
       const user = await User.findById(userId)
         .select('_id email role fullName isActive')
         .lean();
 
       if (user && user.isActive) {
-        // FIX: use userId variable instead of decoded.userId
         const userWithTokens = await User.findById(userId)
           .select('blacklistedTokens');
-          
+
         const isBlacklisted = userWithTokens?.blacklistedTokens?.some(
           bt => bt.token === token
         );
-        
+
         if (!isBlacklisted) {
           req.user = user;
           req.token = token;
         }
       }
     } catch (error) {
-      // Silently fail - optional auth should not block request
       if (process.env.NODE_ENV === 'development') {
         console.log('Optional auth failed:', error.message);
       }
@@ -258,10 +221,6 @@ exports.optionalAuth = async (req, res, next) => {
 // ==========================================
 // REFRESH TOKEN MIDDLEWARE
 // ==========================================
-
-/**
- * Verify refresh token and issue new access token
- */
 exports.verifyRefreshToken = async (req, res, next) => {
   try {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
@@ -280,8 +239,8 @@ exports.verifyRefreshToken = async (req, res, next) => {
       throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token.');
     }
 
-    // FIX: Support both 'id' and 'userId' in refresh token too
-    const userId = decoded.id || decoded.userId || decoded._id;
+    // UNIFIED: Always use userId
+    const userId = decoded.userId;
 
     const user = await User.findById(userId).select('+refreshTokens');
 

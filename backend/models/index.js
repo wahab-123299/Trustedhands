@@ -1,3 +1,4 @@
+// models/index.js
 const User = require('./User');
 const ArtisanProfile = require('./ArtisanProfile');
 const Job = require('./Job');

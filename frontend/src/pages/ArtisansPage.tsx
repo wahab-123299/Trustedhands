@@ -138,8 +138,8 @@ const ArtisansPage = () => {
         }
         
         // Try flat structure: { artisans: [...] }
-        if (rawArtisans.length === 0 && Array.isArray(response.data.artisans)) {
-          rawArtisans = response.data.artisans;
+        if (rawArtisans.length === 0 && Array.isArray((response.data as any).artisans)) {
+          rawArtisans = (response.data as any).artisans;
           console.log('✅ Extracted from response.data.artisans, count:', rawArtisans.length);
         }
       }
