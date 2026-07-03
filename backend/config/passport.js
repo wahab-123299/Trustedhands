@@ -1,151 +1,766 @@
-// config/passport.js
-const passport = require('passport');
-const User = require('../models/User');
-
-console.log('[Passport] Configuring authentication strategies...');
-
-// Lazy-load OAuth strategies — don't crash if packages missing
-let GoogleStrategy, FacebookStrategy;
-
-try {
-  GoogleStrategy = require('passport-google-oauth20').Strategy;
-  console.log('[Passport] passport-google-oauth20 loaded');
-} catch (e) {
-  console.warn('[Passport] passport-google-oauth20 not installed. Google OAuth disabled.');
-}
-
-try {
-  FacebookStrategy = require('passport-facebook').Strategy;
-  console.log('[Passport] passport-facebook loaded');
-} catch (e) {
-  console.warn('[Passport] passport-facebook not installed. Facebook OAuth disabled.');
-}
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const { body, validationResult } = require('express-validator');
+const { User, ArtisanProfile, Wallet } = require('../models');
+const { sendEmail, sendWelcomeEmail } = require('../utils/email');
+const NotificationService = require('../services/notificationService');
+const { AppError } = require('../utils/errorHandler');
 
 // ==========================================
-// SERIALIZATION
+// TOKEN GENERATION
 // ==========================================
-passport.serializeUser((user, done) => {
-  done(null, user._id || user.id);
-});
 
-passport.deserializeUser(async (id, done) => {
-  try {
-    const user = await User.findById(id);
-    done(null, user);
-  } catch (err) {
-    done(err, null);
-  }
-});
+const generateTokens = (userId) => {
+  console.log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
+  console.log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
 
-// ==========================================
-// GOOGLE STRATEGY (optional)
-// ==========================================
-if (GoogleStrategy && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: process.env.GOOGLE_CALLBACK_URL || 'https://trustedhands.onrender.com/api/auth/google/callback',
-        passReqToCallback: true,
-      },
-      async (req, accessToken, refreshToken, profile, done) => {
-        try {
-          console.log('[Google OAuth] Profile:', profile.id, profile.displayName);
-          const role = req.session?.oauthRole || 'customer';
-          const user = await findOrCreateOAuthUser(profile, 'google', role);
-          return done(null, user);
-        } catch (err) {
-          console.error('[Google OAuth] Error:', err.message);
-          return done(err, null);
-        }
-      }
-    )
-  );
-  console.log('[Passport] Google strategy registered ✓');
-} else {
-  console.warn('[Passport] Google strategy NOT registered — missing env vars or package');
-}
-
-// ==========================================
-// FACEBOOK STRATEGY (optional)
-// ==========================================
-if (FacebookStrategy && process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
-  passport.use(
-    new FacebookStrategy(
-      {
-        clientID: process.env.FACEBOOK_APP_ID,
-        clientSecret: process.env.FACEBOOK_APP_SECRET,
-        callbackURL: process.env.FACEBOOK_CALLBACK_URL || 'https://trustedhands.onrender.com/api/auth/facebook/callback',
-        profileFields: ['id', 'displayName', 'photos', 'email', 'name'],
-        passReqToCallback: true,
-      },
-      async (req, accessToken, refreshToken, profile, done) => {
-        try {
-          console.log('[Facebook OAuth] Profile:', profile.id, profile.displayName);
-          const role = req.session?.oauthRole || 'customer';
-          const user = await findOrCreateOAuthUser(profile, 'facebook', role);
-          return done(null, user);
-        } catch (err) {
-          console.error('[Facebook OAuth] Error:', err.message);
-          return done(err, null);
-        }
-      }
-    )
-  );
-  console.log('[Passport] Facebook strategy registered ✓');
-} else {
-  console.warn('[Passport] Facebook strategy NOT registered — missing env vars or package');
-}
-
-// ==========================================
-// UNIFIED USER FIND/CREATE HELPER
-// ==========================================
-async function findOrCreateOAuthUser(profile, provider, requestedRole) {
-  const email = profile.emails?.[0]?.value;
-  
-  if (!email) {
-    throw new Error(`Email not provided by ${provider}`);
-  }
-
-  let user = await User.findOne({ email: email.toLowerCase() });
-
-  if (user) {
-    console.log(`[OAuth] Existing user found: ${email}`);
-    const providerIdField = provider === 'google' ? 'googleId' : 'facebookId';
-    
-    if (!user[providerIdField]) {
-      user[providerIdField] = profile.id;
-      await user.save();
-      console.log(`[OAuth] Linked ${provider} to existing user`);
+  const accessToken = jwt.sign(
+    { userId },
+    process.env.JWT_SECRET,
+    { 
+      expiresIn: process.env.JWT_EXPIRE || '15m',
+      issuer: 'trustedhand-api',
+      audience: 'trustedhand-client'
     }
-    
-    user.isNewUser = false;
-    return user;
-  }
+  );
 
-  console.log(`[OAuth] Creating new user from ${provider}: ${email}`);
-  
-  const userData = {
-    email: email.toLowerCase(),
-    fullName: profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim(),
-    firstName: profile.name?.givenName,
-    lastName: profile.name?.familyName,
-    profileImage: profile.photos?.[0]?.value || '/default-avatar.png',
-    role: requestedRole,
-    isVerified: true,
-    isEmailVerified: true,
-    isActive: true,
-    authProvider: provider,
-    [provider === 'google' ? 'googleId' : 'facebookId']: profile.id,
-    password: require('crypto').randomBytes(32).toString('hex'),
+  const refreshToken = jwt.sign(
+    { userId },
+    process.env.JWT_REFRESH_SECRET,
+    { 
+      expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
+      issuer: 'trustedhand-api',
+      audience: 'trustedhand-client'
+    }
+  );
+
+  return { accessToken, refreshToken };
+};
+
+// ==========================================
+// VALIDATION RULES
+// ==========================================
+
+const registerValidation = [
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email'),
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+  body('phone')
+    .matches(/^(0[7-9][0-1]\d{8}|\+234[7-9][0-1]\d{8})$/)
+    .withMessage('Please provide a valid Nigerian phone number (e.g., 08012345678)'),
+  body('role')
+    .isIn(['customer', 'artisan'])
+    .withMessage('Role must be customer or artisan'),
+  body('fullName')
+    .trim()
+    .notEmpty()
+    .withMessage('Full name is required')
+    .isLength({ max: 100 })
+    .withMessage('Full name cannot exceed 100 characters'),
+  body('location.state')
+    .trim()
+    .notEmpty()
+    .withMessage('State is required'),
+  body('location.city')
+    .trim()
+    .notEmpty()
+    .withMessage('City is required'),
+  body('location.coordinates.lat')
+    .optional()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Invalid latitude'),
+  body('location.coordinates.lng')
+    .optional()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Invalid longitude')
+];
+
+// ==========================================
+// HELPER: Get cookie settings
+// ==========================================
+
+const getCookieOptions = (maxAge) => {
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+
+  console.log('[Cookies] Environment:', isProduction ? 'production' : 'development');
+  console.log('[Cookies] Setting secure:', isProduction);
+  console.log('[Cookies] Setting sameSite:', isProduction ? 'none' : 'lax');
+
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge,
+    path: '/',
   };
+};
 
-  user = await User.create(userData);
-  user.isNewUser = true;
-  
-  console.log(`[OAuth] New user created: ${user._id}, role: ${user.role}`);
-  return user;
-}
+// ==========================================
+// REGISTRATION
+// ==========================================
 
-module.exports = passport;
+exports.register = [
+  ...registerValidation,
+  async (req, res, next) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Please check your input and try again.',
+            details: errors.array().map(e => ({
+              field: e.param,
+              message: e.msg
+            }))
+          }
+        });
+      }
+
+      const {
+        email,
+        password,
+        role,
+        fullName,
+        phone,
+        location,
+        profileImage,
+        skills,
+        experienceYears,
+        rate,
+        idVerification,
+        bio,
+        portfolioImages,
+        workRadius,
+        bankDetails
+      } = req.body;
+
+      // Normalize phone number
+      const normalizedPhone = phone.replace(/^\+234/, '0').replace(/\s/g, '');
+
+      // Check if user exists
+      const existingUser = await User.findOne({
+        $or: [
+          { email: email.toLowerCase() },
+          { phone: { $in: [phone, normalizedPhone, '+234' + normalizedPhone.slice(1)] } }
+        ]
+      });
+
+      if (existingUser) {
+        if (existingUser.email === email.toLowerCase()) {
+          throw new AppError('USER_EXISTS', 'An account with this email already exists. Please login instead.');
+        }
+        throw new AppError('USER_PHONE_EXISTS', 'This phone number is already registered.');
+      }
+
+      // Convert coordinates to GeoJSON
+      let locationData = {
+        state: location.state,
+        city: location.city,
+        address: location.address || ''
+      };
+
+      if (location.coordinates?.lat && location.coordinates?.lng) {
+        locationData.coordinates = {
+          type: 'Point',
+          coordinates: [
+            parseFloat(location.coordinates.lng),
+            parseFloat(location.coordinates.lat)
+          ]
+        };
+      }
+
+      // Create user
+      const user = await User.create({
+        email: email.toLowerCase(),
+        password,
+        role,
+        fullName: fullName.trim(),
+        phone: normalizedPhone,
+        location: locationData,
+        profileImage: profileImage || '/default-avatar.png'
+      });
+
+      // Create artisan profile
+      if (role === 'artisan') {
+        if (!skills || !Array.isArray(skills) || skills.length === 0) {
+          throw new AppError('VALIDATION_ERROR', 'At least one skill is required for artisans.');
+        }
+
+        if (!rate || !rate.amount || !rate.period) {
+          throw new AppError('VALIDATION_ERROR', 'Rate amount and period are required for artisans.');
+        }
+
+        const minRates = {
+          '0-1': 500,
+          '1-3': 1000,
+          '3-5': 2000,
+          '5-10': 3000,
+          '10+': 5000
+        };
+
+        const minRate = minRates[experienceYears] || 500;
+        if (rate.amount < minRate) {
+          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
+        }
+
+        const artisanProfile = await ArtisanProfile.create({
+          userId: user._id,
+          profession: skills?.[0] || 'General Service',
+          skills,
+          experienceYears: experienceYears || '0-1',
+          rate: {
+            amount: parseFloat(rate.amount),
+            period: rate.period
+          },
+          idVerification: idVerification || {},
+          bio: bio || '',
+          portfolioImages: portfolioImages || [],
+          workRadius: workRadius || 'any',
+          bankDetails: bankDetails || {}
+        });
+
+        // Create wallet
+        const wallet = await Wallet.create({
+          artisanId: user._id,
+          bankDetails: bankDetails || {}
+        });
+
+        artisanProfile.walletId = wallet._id;
+        await artisanProfile.save();
+      }
+
+      // Generate verification token
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const hashedVerificationToken = crypto
+        .createHash('sha256')
+        .update(verificationToken)
+        .digest('hex');
+
+      user.emailVerificationToken = hashedVerificationToken;
+      user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+      await user.save();
+
+      // Send email
+      try {
+        const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+        await sendEmail({
+          to: user.email,
+          subject: 'Verify Your Email - TrustedHand',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h1 style="color: #10B981;">Welcome to TrustedHand!</h1>
+              <p>Hi ${user.fullName},</p>
+              <p>Thank you for registering. Please click the link below to verify your email:</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${verificationUrl}" 
+                   style="padding: 12px 24px; background: #10B981; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">
+                  Verify Email
+                </a>
+              </div>
+              <p style="word-break: break-all; color: #666;">${verificationUrl}</p>
+              <p style="color: #999; font-size: 12px;">This link expires in 24 hours.</p>
+            </div>
+          `
+        });
+        await sendWelcomeEmail(user.email, user.fullName);
+        await NotificationService.send({
+          userId: user._id,
+          type: 'welcome',
+          title: 'Welcome to TrustedHand!',
+          data: {name: user.fullName, role: user.role},
+          message: `Hi ${user.fullName}, welcome to Nigeria's Trusted Marketplace for Skilled Artisans! We're excited to have you on board. Explore our platform to find skilled artisans or get hired for your expertise. Let's build something great together!`,
+          channels: ['in_app', 'email'],
+        });
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+      }
+
+      // Generate tokens
+      const { accessToken, refreshToken } = generateTokens(user._id);
+      await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'unknown');
+
+      let unreadNotifications = 0;
+      try {
+        unreadNotifications = await NotificationService.getUnreadCount(user._id);
+      } catch (e) {
+        unreadNotifications = 0;
+      }
+
+      // Set cookies
+      res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+      res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+      console.log('[Register] Success - Token sent, length:', accessToken.length);
+      console.log('===================');
+
+      res.status(201).json({
+        success: true,
+        message: 'Registration successful. Please check your email to verify.',
+        data: {
+          user: user.toJSON(),
+          accessToken,
+          unreadMessageCount: 0,
+          unreadNotifications: unreadNotifications,
+          dashboardRoute: role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+];
+
+// ==========================================
+// LOGIN - WITH DEBUG LOGGING
+// ==========================================
+
+exports.login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    console.log('=== LOGIN DEBUG ===');
+    console.log('Email received:', email);
+    console.log('Password length:', password?.length);
+    console.log('Database connected:', mongoose.connection.readyState === 1);
+    console.log('Database name:', mongoose.connection.name);
+
+    if (!email || !password) {
+      throw new AppError('VALIDATION_ERROR', 'Please provide email and password.');
+    }
+
+    const user = await User.findByEmailWithPassword(email.toLowerCase());
+
+    console.log('User found:', !!user);
+
+    if (!user) {
+      console.log('User not found in database for email:', email.toLowerCase());
+      console.log('Total users in DB:', await User.countDocuments());
+      throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
+    }
+
+    console.log('User ID:', user._id);
+    console.log('User email:', user.email);
+    console.log('User role:', user.role);
+    console.log('Stored password exists:', !!user.password);
+    console.log('Stored password type:', typeof user.password);
+    console.log('Stored password length:', user.password?.length);
+
+    if (!user.isActive) {
+      throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.');
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+    console.log('Password validation result:', isPasswordValid);
+
+    if (!isPasswordValid) {
+      console.log('Password mismatch - rejecting login');
+      throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
+    }
+
+    await user.updateLastLogin();
+
+    const { accessToken, refreshToken } = generateTokens(user._id);
+    await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100));
+
+    let unreadCount = 0;
+    try {
+      const { Conversation } = require('../models');
+      if (Conversation?.getTotalUnreadCount) {
+        unreadCount = await Conversation.getTotalUnreadCount(user._id);
+      }
+    } catch (e) {
+      unreadCount = 0;
+    }
+
+    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+    // ✅ FIXED: Login notification (security alert) - NOW IN CORRECT PLACE (login, not register)
+    try {
+      const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
+      await NotificationService.send({
+        userId: user._id,
+        type: 'login_alert',
+        title: 'New Login Detected',
+        message: `A new login was detected from ${device} at ${ip}. If this wasn't you, change your password immediately.`,
+        data: { ip, device, time: new Date() },
+        channels: ['in_app'],
+      });
+    } catch (e) {
+      console.error('[login] Login notification failed:', e.message);
+    }
+
+    console.log('[Login] SUCCESS for user:', user.email);
+    console.log('===================');
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: user.toJSON(),
+        accessToken,
+        unreadMessageCount: unreadCount,
+        dashboardRoute: user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
+      }
+    });
+  } catch (error) {
+    console.log('===================');
+    next(error);
+  }
+};
+
+// ==========================================
+// LOGOUT
+// ==========================================
+
+exports.logout = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.cookies;
+    const accessToken = req.token || req.cookies.accessToken;
+
+    if (req.user?._id) {
+      await User.findByIdAndUpdate(req.user._id, {
+        $pull: { refreshTokens: { token: refreshToken } }
+      });
+
+      if (accessToken) {
+        await User.findByIdAndUpdate(req.user._id, {
+          $push: { 
+            blacklistedTokens: { 
+              token: accessToken, 
+              blacklistedAt: new Date() 
+            } 
+          }
+        });
+      }
+    }
+
+    const clearOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production' || process.env.RENDER === 'true',
+      sameSite: (process.env.NODE_ENV === 'production' || process.env.RENDER === 'true') ? 'none' : 'lax',
+      path: '/'
+    };
+
+    res.clearCookie('accessToken', clearOptions);
+    res.clearCookie('refreshToken', clearOptions);
+
+    res.json({
+      success: true,
+      message: 'Logout successful'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// REFRESH TOKEN
+// ==========================================
+
+exports.refresh = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+    console.log('[Refresh] Token from cookie:', !!req.cookies.refreshToken);
+    console.log('[Refresh] Token from body:', !!req.body.refreshToken);
+
+    if (!refreshToken) {
+      throw new AppError('AUTH_TOKEN_EXPIRED', 'Refresh token not found.');
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        throw new AppError('AUTH_TOKEN_EXPIRED', 'Refresh token expired.');
+      }
+      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token.');
+    }
+
+    const user = await User.findById(decoded.userId).select('+refreshTokens');
+
+    if (!user) {
+      throw new AppError('USER_NOT_FOUND', 'User not found.');
+    }
+
+    const tokenExists = user.refreshTokens?.some(rt => rt.token === refreshToken);
+
+    if (!tokenExists) {
+      user.refreshTokens = [];
+      await user.save();
+      throw new AppError('AUTH_UNAUTHORIZED', 'Security violation detected.');
+    }
+
+    const tokens = generateTokens(user._id);
+
+    await User.findByIdAndUpdate(user._id, {
+      $pull: { refreshTokens: { token: refreshToken } },
+      $push: { 
+        refreshTokens: { 
+          token: tokens.refreshToken, 
+          createdAt: new Date(),
+          deviceInfo: req.headers['user-agent']?.substring(0, 100) || 'unknown'
+        } 
+      }
+    });
+
+    res.cookie('accessToken', tokens.accessToken, getCookieOptions(15 * 60 * 1000));
+    res.cookie('refreshToken', tokens.refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+    res.json({
+      success: true,
+      data: {
+        accessToken: tokens.accessToken
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// EMAIL VERIFICATION
+// ==========================================
+
+exports.verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+
+    if (!token || token.length !== 64) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid token format.');
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid or expired token.');
+    }
+
+    user.isEmailVerified = true;
+    user.isVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    // ✅ Email verified notification
+    try {
+      await NotificationService.send({
+        userId: user._id,
+        type: 'email_verified',
+        title: 'Email Verified!',
+        message: `Hi ${user.fullName}, your email has been verified successfully. You now have full access to TrustedHand.`,
+        data: { name: user.fullName },
+        channels: ['in_app', 'email'],
+      });
+    } catch (e) {
+      console.error('[verifyEmail] Notification failed:', e.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'Email verified successfully.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.resendVerification = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      throw new AppError('VALIDATION_ERROR', 'Email is required.');
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user || user.isEmailVerified) {
+      return res.json({
+        success: true,
+        message: 'If valid, a verification email has been sent.'
+      });
+    }
+
+    const timeSinceLast = Date.now() - (user.emailVerificationExpires - 24 * 60 * 60 * 1000);
+    if (timeSinceLast < 5 * 60 * 1000) {
+      throw new AppError('RATE_LIMIT', 'Please wait 5 minutes.');
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.emailVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+    await user.save();
+
+    try {
+      const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+      await sendEmail({
+        to: user.email,
+        subject: 'Verify Your Email - TrustedHand',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <h1 style="color: #10B981;">Email Verification</h1>
+            <p>Hi ${user.fullName},</p>
+            <p>Click to verify:</p>
+            <a href="${verificationUrl}" style="padding: 12px 24px; background: #10B981; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Verify Email
+            </a>
+            <p style="color: #999; font-size: 12px;">Expires in 24 hours.</p>
+          </div>
+        `
+      });
+    } catch (emailError) {
+      console.error('Failed to send email:', emailError);
+      throw new AppError('SERVER_ERROR', 'Failed to send email.');
+    }
+
+    res.json({
+      success: true,
+      message: 'Verification email sent.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// PASSWORD RESET
+// ==========================================
+
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      throw new AppError('VALIDATION_ERROR', 'Email is required.');
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return res.json({
+        success: true,
+        message: 'If an account exists, a reset email has been sent.'
+      });
+    }
+
+    if (user.passwordResetExpires && (Date.now() - (user.passwordResetExpires - 60 * 60 * 1000)) < 10 * 60 * 1000) {
+      throw new AppError('RATE_LIMIT', 'Please wait 10 minutes.');
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+    await user.save();
+
+    try {
+      const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+      await sendEmail({
+        to: user.email,
+        subject: 'Password Reset - TrustedHand',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <h1 style="color: #10B981;">Password Reset</h1>
+            <p>Hi ${user.fullName},</p>
+            <p>Click to reset:</p>
+            <a href="${resetUrl}" style="padding: 12px 24px; background: #10B981; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Reset Password
+            </a>
+            <p style="color: #999; font-size: 12px;">Expires in 1 hour.</p>
+          </div>
+        `
+      });
+    } catch (emailError) {
+      console.error('Failed to send reset email:', emailError);
+      throw new AppError('SERVER_ERROR', 'Failed to send reset email.');
+    }
+
+    res.json({
+      success: true,
+      message: 'Password reset email sent.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const { password, confirmPassword } = req.body;
+
+    if (!token || token.length !== 64) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid token format.');
+    }
+
+    if (!password || password.length < 8) {
+      throw new AppError('VALIDATION_ERROR', 'Password must be 8+ characters.');
+    }
+
+    if (password !== confirmPassword) {
+      throw new AppError('VALIDATION_ERROR', 'Passwords do not match.');
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      throw new AppError('VALIDATION_ERROR', 'Password must contain uppercase, lowercase, and number.');
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() }
+    }).select('+password');
+
+    if (!user) {
+      throw new AppError('VALIDATION_ERROR', 'Invalid or expired token.');
+    }
+
+    user.password = password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.refreshTokens = [];
+    await user.save();
+
+    // ✅ ADDED: Notify user of password change
+    try {
+      await NotificationService.send({
+        userId: user._id,
+        type: 'password_changed',
+        title: 'Password Changed',
+        message: `Hi ${user.fullName}, your password was changed successfully. If you didn't do this, contact support immediately.`,
+        data: { name: user.fullName, changedAt: new Date() },
+        channels: ['in_app', 'email'],
+      });
+    } catch (e) {
+      console.error('[resetPassword] Notification failed:', e.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'Password reset successful. Please login.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.generateTokens = generateTokens;

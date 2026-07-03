@@ -1,27 +1,27 @@
-// controllers/authController.js
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { User, ArtisanProfile, Wallet } = require('../models');
-const { sendEmail } = require('../utils/email');
+const { sendEmail, sendWelcomeEmail } = require('../utils/email');
+const NotificationService = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
-// Lazy-load NotificationService — don't crash if missing
-let NotificationService;
-try {
-  NotificationService = require('../services/notificationService');
-} catch (e) {
-  console.warn('[AuthController] NotificationService not available:', e.message);
-  NotificationService = null;
-}
+const isDev = process.env.NODE_ENV !== 'production';
+
+const log = (...args) => {
+  if (isDev) console.log(...args);
+};
 
 // ==========================================
 // TOKEN GENERATION
 // ==========================================
 
 const generateTokens = (userId) => {
+  log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
+  log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
+
   const accessToken = jwt.sign(
     { userId: userId.toString() },
     process.env.JWT_SECRET,
@@ -96,6 +96,10 @@ const registerValidation = [
 const getCookieOptions = (maxAge) => {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 
+  log('[Cookies] Environment:', isProduction ? 'production' : 'development');
+  log('[Cookies] Setting secure:', isProduction);
+  log('[Cookies] Setting sameSite:', isProduction ? 'none' : 'lax');
+
   return {
     httpOnly: true,
     secure: isProduction,
@@ -146,8 +150,10 @@ exports.register = [
         bankDetails
       } = req.body;
 
+      // Normalize phone number
       const normalizedPhone = phone.replace(/^\+234/, '0').replace(/\s/g, '');
 
+      // Check if user exists
       const existingUser = await User.findOne({
         $or: [
           { email: email.toLowerCase() },
@@ -162,6 +168,7 @@ exports.register = [
         throw new AppError('USER_PHONE_EXISTS', 'This phone number is already registered.');
       }
 
+      // Convert coordinates to GeoJSON
       let locationData = {
         state: location.state,
         city: location.city,
@@ -178,6 +185,7 @@ exports.register = [
         };
       }
 
+      // Create user
       const user = await User.create({
         email: email.toLowerCase(),
         password,
@@ -188,6 +196,7 @@ exports.register = [
         profileImage: profileImage || '/default-avatar.png'
       });
 
+      // Create artisan profile
       if (role === 'artisan') {
         if (!skills || !Array.isArray(skills) || skills.length === 0) {
           throw new AppError('VALIDATION_ERROR', 'At least one skill is required for artisans.');
@@ -226,6 +235,7 @@ exports.register = [
           bankDetails: bankDetails || {}
         });
 
+        // Create wallet
         const wallet = await Wallet.create({
           artisanId: user._id,
           bankDetails: bankDetails || {}
@@ -235,6 +245,7 @@ exports.register = [
         await artisanProfile.save();
       }
 
+      // Generate verification token
       const verificationToken = crypto.randomBytes(32).toString('hex');
       const hashedVerificationToken = crypto
         .createHash('sha256')
@@ -245,7 +256,7 @@ exports.register = [
       user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
       await user.save();
 
-      // Send verification email
+      // Send email
       try {
         const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
         await sendEmail({
@@ -267,39 +278,48 @@ exports.register = [
             </div>
           `
         });
+        await sendWelcomeEmail(user.email, user.fullName);
+        
+        // FIXED: Pass full user object, not userId
+        await NotificationService.send({
+          user: user,
+          type: 'welcome',
+          title: 'Welcome to TrustedHand!',
+          data: {name: user.fullName, role: user.role},
+          message: `Hi ${user.fullName}, welcome to Nigeria's Trusted Marketplace for Skilled Artisans! We're excited to have you on board. Explore our platform to find skilled artisans or get hired for your expertise. Let's build something great together!`,
+          channels: ['in_app', 'email'],
+        });
       } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
       }
 
-      // Send welcome notification (defensive)
-      if (NotificationService) {
-        try {
-          await NotificationService.send({
-            user: user.toJSON(),  // ← FIXED: pass user object, not userId
-            type: 'welcome',
-            channels: ['in_app', 'email'],
-            data: { name: user.fullName, role: user.role }
-          });
-        } catch (notifError) {
-          console.error('[Register] Notification failed:', notifError.message);
-        }
-      }
-
+      // Generate tokens
       const { accessToken, refreshToken } = generateTokens(user._id);
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'unknown');
 
+      let unreadNotifications = 0;
+      try {
+        unreadNotifications = await NotificationService.getUnreadCount(user._id);
+      } catch (e) {
+        unreadNotifications = 0;
+      }
+
+      // Set cookies
       res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
       res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-      console.log('[Register] Success for user:', user.email);
+      log('[Register] Success - Token sent, length:', accessToken.length);
+      log('===================');
 
-      // SECURITY: Don't send refreshToken in body, only in httpOnly cookie
       res.status(201).json({
         success: true,
         message: 'Registration successful. Please check your email to verify.',
         data: {
           user: user.toJSON(),
           accessToken,
+          refreshToken,
+          unreadMessageCount: 0,
+          unreadNotifications: unreadNotifications,
           dashboardRoute: role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
         }
       });
@@ -310,18 +330,18 @@ exports.register = [
 ];
 
 // ==========================================
-// LOGIN
+// LOGIN - WITH DEBUG LOGGING
 // ==========================================
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    console.log('=== LOGIN DEBUG ===');
-    console.log('Email received:', email);
-    console.log('Password length:', password?.length);
-    console.log('Database connected:', mongoose.connection.readyState === 1);
-    console.log('Database name:', mongoose.connection.name);
+    log('=== LOGIN DEBUG ===');
+    log('Email received:', email);
+    log('Password length:', password?.length);
+    log('Database connected:', mongoose.connection.readyState === 1);
+    log('Database name:', mongoose.connection.name);
 
     if (!email || !password) {
       throw new AppError('VALIDATION_ERROR', 'Please provide email and password.');
@@ -329,30 +349,30 @@ exports.login = async (req, res, next) => {
 
     const user = await User.findByEmailWithPassword(email.toLowerCase());
 
-    console.log('User found:', !!user);
+    log('User found:', !!user);
 
     if (!user) {
-      console.log('User not found in database for email:', email.toLowerCase());
-      console.log('Total users in DB:', await User.countDocuments());
+      log('User not found in database for email:', email.toLowerCase());
+      log('Total users in DB:', await User.countDocuments());
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
 
-    console.log('User ID:', user._id);
-    console.log('User email:', user.email);
-    console.log('User role:', user.role);
-    console.log('Stored password exists:', !!user.password);
-    console.log('Stored password type:', typeof user.password);
-    console.log('Stored password length:', user.password?.length);
+    log('User ID:', user._id);
+    log('User email:', user.email);
+    log('User role:', user.role);
+    log('Stored password exists:', !!user.password);
+    log('Stored password type:', typeof user.password);
+    log('Stored password length:', user.password?.length);
 
     if (!user.isActive) {
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.');
     }
 
     const isPasswordValid = await user.comparePassword(password);
-    console.log('Password validation result:', isPasswordValid);
+    log('Password validation result:', isPasswordValid);
 
     if (!isPasswordValid) {
-      console.log('Password mismatch - rejecting login');
+      log('Password mismatch - rejecting login');
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
 
@@ -374,24 +394,26 @@ exports.login = async (req, res, next) => {
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-    // Security alert notification (defensive)
-    if (NotificationService) {
-      try {
-        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-        const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
-        await NotificationService.send({
-          user: user.toJSON(),
-          type: 'login_alert',
-          channels: ['in_app'],
-          data: { ip, device, time: new Date() }
-        });
-      } catch (e) {
-        console.error('[Login] Notification failed:', e.message);
-      }
+    // Login notification (security alert)
+    try {
+      const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
+      
+      // FIXED: Pass full user object, not userId
+      await NotificationService.send({
+        user: user,
+        type: 'login_alert',
+        title: 'New Login Detected',
+        message: `A new login was detected from ${device} at ${ip}. If this wasn't you, change your password immediately.`,
+        data: { ip, device, time: new Date() },
+        channels: ['in_app'],
+      });
+    } catch (e) {
+      console.error('[login] Login notification failed:', e.message);
     }
 
-    console.log('[Login] SUCCESS for user:', user.email);
-    console.log('===================');
+    log('[Login] SUCCESS for user:', user.email);
+    log('===================');
 
     res.json({
       success: true,
@@ -399,33 +421,33 @@ exports.login = async (req, res, next) => {
       data: {
         user: user.toJSON(),
         accessToken,
+        refreshToken,
         unreadMessageCount: unreadCount,
         dashboardRoute: user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard'
       }
     });
   } catch (error) {
-    console.log('===================');
+    log('===================');
     next(error);
   }
 };
 
 // ==========================================
-// GET ME
+// GET ME — Returns current user
 // ==========================================
 
 exports.getMe = async (req, res, next) => {
   try {
-    console.log('=== [AUTH /ME] START ===');
-    console.log('req.user:', req.user);
+    log('=== [AUTH /ME] START ===');
+    log('req.user:', req.user);
 
-    // authMiddleware sets req.user with _id (string) from JWT userId
     const userId = req.user._id || req.user.userId || req.user.id;
-    console.log('[AUTH /ME] Looking up user:', userId);
+    log('[AUTH /ME] Looking up user:', userId);
 
     const user = await User.findById(userId).select('-password');
 
     if (!user) {
-      console.log('[AUTH /ME] User not found:', userId);
+      log('[AUTH /ME] User not found:', userId);
       throw new AppError('USER_NOT_FOUND', 'User not found');
     }
 
@@ -438,7 +460,7 @@ exports.getMe = async (req, res, next) => {
       hasProfile = !!artisanProfile;
     }
 
-    console.log('[AUTH /ME] User found:', user.email);
+    log('[AUTH /ME] User found:', user.email);
     res.json({
       success: true,
       data: {
@@ -506,8 +528,8 @@ exports.refresh = async (req, res, next) => {
   try {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
-    console.log('[Refresh] Token from cookie:', !!req.cookies.refreshToken);
-    console.log('[Refresh] Token from body:', !!req.body.refreshToken);
+    log('[Refresh] Token from cookie:', !!req.cookies.refreshToken);
+    log('[Refresh] Token from body:', !!req.body.refreshToken);
 
     if (!refreshToken) {
       throw new AppError('AUTH_TOKEN_EXPIRED', 'Refresh token not found.');
@@ -556,11 +578,49 @@ exports.refresh = async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        accessToken: tokens.accessToken
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken
       }
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// ==========================================
+// OAUTH CALLBACK — Handles Google & Facebook
+// ==========================================
+
+exports.oauthCallback = async (req, res, next) => {
+  try {
+    const user = req.user;
+    
+    if (!user) {
+      console.error('[OAuth Callback] No user from passport');
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+    }
+
+    log('[OAuth Callback] User:', user.email, '| isNew:', user.isNewUser);
+
+    const { accessToken, refreshToken } = generateTokens(user._id || user.id);
+    
+    if (user.addRefreshToken) {
+      await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth');
+    }
+
+    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+    const dashboardRoute = user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard';
+    const redirectPath = user.isNewUser ? '/setup-profile' : dashboardRoute;
+
+    const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(redirectPath)}`;
+    
+    log('[OAuth Callback] Redirecting to:', redirectUrl);
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error('[OAuth Callback] Error:', error.message);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_error`);
   }
 };
 
@@ -593,18 +653,18 @@ exports.verifyEmail = async (req, res, next) => {
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    // Email verified notification (defensive)
-    if (NotificationService) {
-      try {
-        await NotificationService.send({
-          user: user.toJSON(),
-          type: 'email_verified',
-          channels: ['in_app', 'email'],
-          data: { name: user.fullName }
-        });
-      } catch (e) {
-        console.error('[verifyEmail] Notification failed:', e.message);
-      }
+    // Email verified notification
+    try {
+      await NotificationService.send({
+        user: user,
+        type: 'email_verified',
+        title: 'Email Verified!',
+        message: `Hi ${user.fullName}, your email has been verified successfully. You now have full access to TrustedHand.`,
+        data: { name: user.fullName },
+        channels: ['in_app', 'email'],
+      });
+    } catch (e) {
+      console.error('[verifyEmail] Notification failed:', e.message);
     }
 
     res.json({
@@ -773,18 +833,18 @@ exports.resetPassword = async (req, res, next) => {
     user.refreshTokens = [];
     await user.save();
 
-    // Password changed notification (defensive)
-    if (NotificationService) {
-      try {
-        await NotificationService.send({
-          user: user.toJSON(),
-          type: 'password_changed',
-          channels: ['in_app', 'email'],
-          data: { name: user.fullName, changedAt: new Date() }
-        });
-      } catch (e) {
-        console.error('[resetPassword] Notification failed:', e.message);
-      }
+    // Notify user of password change
+    try {
+      await NotificationService.send({
+        user: user,
+        type: 'password_changed',
+        title: 'Password Changed',
+        message: `Hi ${user.fullName}, your password was changed successfully. If you didn't do this, contact support immediately.`,
+        data: { name: user.fullName, changedAt: new Date() },
+        channels: ['in_app', 'email'],
+      });
+    } catch (e) {
+      console.error('[resetPassword] Notification failed:', e.message);
     }
 
     res.json({

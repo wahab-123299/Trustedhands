@@ -10,23 +10,20 @@ const { authenticate: protect } = require('../middleware/authMiddleware');
 // Get all artisans (with filters)
 router.get('/', artisanController.getArtisans);
 
-// Search artisans
+// Search artisans — MUST come before /:id
 router.get('/search', artisanController.searchArtisans);
 
-// Get nearby artisans
+// Get nearby artisans — MUST come before /:id
 router.get('/nearby', artisanController.getNearbyArtisans);
 
-// Get single artisan public profile by ID
-router.get('/:id', artisanController.getArtisanById);
-
-// Get artisan reviews
+// Get artisan reviews — MUST come before /:id
 router.get('/:id/reviews', artisanController.getArtisanReviews);
 
 // ==========================================
 // PROTECTED ROUTES (auth required)
 // ==========================================
 
-// Get my artisan profile
+// Get my artisan profile — MUST come before /:id
 router.get('/me', protect, artisanController.getMyProfile);
 
 // Update my profile
@@ -43,5 +40,8 @@ router.post('/me/portfolio', protect, artisanController.uploadPortfolioImages);
 
 // Delete portfolio image
 router.delete('/me/portfolio', protect, artisanController.deletePortfolioImage);
+
+// Get single artisan public profile by ID — MUST come LAST
+router.get('/:id', artisanController.getArtisanById);
 
 module.exports = router;

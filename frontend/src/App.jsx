@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { Suspense, lazy } from 'react';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { SocketProvider } from '@/contexts/SocketContext';
 
 // Layouts
@@ -26,7 +26,7 @@ import ArtisanProfilePage from '@/pages/ArtisanProfilePage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailsPage from '@/pages/JobDetailsPage';
 
-// ✅ NEW STATIC PAGES
+// NEW STATIC PAGES
 import AboutUs from '@/pages/AboutUs';
 import HowItWorks from '@/pages/HowItWorks';
 import Careers from '@/pages/Careers';
@@ -97,6 +97,42 @@ const AdminRoute = ({ children }) => {
 
   return <>{children}</>;
 };
+
+// ==========================================
+// REDIRECT HELPERS
+// ==========================================
+
+function NavigateToMessages() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+
+  return user.role === 'artisan' 
+    ? <Navigate to="/artisan/messages" replace />
+    : <Navigate to="/customer/messages" replace />;
+}
+
+function NavigateToDashboard() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  return user.role === 'artisan' 
+    ? <Navigate to="/artisan/dashboard" replace />
+    : <Navigate to="/customer/dashboard" replace />;
+}
+
+function NavigateToProfile() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  return user.role === 'artisan' 
+    ? <Navigate to="/artisan/profile" replace />
+    : <Navigate to="/customer/profile" replace />;
+}
+
+function NavigateToWallet() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'artisan') return <Navigate to="/customer/dashboard" replace />;
+  return <Navigate to="/artisan/wallet" replace />;
+}
 
 // ==========================================
 // MAIN APP COMPONENT
@@ -193,7 +229,7 @@ function App() {
               </Route>
 
               {/* ==========================================
-                  ADMIN ROUTES - FIXED: Now uses DashboardLayout
+                  ADMIN ROUTES
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<RoleRoute allowedRoles={['admin']} />}>
@@ -234,44 +270,6 @@ function App() {
       </AuthProvider>
     </Router>
   );
-}
-
-// ==========================================
-// REDIRECT HELPERS
-// ==========================================
-
-import { useAuth } from '@/contexts/AuthContext';
-
-function NavigateToMessages() {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-
-  return user.role === 'artisan' 
-    ? <Navigate to="/artisan/messages" replace />
-    : <Navigate to="/customer/messages" replace />;
-}
-
-function NavigateToDashboard() {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'artisan' 
-    ? <Navigate to="/artisan/dashboard" replace />
-    : <Navigate to="/customer/dashboard" replace />;
-}
-
-function NavigateToProfile() {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'artisan' 
-    ? <Navigate to="/artisan/profile" replace />
-    : <Navigate to="/customer/profile" replace />;
-}
-
-function NavigateToWallet() {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== 'artisan') return <Navigate to="/customer/dashboard" replace />;
-  return <Navigate to="/artisan/wallet" replace />;
 }
 
 export default App;

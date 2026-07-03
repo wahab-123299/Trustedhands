@@ -1,94 +1,88 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { userApi } from '@/services/api';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 const OAuthCallback = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { updateUserFromOAuth } = useAuth();
+  const [status, setStatus] = useState('Processing login...');
 
   useEffect(() => {
-    const handleOAuth = async () => {
-      const token = searchParams.get('token');
-      const refreshToken = searchParams.get('refreshToken');
-      const error = searchParams.get('error');
-
-      // Handle backend OAuth errors first
-      if (error) {
-        console.error('[OAuthCallback] Backend error:', error);
-        
-        const errorMessages: Record<string, string> = {
-          google_failed: 'Google login failed. Please try again.',
-          facebook_failed: 'Facebook login failed. Please try again.',
-          oauth_error: 'Login failed. Please try again.',
-        };
-        
-        toast.error(errorMessages[error] || 'Authentication failed.');
-        navigate('/login?error=' + error, { replace: true });
-        return;
-      }
-
-      if (!token) {
-        toast.error('Authentication failed. No token received.');
-        navigate('/login?error=oauth_failed', { replace: true });
-        return;
-      }
-
+    const processOAuth = async () => {
       try {
+        const token = searchParams.get('token');
+        const refreshToken = searchParams.get('refreshToken');
+        const redirect = searchParams.get('redirect') || '/';
+
+        console.log('[OAuthCallback] Token:', token ? 'EXISTS' : 'MISSING');
+        console.log('[OAuthCallback] RefreshToken:', refreshToken ? 'EXISTS' : 'MISSING');
+        console.log('[OAuthCallback] Redirect:', redirect);
+
+        if (!token) {
+          setStatus('Login failed. No token received.');
+          toast.error('Login failed. Please try again.');
+          setTimeout(() => navigate('/login?error=oauth_failed'), 2000);
+          return;
+        }
+
         // Store tokens
         localStorage.setItem('token', token);
-        if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+        if (refreshToken) {
+          localStorage.setItem('refreshToken', refreshToken);
+        }
         localStorage.setItem('rememberMe', 'true');
 
         // Fetch user data
-        console.log('[OAuthCallback] Fetching user data...');
-        const response = await userApi.getMe();
-        const respData = response?.data?.data;
-        if (!respData || !respData.user) {
-          console.error('[OAuthCallback] Invalid response from /me:', response);
-          toast.error('Failed to retrieve user data from server. Please try logging in again.');
-          navigate('/login?error=oauth_failed', { replace: true });
-          return;
+        setStatus('Fetching your profile...');
+        const API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
+        
+        const response = await fetch(`${API_URL}/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch user data');
         }
-        const { user } = respData;
 
-        console.log(`[OAuthCallback] User: ${user.email}, role: ${user.role}`);
+        const data = await response.json();
+        const user = data.data?.user || data.user;
 
-        await updateUserFromOAuth(user, token);
-
-
-        const dashboardRoute = user.role === 'artisan' 
-          ? '/artisan/dashboard' 
-          : '/customer/dashboard';
-
-        navigate(dashboardRoute, { replace: true });
-
-      } catch (error: any) {
-        console.error('OAuth callback error:', error);
-        
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        
-        if (error.response?.status === 401) {
-          toast.error('Session expired. Please log in again.');
-        } else {
-          toast.error('Login failed. Please try again.');
+        if (!user) {
+          throw new Error('No user data received');
         }
+
+        // Update auth context
+        updateUserFromOAuth(user, token);
         
-        navigate('/login?error=oauth_failed', { replace: true });
+        toast.success(`Welcome ${user.fullName}!`);
+        
+        // Navigate to destination
+        const destination = decodeURIComponent(redirect);
+        navigate(destination, { replace: true });
+
+      } catch (err: any) {
+        console.error('[OAuthCallback] Error:', err);
+        setStatus('Login failed. Please try again.');
+        toast.error('Login failed. Please try again.');
+        setTimeout(() => navigate('/login?error=oauth_failed'), 2000);
       }
     };
 
-    handleOAuth();
+    processOAuth();
   }, [searchParams, navigate, updateUserFromOAuth]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
-        <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-gray-600 text-lg">Completing login...</p>
+        <Loader2 className="w-12 h-12 animate-spin text-emerald-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-800">{status}</h2>
+        <p className="text-gray-500 mt-2">Please wait while we complete your login...</p>
       </div>
     </div>
   );

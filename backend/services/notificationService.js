@@ -35,7 +35,7 @@ class NotificationService {
         }
       }
 
-      // ✅ NEW: Push notification via FCM
+      // Push notification via FCM
       if (channels.includes('push')) {
         const pushResult = await this.sendPushNotification(user, type, data);
         if (pushResult) {
@@ -50,16 +50,14 @@ class NotificationService {
     }
   }
 
-  // ✅ NEW: Dedicated push notification method
+  // Dedicated push notification method
   async sendPushNotification(user, type, data) {
     try {
       if (!user.fcmTokens || user.fcmTokens.length === 0) {
-        return null; // No tokens to send to
+        return null;
       }
 
       const pushNotificationService = require('./pushNotificationService');
-
-      // Build push payload based on notification type
       const pushPayload = this.buildPushPayload(type, data);
 
       const pushResult = await pushNotificationService.sendToUser(
@@ -79,13 +77,28 @@ class NotificationService {
     }
   }
 
-  // ✅ NEW: Build push notification payload
+  // Build push notification payload
   buildPushPayload(type, data) {
     const payloads = {
       welcome: {
         title: 'Welcome to TrustedHand!',
         body: `Hi ${data.name || 'there'}, your registration was successful.`,
         data: { screen: 'home' }
+      },
+      login_alert: {
+        title: 'New Login Detected',
+        body: 'A new login was detected on your account. Tap to review.',
+        data: { screen: 'security' }
+      },
+      email_verified: {
+        title: 'Email Verified!',
+        body: 'Your email has been verified successfully.',
+        data: { screen: 'profile' }
+      },
+      password_changed: {
+        title: 'Password Changed',
+        body: 'Your password was changed successfully.',
+        data: { screen: 'security' }
       },
       new_booking: {
         title: 'New Booking Request',
@@ -274,6 +287,18 @@ class NotificationService {
       welcome: {
         title: 'Welcome to TrustedHand!',
         message: `Hi ${data.name || 'there'}, your registration was successful. Start exploring!`
+      },
+      login_alert: {
+        title: 'New Login Detected',
+        message: `A new login was detected on your account from ${data.device || 'an unknown device'} at ${data.ip || 'unknown IP'}. If this wasn't you, change your password immediately.`
+      },
+      email_verified: {
+        title: 'Email Verified!',
+        message: `Hi ${data.name || 'there'}, your email has been verified successfully. You now have full access to TrustedHand.`
+      },
+      password_changed: {
+        title: 'Password Changed',
+        message: `Hi ${data.name || 'there'}, your password was changed successfully. If you didn't do this, contact support immediately.`
       },
       new_booking: {
         title: 'New Booking Request',

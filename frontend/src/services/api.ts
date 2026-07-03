@@ -88,9 +88,6 @@ const addRefreshSubscriber = (callback: (token: string) => void) => {
   refreshSubscribers.push(callback);
 };
 
-// ==========================================
-// CRITICAL FIX: ENDPOINTS THAT SHOULD NEVER TRIGGER REFRESH
-// ==========================================
 const NO_REFRESH_ENDPOINTS = [
   '/auth/login',
   '/auth/register',
@@ -136,9 +133,6 @@ const isAuthEndpoint = (url?: string): boolean => {
   return isMatch;
 };
 
-// ==========================================
-// REQUEST INTERCEPTOR
-// ==========================================
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = getToken();
@@ -175,9 +169,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ==========================================
-// RESPONSE INTERCEPTOR — FIXED
-// ==========================================
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     addLog(`[Response] ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
@@ -186,7 +177,6 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _retryCount?: number };
 
-    // ========== NETWORK ERROR (no response at all) ==========
     if (!error.response) {
       addLog(`[Response] Network error: ${error.message}`);
 
@@ -211,7 +201,6 @@ api.interceptors.response.use(
 
     addLog(`[Response] ERROR ${status}: ${errorCode} - ${errorMessage}`);
 
-    // ========== HANDLE 401 UNAUTHORIZED ==========
     if (status === 401) {
       const requestUrl = originalRequest?.url || 
                         (originalRequest as any)?.baseURL + (originalRequest as any)?.url || 
@@ -283,7 +272,6 @@ api.interceptors.response.use(
       }
     }
 
-    // ========== HANDLE 403 FORBIDDEN ==========
     if (status === 403) {
       if (errorCode === 'AUTH_UNAUTHORIZED' || errorCode === 'AUTH_TOKEN_EXPIRED') {
         clearTokens();
@@ -297,7 +285,6 @@ api.interceptors.response.use(
       });
     }
 
-    // ========== HANDLE 409 CONFLICT (Email exists) ==========
     if (status === 409) {
       return Promise.reject({
         ...error,
@@ -306,7 +293,6 @@ api.interceptors.response.use(
       });
     }
 
-    // ========== HANDLE 400 BAD REQUEST ==========
     if (status === 400) {
       return Promise.reject({
         ...error,
@@ -315,7 +301,6 @@ api.interceptors.response.use(
       });
     }
 
-    // ========== HANDLE 500 SERVER ERROR ==========
     if (status >= 500) {
       return Promise.reject({
         ...error,
@@ -496,6 +481,10 @@ export const authApi = {
           addLog(`[Auth] Register tokens stored`);
         } else {
           addLog(`[Auth] WARNING: No accessToken in register response`);
+          addLog(`[Auth] Response keys: ${Object.keys(response.data).join(', ')}`);
+          if (response.data.data) {
+            addLog(`[Auth] response.data.data keys: ${Object.keys(response.data.data).join(', ')}`);
+          }
         }
 
         return response;
@@ -669,29 +658,13 @@ export const artisanApi = {
   getReviews: (id: string, params?: { page?: number; limit?: number }) => 
     api.get<ApiResponse<{ reviews: any[]; ratingStats: any[]; pagination: any }>>(`/artisans/${id}/reviews`, { params }),
 
-  // ==========================================
-  // FIX: Changed from '/artisans/profile' to '/artisans/me'
-  // Backend route: router.put('/me', protect, artisanController.updateProfile);
-  // ==========================================
   updateProfile: (data: ArtisanProfileUpdate) => api.put<ApiResponse<{ artisan: any }>>('/artisans/me', data),
 
-  // ==========================================
-  // FIX: Changed from '/artisans/availability' to '/artisans/me/availability'
-  // Backend route: router.put('/me/availability', protect, artisanController.updateAvailability);
-  // ==========================================
   updateAvailability: (data: { status: 'available' | 'unavailable' | 'busy'; nextAvailableDate?: string }) => 
     api.put<ApiResponse<{ availability: any }>>('/artisans/me/availability', data),
 
-  // ==========================================
-  // FIX: Changed from '/artisans/bank-details' to '/artisans/me/bank'
-  // Backend route: router.put('/me/bank', protect, artisanController.updateBankDetails);
-  // ==========================================
   updateBankDetails: (data: BankDetails) => api.put<ApiResponse<{ bankDetails: BankDetails }>>('/artisans/me/bank', data),
 
-  // ==========================================
-  // FIX: Changed from '/artisans/portfolio' to '/artisans/me/portfolio'
-  // Backend route: router.post('/me/portfolio', protect, artisanController.uploadPortfolioImages);
-  // ==========================================
   uploadPortfolioImages: (files: FileList | File[]) => {
     const formData = new FormData();
     Array.from(files).forEach(file => formData.append('images', file));
@@ -700,10 +673,6 @@ export const artisanApi = {
     });
   },
 
-  // ==========================================
-  // FIX: Changed from '/artisans/portfolio' to '/artisans/me/portfolio'
-  // Backend route: router.delete('/me/portfolio', protect, artisanController.deletePortfolioImage);
-  // ==========================================
   deletePortfolioImage: (imageUrl: string) => 
     api.delete<ApiResponse<{ portfolioImages: string[] }>>('/artisans/me/portfolio', { data: { imageUrl } }),
 };

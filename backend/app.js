@@ -1,4 +1,3 @@
-// app.js
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -230,40 +229,25 @@ app.get('/privacy', (req, res) => {
 });
 
 // ============================================
-// ROUTES — Defensive loading (won't crash if file missing)
+// ROUTES
 // ============================================
-
-function safeRequire(routePath, routeName) {
-  try {
-    return require(routePath);
-  } catch (e) {
-    console.warn(`[Routes] ${routeName} routes not available:`, e.message);
-    const router = express.Router();
-    router.all('*', (req, res) => res.status(503).json({
-      success: false,
-      error: { code: 'NOT_AVAILABLE', message: `${routeName} service temporarily unavailable` }
-    }));
-    return router;
-  }
-}
-
-app.use('/api/auth', safeRequire('./routes/authRoutes', 'Auth'));
-app.use('/api/users', safeRequire('./routes/userRoutes', 'Users'));
-app.use('/api/artisans', safeRequire('./routes/artisanRoutes', 'Artisans'));
-app.use('/api/jobs', safeRequire('./routes/jobRoutes', 'Jobs'));
-app.use('/api/applications', safeRequire('./routes/applicationRoutes', 'Applications'));
-app.use('/api/payments', safeRequire('./routes/paymentRoutes', 'Payments'));
-app.use('/api/chat', safeRequire('./routes/chatRoutes', 'Chat'));
-app.use('/api/verification', safeRequire('./routes/verificationRoutes', 'Verification'));
-app.use('/api/availability', safeRequire('./routes/availabilityRoutes', 'Availability'));
-app.use('/api/favorites', safeRequire('./routes/favoriteRoutes', 'Favorites'));
-app.use('/api/milestones', safeRequire('./routes/milestoneRoutes', 'Milestones'));
-app.use('/api/admin', safeRequire('./routes/adminRoutes', 'Admin'));
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/artisans', require('./routes/artisanRoutes'));
+app.use('/api/jobs', require('./routes/jobRoutes'));
+app.use('/api/applications', require('./routes/applicationRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
+app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/verification', require('./routes/verificationRoutes'));
+app.use('/api/availability', require('./routes/availabilityRoutes'));
+app.use('/api/favorites', require('./routes/favoriteRoutes'));
+app.use('/api/milestones', require('./routes/milestoneRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 // ============================================
 // ERROR HANDLING
 // ============================================
-app.use((req, res) => {
+app.use((req, res, next) => {
   res.status(404).json({
     success: false,
     error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.originalUrl} not found` }
