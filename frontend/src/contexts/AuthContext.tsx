@@ -232,7 +232,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: initAuth — Handles flat backend response
+  // FIXED: initAuth — Handles nested backend response
   // ==========================================
   useEffect(() => {
     if (hasInitialized.current) {
@@ -272,11 +272,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 150)}...`);
 
-        // FIXED: Handle flat backend response { user, token, ... }
+        // FIXED: Unwrap nested backend response { success, data: { user, ... } }
         const res = response.data as any;
-        const user = res.user || res.data?.user;
-        const hasProfile = res.hasProfile || res.data?.hasProfile;
-        let artisanProfile = res.artisanProfile || res.data?.artisanProfile;
+        const data = res.data || res;
+        const user = data.user;
+        const hasProfile = data.hasProfile;
+        let artisanProfile = data.artisanProfile;
 
         if (!user) {
           throw new Error('No user data in response');
@@ -285,7 +286,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Init] User: ${user.email}, Role: ${user.role}, hasProfile: ${hasProfile}`);
         addLog(`[Init] artisanProfile from getMe: ${artisanProfile ? 'EXISTS' : 'NULL'}`);
 
-        // FIXED: Store user in localStorage
         localStorage.setItem('user', JSON.stringify(user));
 
         if (user.role === 'artisan' && hasProfile === false) {
@@ -410,7 +410,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: login — Reads token from nested data structure
+  // FIXED: login — Handles nested backend response { success, data: { user, accessToken } }
   // ==========================================
   const login = useCallback(
     async (email: string, password: string, rememberMe: boolean = true) => {
@@ -423,40 +423,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.login({ email, password });
         const res = response.data;
 
-        // FIXED: Backend wraps response in data: { accessToken, refreshToken, user }
-        // The api.ts interceptor already unwraps: resData = response.data.data || response.data
-        // But authApi.login also stores tokens. We need to read from the CORRECT location.
+        // FIXED: Unwrap nested data structure from backend
+        const data = res.data || res;
+        const user = data.user;
+        const accessToken = data.token || data.accessToken;
+        const refreshToken = data.refreshToken;
+        const dashboardRoute = data.dashboardRoute || '/';
 
-        // The response from backend is: { success: true, data: { user, accessToken, refreshToken, ... } }
-        // OR: { success: true, user, token, ... } (flat)
-
-        const responseData = res.data || res;
-        const user = responseData.user;
-        const accessToken = responseData.accessToken || responseData.token;
-        const refreshToken = responseData.refreshToken;
-        const dashboardRoute = responseData.dashboardRoute || '/';
-
-        addLog(`[Login] Response structure: user=${!!user}, accessToken=${!!accessToken}, refreshToken=${!!refreshToken}`);
+        addLog(`[Login] Response keys: ${Object.keys(res).join(', ')}`);
+        addLog(`[Login] Data keys: ${Object.keys(data).join(', ')}`);
+        addLog(`[Login] accessToken exists: ${!!accessToken}`);
+        addLog(`[Login] user exists: ${!!user}`);
 
         if (!accessToken) {
-          addLog(`[Login] ERROR: No access token. Response keys: ${Object.keys(res).join(', ')}`);
-          if (res.data) {
-            addLog(`[Login] res.data keys: ${Object.keys(res.data).join(', ')}`);
-          }
+          addLog(`[Login] ERROR: No access token. Full response: ${JSON.stringify(res).substring(0, 200)}`);
           throw new Error('No access token received from server');
         }
 
         storeToken(accessToken, rememberMe);
-        if (refreshToken) {
-          localStorage.setItem('refreshToken', refreshToken);
-        }
         localStorage.setItem('user', JSON.stringify(user));
 
         let finalArtisanProfile: ArtisanProfile | null = null;
         let needsProfileSetup = false;
 
         if (user.role === 'artisan') {
-          addLog('[Login] User is artisan, checking for profile...');
+          addLog('[Login] User is artisan, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
             finalArtisanProfile = extractArtisanFromResponse(artisanRes);
@@ -509,11 +500,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(message);
       }
     },
-    [connectSocket, navigate, location.state, storeToken, extractErrorMessage, extractArtisanFromResponse]
+    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage, extractArtisanFromResponse]
   );
 
   // ==========================================
-  // FIXED: register — Reads token from nested data structure
+  // FIXED: register — Handles nested backend response
   // ==========================================
   const register = useCallback(
     async (data: RegisterData, rememberMe: boolean = true) => {
@@ -521,33 +512,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isLoggingIn.current = true;
         setState((prev) => ({ ...prev, isLoading: true }));
 
-        addLog('[Register] Starting registration...');
-
         const response = await authApi.register(data);
         const res = response.data;
 
-        // FIXED: Backend wraps response in data: { user, accessToken, refreshToken, ... }
-        // OR returns flat: { success, user, accessToken, ... }
+        // FIXED: Unwrap nested data structure from backend
         const responseData = res.data || res;
         const user = responseData.user;
         const accessToken = responseData.accessToken || responseData.token;
-        const refreshToken = responseData.refreshToken;
         const dashboardRoute = responseData.dashboardRoute || '/';
 
-        addLog(`[Register] Response structure: user=${!!user}, accessToken=${!!accessToken}, refreshToken=${!!refreshToken}`);
-
         if (!accessToken) {
-          addLog(`[Register] ERROR: No access token. Response keys: ${Object.keys(res).join(', ')}`);
-          if (res.data) {
-            addLog(`[Register] res.data keys: ${Object.keys(res.data).join(', ')}`);
-          }
           throw new Error('No access token received from server');
         }
 
         storeToken(accessToken, rememberMe);
-        if (refreshToken) {
-          localStorage.setItem('refreshToken', refreshToken);
-        }
         localStorage.setItem('user', JSON.stringify(user));
 
         setState({
@@ -562,11 +540,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         connectSocket(user._id, accessToken);
         toast.success("Registration successful");
 
-        await new Promise(r => setTimeout(r, 500));
-
         const destination = dashboardRoute || '/';
         isLoggingIn.current = false;
-        addLog(`[Register] Navigating to: ${destination}`);
         navigate(destination, { replace: true });
 
       } catch (err: any) {
@@ -623,7 +598,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [connectSocket]);
 
   // ==========================================
-  // FIXED: refreshUser — Handles flat backend response
+  // FIXED: refreshUser — Handles nested backend response
   // ==========================================
   const refreshUser = useCallback(async () => {
     try {
@@ -631,11 +606,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const response = await userApi.getMe();
       const res = response.data;
 
-      // FIXED: Handle flat response
-      const responseData = res.data || res;
-      const user = responseData.user;
-      const artisanProfile = responseData.artisanProfile;
-      const hasProfile = responseData.hasProfile;
+      // FIXED: Unwrap nested data structure from backend
+      const data = res.data || res;
+      const user = data.user || data.data?.user;
+      const artisanProfile = data.artisanProfile || data.data?.artisanProfile;
+      const hasProfile = data.hasProfile || data.data?.hasProfile;
 
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
 
