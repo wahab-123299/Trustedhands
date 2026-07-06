@@ -14,7 +14,7 @@ import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
-import AuthSuccessPage from '@/pages/AuthSuccesspage';
+import AuthSuccessPage from '@/pages/AuthSuccesspage';  // <-- FIXED: lowercase 'p'
 import OAuthCallback from '@/pages/OAuthCallback';
 import BookArtisan from '@/pages/BookArtisan';
 import ScrollToTop from '@/components/ScrollToTop';
