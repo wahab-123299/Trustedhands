@@ -742,38 +742,57 @@ export const applicationsApi = {
   withdrawApplication: (id: string) => api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
 };
 
+// ==========================================
+// FIXED: WALLET API - Now uses correct wallet deposit endpoint
+// ==========================================
+
+export const walletApi = {
+  getBalance: () => api.get('/payments/wallet'),
+  
+  // FIXED: Calls the correct wallet deposit endpoint (artisan only)
+  // Was incorrectly calling /payments/initialize which requires customer role
+  initializeDeposit: (amount: number) => 
+    api.post('/payments/wallet/deposit/initialize', { amount }),
+  
+  withdraw: (amount: number) => api.post('/payments/withdraw', { amount }),
+  
+  getTransactions: (params?: { page?: number; limit?: number }) => 
+    api.get('/payments/history', { params }),
+};
+
+// ==========================================
+// FIXED: PAYMENT API - releasePayment now uses POST not PUT
+// ==========================================
+
 export interface PaymentInitializeData {
   jobId: string;
   email?: string;
   metadata?: Record<string, any>;
 }
 
-export const walletApi = {
-  getBalance: () => api.get('/payments/wallet'),
-  initializeDeposit: (amount: number) => api.post('/payments/initialize', { amount }),
-  withdraw: (amount: number) => api.post('/payments/withdraw', { amount }),
-  getTransactions: (params?: { page?: number; limit?: number }) => api.get('/payments/history', { params }),
-};
-
 export const paymentApi = {
   initialize: (data: PaymentInitializeData) => 
     api.post<ApiResponse<{ authorization_url: string; reference: string; transactionId: string; amount: any }>>('/payments/initialize', data),
 
-  verify: (reference: string) => api.get<ApiResponse<{ transaction: any; paystackData: any }>>(`/payments/verify/${reference}`),
+  verify: (reference: string) => 
+    api.get<ApiResponse<{ transaction: any; paystackData: any }>>(`/payments/verify/${reference}`),
 
-  verifyPayment: (reference: string) => api.get(`/payments/verify/${reference}`),
-
-  releasePayment: (jobId: string) => api.put<ApiResponse<{ transaction: any; job: any }>>(`/payments/release/${jobId}`),
+  // FIXED: Changed from PUT to POST to match backend route
+  // Backend route: router.post('/release/:jobId', ...)
+  releasePayment: (jobId: string) => 
+    api.post<ApiResponse<{ transaction: any; job: any }>>(`/payments/release/${jobId}`),
 
   getHistory: (params?: { type?: string; status?: string; page?: number; limit?: number }) => 
     api.get<ApiResponse<{ transactions: any[]; summary: any; pagination: any }>>('/payments/history', { params }),
 
-  getWallet: () => api.get<ApiResponse<{ wallet: any; isNew: boolean }>>('/payments/wallet'),
+  getWallet: () => 
+    api.get<ApiResponse<{ wallet: any; isNew: boolean }>>('/payments/wallet'),
 
   requestWithdrawal: (amount: number) => 
     api.post<ApiResponse<{ transaction: any; withdrawal: any; wallet: any }>>('/payments/withdraw', { amount }),
 
-  getBanks: () => api.get<ApiResponse<{ banks: any[]; count: number }>>('/payments/banks'),
+  getBanks: () => 
+    api.get<ApiResponse<{ banks: any[]; count: number }>>('/payments/banks'),
 
   verifyAccount: (data: { accountNumber: string; bankCode: string }) => 
     api.post<ApiResponse<{ accountNumber: string; accountName: string; bankCode: string }>>('/payments/verify-account', data),

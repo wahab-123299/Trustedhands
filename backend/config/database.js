@@ -14,8 +14,15 @@ const connectDB = async () => {
     const safeUri = uri.replace(/:([^@]+)@/, ':****@');
     console.log('📍 URI:', safeUri);
 
-    // ✅ Simple connect — same as your working test
-    const conn = await mongoose.connect(uri);
+    // ✅ ADDED: Connection resilience options
+    const mongooseOptions = {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      bufferCommands: false,
+    };
+
+    const conn = await mongoose.connect(uri, mongooseOptions);
 
     console.log(`✅ MongoDB Connected`);
     console.log(`📊 Database Name: ${conn.connection.name}`);
@@ -37,9 +44,14 @@ mongoose.connection.on('error', (err) => {
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.log('🟡 Mongoose connection disconnected');
+  console.warn('🟡 Mongoose connection disconnected — will auto-reconnect');
 });
 
+mongoose.connection.on('reconnected', () => {
+  console.log('🟢 MongoDB reconnected');
+});
+
+// Graceful shutdown
 process.on('SIGINT', async () => {
   await mongoose.connection.close();
   console.log('👋 Mongoose connection closed');

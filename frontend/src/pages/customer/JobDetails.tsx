@@ -58,8 +58,17 @@ const JobDetails: React.FC = () => {
     }
   };
 
+  // ==============================
+  // FIXED: Role-guarded payment handler
+  // ==============================
   const handlePayment = async () => {
     if (!job) return;
+    
+    // ✅ Only customers can pay
+    if (user?.role !== 'customer') {
+      toast.error('Only customers can make payments');
+      return;
+    }
     
     try {
       setIsProcessing(true);
@@ -134,6 +143,12 @@ const JobDetails: React.FC = () => {
     );
   }
 
+  // ==============================
+  // FIXED: Role-based UI rendering
+  // ==============================
+  const isCustomer = user?.role === 'customer';
+  const isArtisan = user?.role === 'artisan';
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -146,6 +161,18 @@ const JobDetails: React.FC = () => {
           <p className="text-gray-600">Job Details</p>
         </div>
       </div>
+
+      {/* Artisan Warning Banner */}
+      {isArtisan && (
+        <Card className="bg-orange-50 border-orange-200">
+          <CardContent className="py-4">
+            <p className="text-orange-700 text-sm">
+              <strong>Artisan View:</strong> You are viewing this job as an artisan. 
+              You cannot make payments on this page. Customers will pay you through the platform.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -260,7 +287,10 @@ const JobDetails: React.FC = () => {
               <CardTitle>Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {job.status === 'pending' && job.paymentStatus === 'pending' && (
+              {/* ==============================
+                  FIXED: Only show Pay Now for customers
+                  ============================== */}
+              {isCustomer && job.status === 'pending' && job.paymentStatus === 'pending' && (
                 <Button 
                   className="w-full bg-emerald-600 hover:bg-emerald-700"
                   onClick={handlePayment}
@@ -275,7 +305,14 @@ const JobDetails: React.FC = () => {
                 </Button>
               )}
 
-              {job.status === 'completed' && job.paymentStatus === 'paid' && (
+              {/* Artisan view: Show payment info instead */}
+              {isArtisan && job.status === 'pending' && job.paymentStatus === 'pending' && (
+                <div className="w-full bg-gray-100 text-gray-600 px-4 py-3 rounded-lg text-sm text-center">
+                  Waiting for customer to pay
+                </div>
+              )}
+
+              {isCustomer && job.status === 'completed' && job.paymentStatus === 'paid' && (
                 <Button 
                   className="w-full bg-green-600 hover:bg-green-700"
                   onClick={handleConfirmCompletion}
@@ -286,7 +323,14 @@ const JobDetails: React.FC = () => {
                 </Button>
               )}
 
-              {['pending', 'accepted'].includes(job.status) && (
+              {/* Artisan view: Show completion info */}
+              {isArtisan && job.status === 'completed' && job.paymentStatus === 'paid' && (
+                <div className="w-full bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm text-center">
+                  Payment received. Waiting for customer confirmation.
+                </div>
+              )}
+
+              {isCustomer && ['pending', 'accepted'].includes(job.status) && (
                 <Button 
                   variant="outline"
                   className="w-full text-red-600 border-red-200 hover:bg-red-50"
@@ -296,6 +340,13 @@ const JobDetails: React.FC = () => {
                   <XCircle className="w-4 h-4 mr-2" />
                   Cancel Job
                 </Button>
+              )}
+
+              {/* Artisan view: Show cancel info */}
+              {isArtisan && ['pending', 'accepted'].includes(job.status) && (
+                <div className="w-full bg-gray-50 text-gray-500 px-4 py-3 rounded-lg text-sm text-center">
+                  Job is active
+                </div>
               )}
 
               {job.artisanId && (

@@ -1,377 +1,396 @@
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-import { jobApi } from "@/services/api";
-import { useAuth } from "@/contexts/AuthContext";
-import { CancelJobButton } from "@/components/CancelJobButton"; // ✅ ADDED IMPORT
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { 
+  ArrowLeft, 
+  MapPin, 
+  Calendar, 
+  DollarSign, 
+  Clock,
+  MessageSquare,
+  CheckCircle,
+  XCircle,
+  Loader2,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { useAuth } from '@/contexts/AuthContext';
+import { useSocket } from '@/contexts/SocketContext';
+import { jobApi, paymentApi } from '@/services/api';
+import { Job } from '@/types';
 
-// ==============================
-// TYPES
-// ==============================
-
-interface Job {
-  _id: string;
-  title: string;
-  description: string;
-  budget: number;
-  location: {
-    state: string;
-    city: string;
-    address?: string;
-  };
-  status: "pending" | "accepted" | "in_progress" | "completed" | "cancelled" | "open" | "assigned";
-  createdAt: string;
-  customerId: string | {
-    _id: string;
-    fullName: string;
-    profileImage?: string;
-    phone?: string;
-  };
-  artisanId?: string | {
-    _id: string;
-    fullName: string;
-    profileImage?: string;
-  };
-  applications?: any[];
-}
-
-// ==============================
-// HELPER FUNCTIONS
-// ==============================
-
-const getId = (field: string | { _id: string } | undefined | null): string | undefined => {
-  if (!field) return undefined;
-  if (typeof field === 'string') return field;
-  return field._id;
+const statusColors: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  accepted: 'bg-blue-100 text-blue-800',
+  in_progress: 'bg-purple-100 text-purple-800',
+  completed: 'bg-green-100 text-green-800',
+  cancelled: 'bg-red-100 text-red-800'
 };
 
-const isPopulated = (field: any): field is { _id: string; fullName: string } => {
-  return field && typeof field === 'object' && '_id' in field;
-};
-
-// ==============================
-// COMPONENT
-// ==============================
-
-const JobDetailsPage = () => {
+const JobDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-
+  const {} = useSocket();
+  
   const [job, setJob] = useState<Job | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
-
-  const fetchJob = useCallback(async () => {
-    if (!id) return;
-    
-    try {
-      setLoading(true);
-      const response = await jobApi.getById(id);
-      setJob(response.data.data.job);
-    } catch (error: any) {
-      toast.error("Failed to load job");
-      navigate("/jobs");
-    } finally {
-      setLoading(false);
-    }
-  }, [id, navigate]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    if (id) fetchJob();
-  }, [id, fetchJob]);
+    if (id) {
+      fetchJobDetails();
+    }
+  }, [id]);
 
-  const handleApply = async () => {
-    if (!id) return;
-
+  const fetchJobDetails = async () => {
     try {
-      setActionLoading(true);
-      await jobApi.apply(id);
-      toast.success("Application sent!");
-      fetchJob();
+      setIsLoading(true);
+      const response = await jobApi.getById(id!);
+      setJob(response.data.data.job);
     } catch (error: any) {
-      toast.error(error?.message || "Failed to apply");
+      toast.error('Failed to load job details');
+      navigate('/customer/jobs');
     } finally {
-      setActionLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleAccept = async () => {
-    if (!id) return;
-
-    try {
-      setActionLoading(true);
-      await jobApi.accept(id);
-      toast.success("Job accepted!");
-      fetchJob();
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to accept job");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const goToChat = () => {
+  // ==============================
+  // CUSTOMER: Pay for job
+  // ==============================
+  const handlePayment = async () => {
     if (!job) return;
-
-    const customerId = getId(job.customerId);
-    const artisanId = getId(job.artisanId);
-
-    let otherUserId: string | undefined;
     
-    if (user?._id === customerId) {
-      otherUserId = artisanId;
-    } else {
-      otherUserId = customerId;
-    }
-
-    if (!otherUserId) {
-      toast.error("No user to chat with yet");
+    // Only customers can pay
+    if (user?.role !== 'customer') {
+      toast.error('Only customers can make payments');
       return;
     }
-
-    navigate(`/chat/${otherUserId}`);
+    
+    try {
+      setIsProcessing(true);
+      const response = await paymentApi.initialize({
+        jobId: job._id,
+        email: user?.email
+      });
+      
+      // Redirect to Paystack checkout
+      if (response.data.data.authorization_url) {
+        window.location.href = response.data.data.authorization_url;
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.message || 'Failed to initialize payment');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  if (loading) {
+  // ==============================
+  // CUSTOMER: Release payment (confirm completion)
+  // ==============================
+  const handleConfirmCompletion = async () => {
+    if (!job) return;
+    
+    try {
+      setIsProcessing(true);
+      
+      // FIXED: Calls POST /payments/release/:jobId to release escrow to artisan
+      await paymentApi.releasePayment(job._id);
+      
+      toast.success('Payment released to artisan!');
+      fetchJobDetails();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.message || 'Failed to release payment');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!job) return;
+    
+    try {
+      setIsProcessing(true);
+      await jobApi.cancel(job._id, 'Cancelled by customer');
+      toast.success('Job cancelled');
+      fetchJobDetails();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.message || 'Failed to cancel job');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const startChat = () => {
+    if (job?.artisanId && typeof job.artisanId === 'object') {
+      navigate(`/customer/messages?artisanId=${job.artisanId._id}`);
+    }
+  };
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
       </div>
     );
   }
 
   if (!job) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">Job not found</p>
-          <button
-            onClick={() => navigate("/jobs")}
-            className="text-green-600 hover:underline"
-          >
-            Back to Jobs
-          </button>
-        </div>
+      <div className="text-center py-12">
+        <p className="text-gray-500">Job not found</p>
+        <Button onClick={() => navigate('/customer/jobs')} className="mt-4">
+          Back to Jobs
+        </Button>
       </div>
     );
   }
 
-  const customerId = getId(job.customerId);
-  const artisanId = getId(job.artisanId);
-  
-  const isOwner = user?._id === customerId;
-  const isArtisan = user?.role === "artisan";
-  const isAssigned = !!artisanId;
-  const isPending = job.status === "pending" || job.status === "open";
-  const isAccepted = job.status === "accepted" || job.status === "in_progress";
-
-  const customerName = isPopulated(job.customerId) 
-    ? job.customerId.fullName 
-    : 'Customer';
-  
-  const artisanName = isPopulated(job.artisanId) 
-    ? job.artisanId.fullName 
-    : (isAssigned ? 'Artisan assigned' : 'Not assigned');
+  const isCustomer = user?.role === 'customer';
+  const isArtisan = user?.role === 'artisan';
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <button
-        onClick={() => navigate(-1)}
-        className="mb-4 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
-      >
-        ← Back
-      </button>
-
-      <div className="bg-white shadow-lg rounded-2xl p-6 space-y-6">
-        {/* Header */}
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/customer/jobs')}>
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{job.title}</h1>
-          <p className="text-gray-600 mt-2">{job.description}</p>
+          <p className="text-gray-600">Job Details</p>
         </div>
+      </div>
 
-        {/* Job Meta */}
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="flex items-center gap-2 text-gray-600">
-            <span>📍</span>
-            <span>{job.location?.city || 'Unknown city'}, {job.location?.state || 'Unknown state'}</span>
-          </div>
-          <div className="flex items-center gap-2 text-gray-600">
-            <span>💰</span>
-            <span>₦{job.budget?.toLocaleString() || job.budget}</span>
-          </div>
-          <div className="flex items-center gap-2 text-gray-600">
-            <span>📅</span>
-            <span>{new Date(job.createdAt).toLocaleDateString()}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-600">Status:</span>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-              job.status === 'completed' ? 'bg-green-100 text-green-800' :
-              job.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-              job.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-              'bg-yellow-100 text-yellow-800'
-            }`}>
-              {job.status.replace('_', ' ')}
-            </span>
-          </div>
-        </div>
+      {/* Artisan Warning Banner */}
+      {isArtisan && (
+        <Card className="bg-orange-50 border-orange-200">
+          <CardContent className="py-4">
+            <p className="text-orange-700 text-sm">
+              <strong>Artisan View:</strong> You are viewing this job as an artisan. 
+              You cannot make payments on this page. Customers will pay you through the platform.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
-        <hr className="border-gray-200" />
-
-        {/* People Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Customer */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Customer</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold">
-                {customerName.charAt(0).toUpperCase()}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <Badge className={statusColors[job.status]}>
+                  {job.status.toUpperCase()}
+                </Badge>
+                <span className="text-sm text-gray-500">
+                  Posted {new Date(job.createdAt).toLocaleDateString()}
+                </span>
               </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
               <div>
-                <p className="font-medium text-gray-900">{customerName}</p>
-                {isPopulated(job.customerId) && job.customerId.phone && (
-                  <p className="text-sm text-gray-500">{job.customerId.phone}</p>
-                )}
+                <h3 className="font-semibold mb-2">Description</h3>
+                <p className="text-gray-600 whitespace-pre-wrap">{job.description}</p>
               </div>
-            </div>
-          </div>
 
-          {/* Artisan */}
-          <div className={`rounded-lg p-4 ${isAssigned ? 'bg-green-50' : 'bg-gray-50'}`}>
-            <h3 className="font-semibold text-gray-900 mb-2">Assigned Artisan</h3>
-            {isAssigned ? (
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold">
-                  {artisanName.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">{artisanName}</p>
-                  <p className="text-sm text-green-600">✓ Assigned</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-400">
-                  ?
-                </div>
-                <div>
-                  <p className="font-medium text-gray-500">Not assigned yet</p>
-                  <p className="text-sm text-gray-400">Waiting for applications</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+              <Separator />
 
-        {/* Applications Section (for owner) */}
-        {isOwner && job.applications && job.applications.length > 0 && (
-          <div className="bg-blue-50 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-3">
-              Applications ({job.applications.length})
-            </h3>
-            <div className="space-y-2">
-              {job.applications.map((app: any, idx: number) => (
-                <div key={idx} className="bg-white rounded p-3 flex justify-between items-center">
-                  <div>
-                    <p className="font-medium">{app.artisanId?.fullName || 'Artisan'}</p>
-                    <p className="text-sm text-gray-500">{app.status}</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5 text-emerald-600" />
                   </div>
-                  {app.status === 'pending' && (
-                    <button
-                      onClick={() => {/* handle accept application */}}
-                      className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
-                    >
-                      Accept
-                    </button>
-                  )}
+                  <div>
+                    <p className="text-sm text-gray-500">Budget</p>
+                    <p className="font-semibold">₦{job.budget?.toLocaleString()}</p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {/* Actions */}
-        <div className="flex gap-3 pt-4 flex-wrap">
-          {/* Artisan can apply */}
-          {!isOwner && isArtisan && isPending && !isAssigned && (
-            <button
-              onClick={handleApply}
-              disabled={actionLoading}
-              className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {actionLoading ? 'Applying...' : 'Apply for Job'}
-            </button>
-          )}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Calendar className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Scheduled</p>
+                    <p className="font-semibold">
+                      {new Date(job.scheduledDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
 
-          {/* Customer accepts artisan */}
-          {isOwner && isAssigned && isPending && (
-            <button
-              onClick={handleAccept}
-              disabled={actionLoading}
-              className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {actionLoading ? 'Accepting...' : 'Accept Artisan'}
-            </button>
-          )}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                    <MapPin className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Location</p>
+                    <p className="font-semibold">{job.location?.city}, {job.location?.state}</p>
+                  </div>
+                </div>
 
-          {/* Start Job (for artisan when accepted) */}
-          {isArtisan && !isOwner && isAssigned && isAccepted && job.artisanId && getId(job.artisanId) === user?._id && (
-            <button
-              onClick={() => {/* handle start */}}
-              className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors"
-            >
-              Start Job
-            </button>
-          )}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Category</p>
+                    <p className="font-semibold">{job.category}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          {/* Complete Job */}
-          {isAssigned && isAccepted && (
-            <button
-              onClick={() => {/* handle complete */}}
-              className="flex-1 bg-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-700 transition-colors"
-            >
-              Mark Complete
-            </button>
-          )}
-
-          {/* Chat */}
-          {isAssigned && (
-            <button
-              onClick={goToChat}
-              className="bg-gray-800 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-900 transition-colors"
-            >
-              💬 Chat
-            </button>
-          )}
-
-          {/* ✅ FIXED: Cancel Job using CancelJobButton component */}
-          {isOwner && (isPending || job.status === 'assigned') && (
-            <CancelJobButton 
-              jobId={job._id} 
-              jobStatus={job.status}
-              onCancelSuccess={fetchJob}
-            />
+          {/* Artisan Card */}
+          {job.artisanId && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Assigned Artisan</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-2xl font-bold text-emerald-700">
+                    {typeof job.artisanId === 'object' 
+                      ? job.artisanId.fullName?.charAt(0)
+                      : 'A'
+                    }
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">
+                      {typeof job.artisanId === 'object' 
+                        ? job.artisanId.fullName
+                        : 'Artisan'
+                      }
+                    </h3>
+                    <p className="text-gray-600">
+                      {typeof job.artisanId === 'object' 
+                        ? job.artisanId.phone
+                        : ''
+                      }
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={startChat}>
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Message
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
 
-        {/* Info Messages */}
-        {!isAssigned && isPending && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-            <p className="font-medium">⏳ Waiting for artisans to apply...</p>
-            <p className="mt-1">You'll be notified when someone applies for this job.</p>
-          </div>
-        )}
+        {/* Sidebar - Actions */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Customer: Pay Now */}
+              {isCustomer && job.status === 'pending' && job.paymentStatus === 'pending' && (
+                <Button 
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  onClick={handlePayment}
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <DollarSign className="w-4 h-4 mr-2" />
+                  )}
+                  Pay Now
+                </Button>
+              )}
 
-        {isAssigned && isPending && isOwner && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-            <p className="font-medium">✓ An artisan has been assigned!</p>
-            <p className="mt-1">Click "Accept Artisan" to start the job.</p>
-          </div>
-        )}
+              {/* Artisan: Waiting for payment */}
+              {isArtisan && job.status === 'pending' && job.paymentStatus === 'pending' && (
+                <div className="w-full bg-gray-100 text-gray-600 px-4 py-3 rounded-lg text-sm text-center">
+                  Waiting for customer to pay
+                </div>
+              )}
+
+              {/* Customer: Release Payment (after job completed) */}
+              {isCustomer && job.status === 'completed' && job.paymentStatus === 'paid' && (
+                <Button 
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  onClick={handleConfirmCompletion}
+                  disabled={isProcessing}
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Release Payment
+                </Button>
+              )}
+
+              {/* Artisan: Waiting for release */}
+              {isArtisan && job.status === 'completed' && job.paymentStatus === 'paid' && (
+                <div className="w-full bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm text-center">
+                  Payment received. Waiting for customer to release funds.
+                </div>
+              )}
+
+              {/* Customer: Cancel Job */}
+              {isCustomer && ['pending', 'accepted'].includes(job.status) && (
+                <Button 
+                  variant="outline"
+                  className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={handleCancel}
+                  disabled={isProcessing}
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Cancel Job
+                </Button>
+              )}
+
+              {/* Artisan: Job active */}
+              {isArtisan && ['pending', 'accepted'].includes(job.status) && (
+                <div className="w-full bg-gray-50 text-gray-500 px-4 py-3 rounded-lg text-sm text-center">
+                  Job is active
+                </div>
+              )}
+
+              {/* Chat */}
+              {job.artisanId && (
+                <Button 
+                  variant="outline"
+                  className="w-full"
+                  onClick={startChat}
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Chat with Artisan
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Payment Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Badge 
+                variant={job.paymentStatus === 'paid' ? 'default' : 'secondary'}
+                className="w-full justify-center py-2"
+              >
+                {job.paymentStatus === 'paid' ? '✓ Paid' : '⏳ Pending Payment'}
+              </Badge>
+              {job.paymentStatus === 'paid' && job.transactionId && (
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  Transaction ID: {typeof job.transactionId === 'string' 
+                    ? job.transactionId.slice(-8) 
+                    : '...'}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
 };
 
-export default JobDetailsPage;
+export default JobDetails;

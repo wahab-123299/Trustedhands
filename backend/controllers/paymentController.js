@@ -1,3 +1,4 @@
+// backend/controllers/paymentController.js
 const axios = require('axios');
 const crypto = require('crypto');
 const { User, Job, Transaction, Wallet, ArtisanProfile, Conversation } = require('../models');
@@ -39,7 +40,7 @@ exports.initializePayment = async (req, res, next) => {
       throw new AppError('JOB_INVALID_STATUS', 'Payment has already been processed for this job.');
     }
 
-    // ✅ ADDED: Block milestone-based jobs from regular payment
+    // Block milestone-based jobs from regular payment
     if (job.hasMilestones) {
       throw new AppError(
         'JOB_HAS_MILESTONES',
@@ -72,7 +73,6 @@ exports.initializePayment = async (req, res, next) => {
     });
 
     if (existingTransaction) {
-      // Return existing transaction instead of creating new
       return res.json({
         success: true,
         data: {
@@ -212,7 +212,6 @@ exports.verifyPayment = async (req, res, next) => {
 
     // Update transaction as successful
     if (!transaction) {
-      // Webhook might have created it, or it's a different reference
       throw new AppError('NOT_FOUND', 'Transaction not found for this reference.');
     }
 
@@ -244,7 +243,7 @@ exports.verifyPayment = async (req, res, next) => {
     // Notify artisan via socket and create conversation if needed
     await notifyArtisanPaymentReceived(req.app.get('io'), transaction, wallet);
 
-    // ✅ ADDED: Payment received notification via NotificationService
+    // Payment received notification via NotificationService
     try {
       const artisan = await User.findById(transaction.payeeId);
       const customer = await User.findById(transaction.payerId);
@@ -357,7 +356,7 @@ exports.releasePayment = async (req, res, next) => {
     // Notify artisan
     await notifyArtisanPaymentReleased(req.app.get('io'), transaction, wallet);
 
-    // ✅ ADDED: Payment released notification via NotificationService
+    // Payment released notification via NotificationService
     try {
       const artisan = await User.findById(transaction.payeeId);
       const customer = await User.findById(transaction.payerId);
@@ -563,7 +562,7 @@ async function handleTransferSuccess(data) {
     await wallet.completeWithdrawal(reference, id.toString());
   }
 
-  // ✅ ADDED: Withdrawal completed notification
+  // Withdrawal completed notification
   try {
     const artisan = await User.findById(transaction.payeeId);
     if (artisan) {
@@ -602,7 +601,7 @@ async function handleTransferFailed(data) {
     await wallet.failWithdrawal(reference, reason);
   }
 
-  // ✅ ADDED: Withdrawal failed notification
+  // Withdrawal failed notification
   try {
     const artisan = await User.findById(transaction.payeeId);
     if (artisan) {
@@ -642,7 +641,7 @@ async function handleTransferReversed(data) {
     await wallet.failWithdrawal(reference, `Reversed: ${reason}`);
   }
 
-  // ✅ ADDED: Withdrawal reversed notification
+  // Withdrawal reversed notification
   try {
     const artisan = await User.findById(transaction.payeeId);
     if (artisan) {
@@ -738,7 +737,7 @@ exports.requestWithdrawal = async (req, res, next) => {
       // Update withdrawal in wallet
       await wallet.processWithdrawal(withdrawalId, transferData.reference);
 
-      // ✅ ADDED: Withdrawal initiated notification
+      // Withdrawal initiated notification
       try {
         const user = await User.findById(userId);
         await NotificationService.send({
@@ -1170,7 +1169,6 @@ exports.verifyAccount = async (req, res, next) => {
       }
     });
   } catch (error) {
-    // ✅ FIXED: Always call next(error) — never throw raw errors
     console.error('Account verification error:', error.response?.data || error.message);
 
     if (error instanceof AppError) {

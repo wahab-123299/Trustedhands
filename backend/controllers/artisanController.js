@@ -14,12 +14,12 @@ const transformArtisan = (artisan) => {
   }
 
   // Handle both populated and unpopulated userId
-  const userData = typeof artisan.userId === 'object' && artisan.userId !== null 
-    ? artisan.userId 
+  const userData = typeof artisan.userId === 'object' && artisan.userId !== null
+    ? artisan.userId
     : null;
-  
-  const userId = userData 
-    ? userData._id?.toString() 
+
+  const userId = userData
+    ? userData._id?.toString()
     : (artisan.userId?.toString ? artisan.userId.toString() : artisan.userId);
 
   if (!userData) {
@@ -118,7 +118,7 @@ exports.getArtisans = async (req, res, next) => {
       maxRate,
       experienceYears,
       page = 1,
-      limit = 10,
+      limit = 12,
       sortBy = 'averageRating'
     } = req.query;
 
@@ -130,22 +130,30 @@ exports.getArtisans = async (req, res, next) => {
     if (availability && availability !== 'all') {
       query['availability.status'] = availability;
     }
-    
+
     if (minRating && minRating !== 'all') {
       query.averageRating = { $gte: parseFloat(minRating) };
     }
-    
+
     if (maxRate && maxRate !== 'all') {
       query['rate.amount'] = { $lte: parseFloat(maxRate) };
     }
-    
+
     if (experienceYears && experienceYears !== 'all') {
-      query.experienceYears = experienceYears;
+      query.experienceYears = parseInt(experienceYears);
     }
 
     if (skills && skills !== 'All Skills') {
       const skillsArray = skills.split(',').map(s => s.trim());
       query.skills = { $in: skillsArray };
+    }
+
+    // Include state/city in MongoDB query when possible
+    if (state && state !== 'All States') {
+      query['userId.location.state'] = { $regex: new RegExp(`^${state}$`, 'i') };
+    }
+    if (city) {
+      query['userId.location.city'] = { $regex: new RegExp(`^${city}$`, 'i') };
     }
 
     console.log('MongoDB query filter:', JSON.stringify(query));
@@ -157,12 +165,15 @@ exports.getArtisans = async (req, res, next) => {
     else if (sortBy === 'experience') sort = { experienceYears: -1 };
     else sort = { averageRating: -1 };
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 12;
+    const skip = (pageNum - 1) * limitNum;
 
-    const totalInDb = await ArtisanProfile.countDocuments();
-    console.log('Total ArtisanProfile documents in DB:', totalInDb);
+    // Count with the SAME query
+    const total = await ArtisanProfile.countDocuments(query);
+    console.log('Total matching documents:', total);
 
-    let artisans = await ArtisanProfile.find(query)
+    const artisans = await ArtisanProfile.find(query)
       .populate({
         path: 'userId',
         model: 'User',
@@ -170,34 +181,16 @@ exports.getArtisans = async (req, res, next) => {
       })
       .sort(sort)
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(limitNum)
       .lean();
 
     console.log('Raw artisans fetched:', artisans.length);
-    
+
     if (artisans.length > 0) {
       console.log('First artisan userId:', artisans[0].userId ? 'EXISTS' : 'NULL/UNDEFINED');
       console.log('First artisan userId type:', typeof artisans[0].userId);
       console.log('First artisan ID:', artisans[0]._id);
     }
-
-    if (state && state !== 'All States') {
-      console.log(`Filtering by state: ${state}`);
-      const beforeCount = artisans.length;
-      artisans = artisans.filter(a => 
-        a.userId?.location?.state?.toLowerCase() === state.toLowerCase()
-      );
-      console.log(`State filter: ${beforeCount} -> ${artisans.length}`);
-    }
-
-    if (city) {
-      console.log(`Filtering by city: ${city}`);
-      artisans = artisans.filter(a => 
-        a.userId?.location?.city?.toLowerCase() === city.toLowerCase()
-      );
-    }
-
-    const total = await ArtisanProfile.countDocuments(query);
 
     const formattedArtisans = artisans
       .map(artisan => {
@@ -217,15 +210,17 @@ exports.getArtisans = async (req, res, next) => {
       data: {
         artisans: formattedArtisans,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.ceil(total / parseInt(limit))
+          pages: Math.ceil(total / limitNum)
         }
       }
     });
+
   } catch (error) {
-    console.error('ERROR in getArtisans:', error);
+    console.error('❌ GET ARTISANS ERROR:', error.message);
+    console.error(error.stack);
     next(error);
   }
 };
@@ -388,7 +383,6 @@ exports.getArtisanById = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'Invalid artisan ID format.');
     }
 
-    // Search by ArtisanProfile._id (NOT userId)
     const artisan = await ArtisanProfile.findById(id)
       .populate('userId', 'fullName location profileImage isVerified phone email createdAt isActive');
 
@@ -396,7 +390,6 @@ exports.getArtisanById = async (req, res, next) => {
       throw new AppError('ARTISAN_NOT_FOUND', 'Artisan not found or account is inactive.');
     }
 
-    // Fetch reviews from completed jobs (use artisan.userId._id for Job.artisanId)
     const reviews = await Job.find({
       artisanId: artisan.userId._id,
       status: 'completed',
@@ -419,9 +412,9 @@ exports.getArtisanById = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: { 
-        artisan: formattedArtisan, 
-        reviews: formattedReviews 
+      data: {
+        artisan: formattedArtisan,
+        reviews: formattedReviews
       }
     });
   } catch (error) {
@@ -462,12 +455,12 @@ exports.getArtisanReviews = async (req, res, next) => {
     });
 
     const ratingStats = await Job.aggregate([
-      { 
-        $match: { 
-          artisanId: new mongoose.Types.ObjectId(id), 
-          status: 'completed', 
-          'review.rating': { $exists: true } 
-        } 
+      {
+        $match: {
+          artisanId: new mongoose.Types.ObjectId(id),
+          status: 'completed',
+          'review.rating': { $exists: true }
+        }
       },
       { $group: { _id: '$review.rating', count: { $sum: 1 } } },
       { $sort: { _id: -1 } }
@@ -526,9 +519,9 @@ exports.updateProfile = async (req, res, next) => {
     if (bio !== undefined) artisan.bio = bio;
     if (workRadius) artisan.workRadius = workRadius;
     if (availability) {
-      artisan.availability = { 
-        ...artisan.availability.toObject(), 
-        ...availability 
+      artisan.availability = {
+        ...artisan.availability.toObject(),
+        ...availability
       };
     }
 
@@ -580,7 +573,7 @@ exports.updateAvailability = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Availability updated successfully',
-      data: { 
+      data: {
         availability: {
           status: artisan.availability.status,
           nextAvailableDate: artisan.availability.nextAvailableDate,
@@ -666,12 +659,12 @@ exports.uploadPortfolioImages = async (req, res, next) => {
 
     if (currentImages.length + newImagesCount > maxImages) {
       throw new AppError(
-        'VALIDATION_ERROR', 
+        'VALIDATION_ERROR',
         `Maximum ${maxImages} portfolio images allowed. You can upload ${maxImages - currentImages.length} more.`
       );
     }
 
-    const uploadPromises = req.files.map(file => 
+    const uploadPromises = req.files.map(file =>
       uploadToCloudinary(file.buffer, 'portfolio-images')
     );
 

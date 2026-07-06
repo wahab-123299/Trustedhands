@@ -1,269 +1,166 @@
+// backend/middleware/authMiddleware.js
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const { User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 
-/**
- * Extract token from request (Authorization header or cookies)
- */
-const extractToken = (req) => {
-  console.log('[Auth Middleware] Headers:', JSON.stringify(req.headers, null, 2));
-  console.log('[Auth Middleware] Authorization header:', req.headers.authorization);
-  console.log('[Auth Middleware] Cookies:', req.cookies);
-
-  // Check Authorization header FIRST
-  if (req.headers.authorization?.startsWith('Bearer ')) {
-    const token = req.headers.authorization.split(' ')[1];
-    console.log('[Auth Middleware] Token extracted from header, length:', token.length);
-    return token;
-  }
-
-  // Fallback to httpOnly cookie
-  if (req.cookies?.accessToken) {
-    console.log('[Auth Middleware] Token extracted from cookie');
-    return req.cookies.accessToken;
-  }
-
-  console.log('[Auth Middleware] No token found');
-  return null;
-};
-
-/**
- * Verify JWT token and return decoded payload
- */
-const verifyToken = (token) => {
-  try {
-    console.log('[Auth Middleware] Verifying token with secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // UNIFIED: Always use userId
-    const userId = decoded.userId;
-    console.log('[Auth Middleware] Token verified, userId:', userId, '| Token fields:', Object.keys(decoded));
-
-    if (!userId) {
-      throw new Error('No userId found in token');
-    }
-
-    return decoded;
-  } catch (error) {
-    console.error('[Auth Middleware] Token verification failed:', error.name, error.message);
-    if (error.name === 'TokenExpiredError') {
-      throw new AppError('AUTH_TOKEN_EXPIRED', 'Your session has expired. Please login again.');
-    }
-    if (error.name === 'JsonWebTokenError') {
-      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid token format.');
-    }
-    throw new AppError('AUTH_UNAUTHORIZED', 'Token verification failed.');
-  }
-};
+const tokenBlacklist = new Set();
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
+const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 // ==========================================
-// MAIN AUTHENTICATION MIDDLEWARE
+// AUTHENTICATE
 // ==========================================
+
 exports.authenticate = async (req, res, next) => {
   try {
-    console.log('[Auth Middleware] === START AUTHENTICATION ===');
+    let token = null;
+    const authHeader = req.headers.authorization;
 
-    const token = extractToken(req);
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else if (req.cookies?.accessToken) {
+      token = req.cookies.accessToken;
+    }
 
     if (!token) {
-      console.log('[Auth Middleware] No token provided - rejecting');
-      throw new AppError('AUTH_UNAUTHORIZED', 'Access denied. No token provided.');
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required. Please log in.', 401));
     }
 
-    const decoded = verifyToken(token);
-
-    // UNIFIED: Always use userId
-    const userId = decoded.userId;
-
-    console.log('[Auth Middleware] Finding user with ID:', userId);
-
-    const user = await User.findById(userId)
-      .select('_id email role fullName phone isActive profileImage location isVerified isEmailVerified')
-      .lean();
-
-    if (!user) {
-      console.log('[Auth Middleware] User not found in database:', userId);
-      console.log('[Auth Middleware] === AUTHENTICATION FAILED === User associated with this token no longer exists.');
-      throw new AppError('USER_NOT_FOUND', 'User associated with this token no longer exists.');
+    if (tokenBlacklist.has(token)) {
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please log in again.', 401));
     }
 
-    if (!user.isActive) {
-      console.log('[Auth Middleware] User deactivated:', user._id);
-      throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated. Contact support.');
-    }
-
-    // Check blacklist
-    console.log('[Auth Middleware] Checking blacklist...');
-    const userWithTokens = await User.findById(userId)
-      .select('blacklistedTokens')
-      .lean();
-
-    const isBlacklisted = userWithTokens?.blacklistedTokens?.some(
-      bt => bt.token === token
-    );
-
-    if (isBlacklisted) {
-      console.log('[Auth Middleware] Token is blacklisted');
-      throw new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please login again.');
-    }
-
-    // Ensure _id is a string for downstream controllers
-    user._id = user._id.toString();
-
-    req.user = user;
-    req.token = token;
-    req.tokenPayload = decoded;
-
-    console.log('[Auth Middleware] === AUTHENTICATION SUCCESS ===');
-    console.log('[Auth Middleware] req.user._id:', req.user._id, 'type:', typeof req.user._id);
-    next();
-  } catch (error) {
-    console.error('[Auth Middleware] === AUTHENTICATION FAILED ===', error.message);
-    next(error);
-  }
-};
-
-// ==========================================
-// ROLE AUTHORIZATION
-// ==========================================
-exports.authorize = (...roles) => {
-  return (req, res, next) => {
-    try {
-      if (!req.user) {
-        throw new AppError('AUTH_UNAUTHORIZED', 'Authentication required.');
-      }
-
-      const allowedRoles = roles.flat();
-
-      if (!allowedRoles.includes(req.user.role)) {
-        throw new AppError(
-          'AUTH_FORBIDDEN', 
-          `Access denied. Required role: ${allowedRoles.join(' or ')}. Your role: ${req.user.role}`
-        );
-      }
-
-      next();
-    } catch (error) {
-      next(error);
-    }
-  };
-};
-
-// ==========================================
-// ARTISAN-SPECIFIC AUTHORIZATION
-// ==========================================
-exports.requireVerifiedArtisan = async (req, res, next) => {
-  try {
-    if (req.user.role !== 'artisan') {
-      throw new AppError('AUTH_UNAUTHORIZED', 'This action requires an artisan account.');
-    }
-
-    const { ArtisanProfile } = require('../models');
-    const profile = await ArtisanProfile.findOne({ userId: req.user._id })
-      .select('isCertified idVerification.isVerified')
-      .lean();
-
-    if (!profile) {
-      throw new AppError('ARTISAN_NOT_FOUND', 'Artisan profile not found. Please complete your profile.');
-    }
-
-    req.artisanProfile = profile;
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ==========================================
-// OPTIONAL AUTHENTICATION
-// ==========================================
-exports.optionalAuth = async (req, res, next) => {
-  try {
-    const token = extractToken(req);
-
-    if (!token) {
-      return next();
-    }
-
-    try {
-      const decoded = verifyToken(token);
-      const userId = decoded.userId;
-
-      const user = await User.findById(userId)
-        .select('_id email role fullName isActive')
-        .lean();
-
-      if (user && user.isActive) {
-        const userWithTokens = await User.findById(userId)
-          .select('blacklistedTokens');
-
-        const isBlacklisted = userWithTokens?.blacklistedTokens?.some(
-          bt => bt.token === token
-        );
-
-        if (!isBlacklisted) {
-          req.user = user;
-          req.token = token;
-        }
-      }
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Optional auth failed:', error.message);
-      }
-    }
-
-    next();
-  } catch (error) {
-    next();
-  }
-};
-
-// ==========================================
-// REFRESH TOKEN MIDDLEWARE
-// ==========================================
-exports.verifyRefreshToken = async (req, res, next) => {
-  try {
-    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-
-    if (!refreshToken) {
-      throw new AppError('AUTH_UNAUTHORIZED', 'Refresh token required.');
+    // Check MongoDB is connected BEFORE querying
+    if (mongoose.connection.readyState !== 1) {
+      console.error('[Auth] MongoDB not connected (state:', mongoose.connection.readyState + ')');
+      return next(new AppError('SERVICE_UNAVAILABLE', 'Database connection lost. Please retry.', 503));
     }
 
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    } catch (error) {
-      if (error.name === 'TokenExpiredError') {
-        throw new AppError('AUTH_TOKEN_EXPIRED', 'Refresh token expired. Please login again.');
+      decoded = jwt.verify(token, JWT_SECRET, {
+        audience: 'trustedhand-client',
+        issuer: 'trustedhand-api'
+      });
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return next(new AppError('AUTH_TOKEN_EXPIRED', 'Your session has expired. Please log in again.', 401));
       }
-      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token.');
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Invalid token. Please log in again.', 401));
     }
 
-    // UNIFIED: Always use userId
-    const userId = decoded.userId;
-
-    const user = await User.findById(userId).select('+refreshTokens');
+    // Query user with timeout to prevent hanging
+    const user = await User.findById(decoded.userId)
+      .select('-password')
+      .maxTimeMS(5000);
 
     if (!user) {
-      throw new AppError('USER_NOT_FOUND', 'User not found.');
+      return next(new AppError('AUTH_UNAUTHORIZED', 'User not found. Please log in again.', 401));
     }
 
-    const tokenExists = user.refreshTokens?.some(rt => rt.token === refreshToken);
-    if (!tokenExists) {
-      user.refreshTokens = [];
-      await user.save();
-      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid refresh token. Please login again.');
+    if (!user.isActive) {
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.', 403));
     }
 
-    req.user = user;
-    req.refreshToken = refreshToken;
+    req.user = {
+      _id: user._id.toString(),
+      id: user._id.toString(),
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+      profileImage: user.profileImage,
+      isVerified: user.isVerified
+    };
+
     next();
   } catch (error) {
-    next(error);
+    console.error('[Auth Middleware] Unexpected error:', error.message);
+    next(new AppError('AUTH_UNAUTHORIZED', 'Authentication failed. Please try again.', 403));
   }
 };
 
 // ==========================================
-// BACKWARD COMPATIBILITY ALIAS
+// AUTHORIZE
 // ==========================================
+
+exports.authorize = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required.', 401));
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return next(new AppError('AUTH_FORBIDDEN', `Access denied. Required: ${allowedRoles.join(' or ')}`, 403));
+    }
+
+    next();
+  };
+};
+
+// ==========================================
+// BACKWARD COMPATIBILITY
+// ==========================================
+
 exports.protect = exports.authenticate;
+
+// ==========================================
+// TOKEN HELPERS
+// ==========================================
+
+exports.generateTokens = (userId) => {
+  const accessToken = jwt.sign(
+    { userId: userId.toString() },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN, audience: 'trustedhand-client', issuer: 'trustedhand-api' }
+  );
+
+  const refreshToken = jwt.sign(
+    { userId: userId.toString() },
+    JWT_SECRET,
+    { expiresIn: JWT_REFRESH_EXPIRES_IN, audience: 'trustedhand-client', issuer: 'trustedhand-api' }
+  );
+
+  return { accessToken, refreshToken };
+};
+
+exports.blacklistToken = (token) => {
+  tokenBlacklist.add(token);
+};
+
+exports.isTokenBlacklisted = (token) => {
+  return tokenBlacklist.has(token);
+};
+
+// ==========================================
+// SOCKET.IO AUTH
+// ==========================================
+
+exports.socketAuth = async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token || socket.handshake.query.token;
+    if (!token) return next(new Error('Authentication required'));
+    if (tokenBlacklist.has(token)) return next(new Error('Token revoked'));
+
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      audience: 'trustedhand-client',
+      issuer: 'trustedhand-api'
+    });
+
+    const user = await User.findById(decoded.userId).select('-password');
+    if (!user || !user.isActive) return next(new Error('User not found or deactivated'));
+
+    socket.user = {
+      _id: user._id.toString(),
+      id: user._id.toString(),
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName
+    };
+
+    next();
+  } catch (error) {
+    next(new Error('Invalid token'));
+  }
+};

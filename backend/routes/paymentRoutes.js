@@ -1,36 +1,67 @@
+// backend/routes/paymentRoutes.js
 const express = require('express');
 const router = express.Router();
 const { paymentController } = require('../controllers');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 
-// Public webhook route (secured by signature verification)
+// ==========================================
+// PUBLIC ROUTES (no auth required)
+// ==========================================
+
+// Paystack webhook (secured by signature verification, NOT JWT)
 router.post('/webhook', paymentController.webhook);
 
-// Public bank routes
+// Get list of banks
 router.get('/banks', paymentController.getBanks);
+
+// Verify bank account number
 router.post('/verify-account', paymentController.verifyAccount);
 
-// Protected payment routes
+// ==========================================
+// PROTECTED PAYMENT ROUTES
+// ==========================================
+
+// Initialize payment for a JOB (customer only)
 router.post('/initialize', authenticate, authorize('customer'), paymentController.initializePayment);
+
+// Verify payment by reference (any authenticated user)
 router.get('/verify/:reference', authenticate, paymentController.verifyPayment);
+
+// Release escrow payment (customer confirms job completion)
+router.post('/release/:jobId', authenticate, authorize('customer'), paymentController.releasePayment);
+
+// Get transaction history (any authenticated user)
 router.get('/history', authenticate, paymentController.getTransactionHistory);
+
+// ==========================================
+// WALLET ROUTES (Artisan only)
+// ==========================================
+
+// Get wallet details & balance
 router.get('/wallet', authenticate, authorize('artisan'), paymentController.getWallet);
+
+// Request withdrawal from wallet (artisan only)
 router.post('/withdraw', authenticate, authorize('artisan'), paymentController.requestWithdrawal);
 
 // ==========================================
-// WALLET ROUTES (for frontend compatibility)
+// FRONTEND COMPATIBILITY ALIASES
 // ==========================================
 
-// Wallet balance
-router.get('/wallet/balance', authenticate, paymentController.getWallet);
+// Alias: /wallet/balance → /wallet
+router.get('/wallet/balance', authenticate, authorize('artisan'), paymentController.getWallet);
 
-// Withdraw from wallet
-router.post('/wallet/withdraw', authenticate, paymentController.requestWithdrawal);
+// Alias: /wallet/withdraw → /withdraw
+router.post('/wallet/withdraw', authenticate, authorize('artisan'), paymentController.requestWithdrawal);
 
-// Initialize deposit to wallet
-router.post('/wallet/deposit/initialize', authenticate, paymentController.initializePayment);
-
-// Get wallet transaction history
+// Alias: /wallet/transactions → /history
 router.get('/wallet/transactions', authenticate, paymentController.getTransactionHistory);
+
+// ==========================================
+// WALLET DEPOSIT (Artisan only - separate from job payment)
+// ==========================================
+
+// FIXED: Reuse initializePayment for wallet deposits (pass isWalletDeposit flag)
+// If you need a separate wallet deposit handler later, create initializeWalletDeposit in the controller
+router.post('/wallet/deposit/initialize', authenticate, authorize('artisan'), paymentController.initializePayment);
 
 module.exports = router;

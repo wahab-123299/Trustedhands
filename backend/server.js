@@ -1,38 +1,71 @@
-// server.js
+// backend/server.js
 const http = require('http');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = require('./app');
 const connectDB = require('./config/database');
+const { startKeepAlive } = require('./utils/keepAlive');
 
 const startServer = async () => {
   try {
-    // Verify dotenv loaded properly
+    // ==========================================
+    // ENV VALIDATION
+    // ==========================================
+
     if (!process.env.MONGODB_URI) {
-      console.error('❌ MONGODB_URI is not defined. Check that your .env file exists at:');
-      console.error('   C:\\Users\\HP\\Documents\\GitHub\\Trustedhands\\backend\\.env');
-      console.error('   And that it contains: MONGODB_URI=mongodb://localhost:27017/TrustedHands');
+      console.error('❌ MONGODB_URI is not defined. Check .env file');
       process.exit(1);
     }
 
     console.log('🔧 MONGODB_URI:', process.env.MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'));
 
-    // Verify critical env vars
     const requiredVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
     const missingRequired = requiredVars.filter(key => !process.env[key]);
     if (missingRequired.length > 0) {
       console.error('❌ Missing required env vars:', missingRequired.join(', '));
-      console.error('   Your .env file must contain JWT_SECRET and JWT_REFRESH_SECRET');
       process.exit(1);
     }
 
     console.log('✅ JWT_SECRET present');
     console.log('✅ JWT_REFRESH_SECRET present');
 
+    // ==========================================
+    // DATABASE CONNECTION
+    // ==========================================
+
     await connectDB();
     console.log('✅ Database connection established');
 
-    // Initialize socket.io (optional)
+    // MongoDB connection event handlers
+    mongoose.connection.on('connected', () => {
+      console.log('🟢 MongoDB connected');
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('🟡 MongoDB disconnected. Will auto-reconnect...');
+    });
+
+    mongoose.connection.on('error', (err) => {
+      console.error('🔴 MongoDB error:', err.message);
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('🟢 MongoDB reconnected');
+    });
+
+    // Internal heartbeat to keep MongoDB connection alive
+    setInterval(() => {
+      if (mongoose.connection.readyState === 1) {
+        mongoose.connection.db.admin().ping()
+          .catch(err => console.error('💔 MongoDB heartbeat failed:', err.message));
+      }
+    }, 30000);
+
+    // ==========================================
+    // SOCKET.IO SETUP
+    // ==========================================
+
     let io;
     try {
       const { init: initSocket } = require('./config/socket');
@@ -49,7 +82,23 @@ const startServer = async () => {
         console.log(`📡 API URL: ${process.env.API_URL || `http://localhost:${PORT}`}`);
         console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'https://trustedhand.org'}`);
         console.log('');
-        console.log('📋 Available Auth Routes:');
+
+        // ==========================================
+        // START KEEP-ALIVE (Prevents Render from sleeping)
+        // ==========================================
+        const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+        
+        if (isProduction) {
+          startKeepAlive();
+          console.log('📡 Keep-alive started — server will stay awake');
+        } else {
+          console.log('[KeepAlive] Skipped — development mode');
+        }
+
+        console.log('');
+        console.log('📋 Available Routes:');
+        console.log('   GET  /api/health          — Health check');
+        console.log('   GET  /api/health/deep     — Deep health check (with DB ping)');
         console.log('   POST /api/auth/register');
         console.log('   POST /api/auth/login');
         console.log('   GET  /api/auth/me');
@@ -58,13 +107,11 @@ const startServer = async () => {
       });
     } catch (socketError) {
       console.warn('⚠️  Socket.io initialization failed:', socketError.message);
-      console.warn('   Server will continue without real-time features.');
-
+      
       const PORT = process.env.PORT || 5000;
       const server = http.createServer(app);
       server.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT} (without socket.io)`);
-        console.log(`📡 API URL: ${process.env.API_URL || `http://localhost:${PORT}`}`);
       });
     }
 
@@ -74,5 +121,22 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received. Shutting down gracefully...');
+  mongoose.connection.close(false, () => {
+    console.log('MongoDB connection closed.');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received. Shutting down gracefully...');
+  mongoose.connection.close(false, () => {
+    console.log('MongoDB connection closed.');
+    process.exit(0);
+  });
+});
 
 startServer();

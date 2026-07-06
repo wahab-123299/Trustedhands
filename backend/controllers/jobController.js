@@ -160,7 +160,7 @@ exports.createJob = async (req, res) => {
       status: 'pending'
     });
 
-    // ✅ NOTIFY NEARBY ARTISANS
+    // Notify nearby artisans
     try {
       const ArtisanProfile = require('../models/ArtisanProfile');
       const nearbyArtisans = await ArtisanProfile.find({
@@ -175,10 +175,10 @@ exports.createJob = async (req, res) => {
             user: artisan.userId,
             type: 'new_job_alert',
             channels: ['in_app', 'email'],
-            data: { 
-              jobTitle: job.title, 
+            data: {
+              jobTitle: job.title,
               jobId: job._id,
-              location: job.location 
+              location: job.location
             }
           });
         }
@@ -212,20 +212,23 @@ exports.createJob = async (req, res) => {
 // ==========================================
 exports.getMyJobs = async (req, res) => {
   try {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 20 } = req.query;
 
     const userIdStr = req.user._id?.toString?.() || String(req.user._id);
     const userId = new mongoose.Types.ObjectId(userIdStr);
     const userRole = req.user.role;
 
-    console.log('[getMyJobs] userId:', userIdStr, 'role:', userRole);
+    console.log(`[getMyJobs] userId: ${userIdStr} role: ${userRole} page: ${page} limit: ${limit}`);
 
     let query = {};
 
     if (userRole === 'customer') {
       query.customerId = userId;
     } else if (userRole === 'artisan') {
-      query.artisanId = userId;
+      query.$or = [
+        { artisanId: userId },
+        { 'applications.artisanId': userId }
+      ];
     }
 
     if (status) {
@@ -238,7 +241,7 @@ exports.getMyJobs = async (req, res) => {
     }
 
     const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 10;
+    const limitNum = parseInt(limit) || 20;
     const skip = (pageNum - 1) * limitNum;
 
     const jobs = await Job.find(query)
@@ -311,7 +314,7 @@ exports.updateJob = async (req, res) => {
     await job.save();
     await job.populate('customerId', 'fullName profileImage');
 
-    // ✅ ADDED: Notify artisan of job update
+    // Notify artisan of job update
     try {
       if (job.artisanId) {
         const artisan = await User.findById(job.artisanId);
@@ -374,7 +377,7 @@ exports.deleteJob = async (req, res) => {
 
     await Application.deleteMany({ jobId: id });
 
-    // ✅ ADDED: Notify artisans who applied
+    // Notify artisans who applied
     try {
       const applications = await Application.find({ jobId: id });
       for (const app of applications) {
@@ -467,7 +470,7 @@ exports.applyForJob = async (req, res) => {
 
     await application.populate('artisanId', 'fullName profileImage');
 
-    // ✅ NOTIFY CUSTOMER ABOUT NEW APPLICATION
+    // Notify customer about new application
     try {
       const customer = await User.findById(job.customerId);
       const artisan = await User.findById(artisanId);
@@ -554,7 +557,7 @@ exports.acceptApplication = async (req, res) => {
       { status: 'rejected' }
     );
 
-    // ✅ NOTIFY ARTISAN THAT APPLICATION WAS ACCEPTED
+    // Notify artisan that application was accepted
     try {
       const artisan = await User.findById(application.artisanId);
       const customer = await User.findById(req.user._id);
@@ -574,7 +577,7 @@ exports.acceptApplication = async (req, res) => {
       console.error('[acceptApplication] Failed to notify artisan:', notifyError);
     }
 
-    // ✅ ADDED: Book artisan's availability slot
+    // Book artisan's availability slot
     try {
       const { bookSlot } = require('../controllers/availabilityController');
       const scheduledDate = job.scheduledDate;
@@ -755,7 +758,7 @@ exports.rejectApplication = async (req, res) => {
     application.status = 'rejected';
     await application.save();
 
-    // ✅ NOTIFY ARTISAN THAT APPLICATION WAS REJECTED
+    // Notify artisan that application was rejected
     try {
       const artisan = await User.findById(application.artisanId);
       if (artisan && artisan.email) {
@@ -822,7 +825,7 @@ exports.acceptJob = async (req, res) => {
     job.startedAt = new Date();
     await job.save();
 
-    // ✅ NOTIFY CUSTOMER THAT JOB WAS ACCEPTED/STARTED
+    // Notify customer that job was accepted/started
     try {
       const customer = await User.findById(job.customerId);
       const artisan = await User.findById(req.user._id);
@@ -901,7 +904,7 @@ exports.startJob = async (req, res) => {
     job.startedAt = new Date();
     await job.save();
 
-    // ✅ NOTIFY CUSTOMER THAT JOB STARTED
+    // Notify customer that job started
     try {
       const customer = await User.findById(job.customerId);
       const artisan = await User.findById(req.user._id);
@@ -985,7 +988,7 @@ exports.completeJob = async (req, res) => {
       await job.confirmByArtisan();
     }
 
-    // ✅ ADDED: Update hiredBefore in favorites
+    // Update hiredBefore in favorites
     try {
       const Favorite = require('../models/Favorite');
       await Favorite.findOneAndUpdate(
@@ -1003,13 +1006,12 @@ exports.completeJob = async (req, res) => {
       console.error('[completeJob] Favorite update failed:', e.message);
     }
 
-    // ✅ NOTIFY BOTH PARTIES WHEN JOB IS COMPLETED
+    // Notify both parties when job is completed
     try {
       if (job.status === 'completed') {
         const customer = await User.findById(job.customerId);
         const artisan = await User.findById(job.artisanId);
 
-        // Notify customer
         if (customer && customer.email) {
           await NotificationService.send({
             user: customer,
@@ -1023,7 +1025,6 @@ exports.completeJob = async (req, res) => {
           });
         }
 
-        // Notify artisan
         if (artisan && artisan.email) {
           await NotificationService.send({
             user: artisan,
@@ -1114,7 +1115,7 @@ exports.cancelJob = async (req, res) => {
     job.cancelledBy = req.user._id;
     await job.save();
 
-    // ✅ NOTIFY OTHER PARTY ABOUT CANCELLATION
+    // Notify other party about cancellation
     try {
       const otherPartyId = isCustomer ? job.artisanId : job.customerId;
       const otherParty = await User.findById(otherPartyId);
@@ -1220,7 +1221,7 @@ exports.addReview = async (req, res) => {
     };
     await job.save();
 
-    // ✅ NOTIFY ARTISAN ABOUT NEW REVIEW
+    // Notify artisan about new review
     try {
       const artisan = await User.findById(job.artisanId);
       const customer = await User.findById(req.user._id);
