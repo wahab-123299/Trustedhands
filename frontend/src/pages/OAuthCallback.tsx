@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { api, authStorage } from '@/services/api';
 
 const OAuthCallback = () => {
   const [searchParams] = useSearchParams();
@@ -28,34 +29,25 @@ const OAuthCallback = () => {
           return;
         }
 
-        // Store tokens
-        localStorage.setItem('token', token);
-        if (refreshToken) {
-          localStorage.setItem('refreshToken', refreshToken);
-        }
-        localStorage.setItem('rememberMe', 'true');
+        // Store tokens using authStorage (consistent with rest of app)
+        authStorage.storeTokens(token, refreshToken || undefined, true);
 
-        // Fetch user data
+        // Fetch user data using the api instance (properly configured with baseURL)
         setStatus('Fetching your profile...');
-        const API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
         
-        const response = await fetch(`${API_URL}/auth/me`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+        const response = await api.get('/auth/me', {
+          headers: { Authorization: `Bearer ${token}` }
         });
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch user data');
-        }
-
-        const data = await response.json();
+        const data = response.data;
         const user = data.data?.user || data.user;
 
         if (!user) {
           throw new Error('No user data received');
         }
+
+        // Store user in localStorage
+        localStorage.setItem('user', JSON.stringify(user));
 
         // Update auth context
         updateUserFromOAuth(user, token);
@@ -68,6 +60,8 @@ const OAuthCallback = () => {
 
       } catch (err: any) {
         console.error('[OAuthCallback] Error:', err);
+        // Clear any partial tokens on error
+        authStorage.clearTokens();
         setStatus('Login failed. Please try again.');
         toast.error('Login failed. Please try again.');
         setTimeout(() => navigate('/login?error=oauth_failed'), 2000);

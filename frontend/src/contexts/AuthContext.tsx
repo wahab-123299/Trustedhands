@@ -232,7 +232,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: initAuth — Handles nested backend response
+  // FIXED: initAuth — Handles flat backend response + cached user
   // ==========================================
   useEffect(() => {
     if (hasInitialized.current) {
@@ -267,17 +267,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
+        // FIXED: Try to use cached user for instant UI while fetching fresh data
+        let cachedUser: User | null = null;
+        try {
+          const cached = localStorage.getItem('user');
+          if (cached) {
+            cachedUser = JSON.parse(cached);
+            addLog(`[Init] Cached user found: ${cachedUser?.email}`);
+          }
+        } catch {
+          addLog('[Init] Failed to parse cached user');
+        }
+
         addLog('[Init] Calling userApi.getMe()...');
         const response = await userApi.getMe();
 
         addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 150)}...`);
 
-        // FIXED: Unwrap nested backend response { success, data: { user, ... } }
+        // FIXED: Handle flat backend response { user, token, ... }
         const res = response.data as any;
-        const data = res.data || res;
-        const user = data.user;
-        const hasProfile = data.hasProfile;
-        let artisanProfile = data.artisanProfile;
+        const user = res.user || res.data?.user;
+        const hasProfile = res.hasProfile !== undefined ? res.hasProfile : res.data?.hasProfile;
+        let artisanProfile = res.artisanProfile || res.data?.artisanProfile;
 
         if (!user) {
           throw new Error('No user data in response');
@@ -286,6 +297,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addLog(`[Init] User: ${user.email}, Role: ${user.role}, hasProfile: ${hasProfile}`);
         addLog(`[Init] artisanProfile from getMe: ${artisanProfile ? 'EXISTS' : 'NULL'}`);
 
+        // FIXED: Store user in localStorage
         localStorage.setItem('user', JSON.stringify(user));
 
         if (user.role === 'artisan' && hasProfile === false) {
@@ -410,7 +422,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: login — Handles nested backend response { success, data: { user, accessToken } }
+  // FIXED: login — Handles flat backend response
   // ==========================================
   const login = useCallback(
     async (email: string, password: string, rememberMe: boolean = true) => {
@@ -423,24 +435,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.login({ email, password });
         const res = response.data;
 
-        // FIXED: Unwrap nested data structure from backend
-        const data = res.data || res;
-        const user = data.user;
-        const accessToken = data.token || data.accessToken;
-        const refreshToken = data.refreshToken;
-        const dashboardRoute = data.dashboardRoute || '/';
-
-        addLog(`[Login] Response keys: ${Object.keys(res).join(', ')}`);
-        addLog(`[Login] Data keys: ${Object.keys(data).join(', ')}`);
-        addLog(`[Login] accessToken exists: ${!!accessToken}`);
-        addLog(`[Login] user exists: ${!!user}`);
+        // FIXED: Backend sends flat structure: { success, message, accessToken, refreshToken, user }
+        const user = res.user;
+        const accessToken = res.accessToken;
+        const dashboardRoute = res.dashboardRoute || '/';
 
         if (!accessToken) {
-          addLog(`[Login] ERROR: No access token. Full response: ${JSON.stringify(res).substring(0, 200)}`);
           throw new Error('No access token received from server');
         }
 
         storeToken(accessToken, rememberMe);
+        // FIXED: Store user in localStorage
         localStorage.setItem('user', JSON.stringify(user));
 
         let finalArtisanProfile: ArtisanProfile | null = null;
@@ -500,11 +505,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(message);
       }
     },
-    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage, extractArtisanFromResponse]
+    // FIXED: Removed unused getToken from dependency array
+    [connectSocket, navigate, location.state, storeToken, extractErrorMessage, extractArtisanFromResponse]
   );
 
   // ==========================================
-  // FIXED: register — Handles nested backend response
+  // FIXED: register — Handles flat backend response (defensive token read)
   // ==========================================
   const register = useCallback(
     async (data: RegisterData, rememberMe: boolean = true) => {
@@ -515,17 +521,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.register(data);
         const res = response.data;
 
-        // FIXED: Unwrap nested data structure from backend
-        const responseData = res.data || res;
-        const user = responseData.user;
-        const accessToken = responseData.accessToken || responseData.token;
-        const dashboardRoute = responseData.dashboardRoute || '/';
+        // FIXED: Defensive token read — handles both "accessToken" and "token"
+        const user = res.user;
+        const accessToken = res.accessToken || res.token;
+        const dashboardRoute = res.dashboardRoute || '/';
 
         if (!accessToken) {
           throw new Error('No access token received from server');
         }
 
         storeToken(accessToken, rememberMe);
+        // FIXED: Store user in localStorage
         localStorage.setItem('user', JSON.stringify(user));
 
         setState({
@@ -583,6 +589,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     localStorage.setItem('token', token);
     localStorage.setItem('rememberMe', 'true');
+    // FIXED: Store user in localStorage
     localStorage.setItem('user', JSON.stringify(user));
 
     setState({
@@ -598,7 +605,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [connectSocket]);
 
   // ==========================================
-  // FIXED: refreshUser — Handles nested backend response
+  // FIXED: refreshUser — Handles flat backend response
   // ==========================================
   const refreshUser = useCallback(async () => {
     try {
@@ -606,11 +613,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const response = await userApi.getMe();
       const res = response.data;
 
-      // FIXED: Unwrap nested data structure from backend
-      const data = res.data || res;
-      const user = data.user || data.data?.user;
-      const artisanProfile = data.artisanProfile || data.data?.artisanProfile;
-      const hasProfile = data.hasProfile || data.data?.hasProfile;
+      // FIXED: Handle both flat and nested response shapes
+      const user = res.user || res.data?.user;
+      const artisanProfile = res.artisanProfile || res.data?.artisanProfile;
+      const hasProfile = res.hasProfile !== undefined ? res.hasProfile : res.data?.hasProfile;
 
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
 
@@ -635,6 +641,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         artisanProfile: finalArtisanProfile,
         isAuthenticated: true,
       }));
+      // FIXED: Store updated user in localStorage
       localStorage.setItem('user', JSON.stringify(user));
       addLog('[RefreshUser] Success');
     } catch (error: any) {

@@ -124,8 +124,9 @@ exports.register = [
           error: {
             code: 'VALIDATION_ERROR',
             message: 'Please check your input and try again.',
+            // FIXED: Use e.path instead of deprecated e.param
             details: errors.array().map(e => ({
-              field: e.param,
+              field: e.path,
               message: e.msg
             }))
           }
@@ -216,7 +217,7 @@ exports.register = [
 
         const minRate = minRates[experienceYears] || 500;
         if (rate.amount < minRate) {
-          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
+          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is \u20A6${minRate}.`);
         }
 
         const artisanProfile = await ArtisanProfile.create({
@@ -279,7 +280,7 @@ exports.register = [
           `
         });
         await sendWelcomeEmail(user.email, user.fullName);
-        
+
         await NotificationService.send({
           user: user,
           type: 'welcome',
@@ -397,7 +398,7 @@ exports.login = async (req, res, next) => {
     try {
       const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
       const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
-      
+
       await NotificationService.send({
         user: user,
         type: 'login_alert',
@@ -844,6 +845,8 @@ exports.oauthCallback = async (req, res) => {
     } else {
       // New user — create from OAuth data
       isNewUser = true;
+      // FIXED: Let User model's pre-save hook handle password hashing
+      // instead of calling bcrypt directly (avoids double-hashing)
       user = await User.create({
         fullName: oauthUser.displayName || 'OAuth User',
         email: oauthUser.email.toLowerCase(),
@@ -854,7 +857,7 @@ exports.oauthCallback = async (req, res) => {
         role: 'customer',
         isVerified: true,
         isEmailVerified: true,
-        password: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12)
+        password: crypto.randomBytes(32).toString('hex') // plain string — model will hash
       });
     }
 
@@ -871,7 +874,7 @@ exports.oauthCallback = async (req, res) => {
     const redirectPath = isNewUser ? '/setup-profile' : dashboardRoute;
 
     const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&redirect=${encodeURIComponent(redirectPath)}`;
-    
+
     log('[OAuth Callback] Redirecting to:', redirectPath);
     res.redirect(redirectUrl);
 
