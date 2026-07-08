@@ -18,11 +18,19 @@ if (typeof window !== 'undefined') {
   };
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
-addLog(`[API Config] URL: ${API_URL}`);
+// ==========================================
+// FIXED: Remove trailing /api from API_URL
+// The axios baseURL should be the ROOT URL
+// All endpoint paths will include /api/ prefix
+// ==========================================
+const RAW_API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
+const API_URL = RAW_API_URL.replace(/\/api\/?$/, ''); // Strip trailing /api
+
+addLog(`[API Config] RAW URL: ${RAW_API_URL}`);
+addLog(`[API Config] Cleaned URL: ${API_URL}`);
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: `${API_URL}/api`, // Now endpoints are /api/auth/login etc.
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -317,10 +325,13 @@ api.interceptors.response.use(
   }
 );
 
+// ==========================================
+// FIXED: OAuth URLs now use API_URL directly (no .replace needed)
+// ==========================================
 export const wakeUpServer = async (): Promise<boolean> => {
   try {
     addLog('[WakeUp] Pinging server...');
-    await axios.get(`${API_URL.replace('/api', '')}/health`, { 
+    await axios.get(`${API_URL}/health`, { 
       timeout: 10000,
       withCredentials: true 
     });
@@ -328,7 +339,7 @@ export const wakeUpServer = async (): Promise<boolean> => {
     return true;
   } catch (error: any) {
     try {
-      await axios.get(API_URL.replace('/api', ''), { 
+      await axios.get(API_URL, { 
         timeout: 10000,
         withCredentials: true 
       });
@@ -342,13 +353,11 @@ export const wakeUpServer = async (): Promise<boolean> => {
 };
 
 export const loginWithGoogle = (): void => {
-  const baseUrl = API_URL.replace('/api', '');
-  window.location.href = `${baseUrl}/auth/google`;
+  window.location.href = `${API_URL}/api/auth/google`;
 };
 
 export const loginWithFacebook = (): void => {
-  const baseUrl = API_URL.replace('/api', '');
-  window.location.href = `${baseUrl}/auth/facebook`;
+  window.location.href = `${API_URL}/api/auth/facebook`;
 };
 
 export const handleOAuthCallback = async (accessToken: string, refreshToken: string, rememberMe = false): Promise<{ user: any }> => {
@@ -742,15 +751,9 @@ export const applicationsApi = {
   withdrawApplication: (id: string) => api.put<ApiResponse<void>>(`/applications/${id}/withdraw`),
 };
 
-// ==========================================
-// FIXED: WALLET API - Now uses correct wallet deposit endpoint
-// ==========================================
-
 export const walletApi = {
   getBalance: () => api.get('/payments/wallet'),
   
-  // FIXED: Calls the correct wallet deposit endpoint (artisan only)
-  // Was incorrectly calling /payments/initialize which requires customer role
   initializeDeposit: (amount: number) => 
     api.post('/payments/wallet/deposit/initialize', { amount }),
   
@@ -759,10 +762,6 @@ export const walletApi = {
   getTransactions: (params?: { page?: number; limit?: number }) => 
     api.get('/payments/history', { params }),
 };
-
-// ==========================================
-// FIXED: PAYMENT API - releasePayment now uses POST not PUT
-// ==========================================
 
 export interface PaymentInitializeData {
   jobId: string;
@@ -777,8 +776,6 @@ export const paymentApi = {
   verify: (reference: string) => 
     api.get<ApiResponse<{ transaction: any; paystackData: any }>>(`/payments/verify/${reference}`),
 
-  // FIXED: Changed from PUT to POST to match backend route
-  // Backend route: router.post('/release/:jobId', ...)
   releasePayment: (jobId: string) => 
     api.post<ApiResponse<{ transaction: any; job: any }>>(`/payments/release/${jobId}`),
 

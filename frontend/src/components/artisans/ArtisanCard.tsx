@@ -1,831 +1,360 @@
-import {
-  createContext,
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  ReactNode,
-  useContext,
-} from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { toast } from "sonner";
-import { io, Socket } from "socket.io-client";
-import { authApi, userApi, artisanApi, RegisterData } from "@/services/api";
-import { User, ArtisanProfile } from "@/types";
+import React from 'react';
+import { MapPin, Building2, Star, ArrowRight, BadgeCheck } from 'lucide-react';
 
-const debugLogs: string[] = [];
-const addLog = (msg: string) => {
-  const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  debugLogs.push(line);
-  console.log(line);
-  if (debugLogs.length > 100) debugLogs.shift();
-};
-
-if (typeof window !== 'undefined') {
-  (window as any).getAuthLogs = () => {
-    console.log('=== AUTH CONTEXT LOGS ===\n' + debugLogs.join('\n'));
-    return debugLogs;
+interface Artisan {
+  _id?: string;
+  id?: string;
+  fullName?: string;
+  name?: string;
+  profileImage?: string;
+  isVerified?: boolean;
+  isCertified?: boolean;
+  profession?: string;
+  skills?: string[];
+  location?: {
+    city?: string;
+    state?: string;
   };
-  (window as any).clearAuthLogs = () => {
-    debugLogs.length = 0;
+  rate?: {
+    amount?: number;
+    period?: string;
   };
+  hourlyRate?: number;
+  ratePeriod?: string;
+  averageRating?: number;
+  rating?: number;
+  totalReviews?: number;
+  reviewCount?: number;
+  completedJobs?: number;
+  createdAt?: string;
+  availabilityStatus?: string;
+  isAvailable?: boolean;
 }
 
-interface AuthResponseData {
-  user: User;
-  artisanProfile?: ArtisanProfile | null;
-  hasProfile?: boolean;
-  dashboardRoute?: string;
-  accessToken?: string;
+interface ArtisanCardProps {
+  artisan: Artisan;
+  onViewProfile: (artisanId: string) => void;
 }
 
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  message?: string;
-}
-
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  artisanProfile: ArtisanProfile | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  isInitialized: boolean;
-  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
-  register: (data: RegisterData, rememberMe?: boolean) => Promise<void>;
-  logout: () => Promise<void>;
-  updateUser: (data: Partial<User>) => void;
-  updateArtisanProfile: (data: Partial<ArtisanProfile>) => void;
-  refreshUser: () => Promise<void>;
-  updateUserFromOAuth: (user: User, token: string) => Promise<void>;
-  socket: Socket | null;
-  socketConnected: boolean;
-}
-
-interface AuthState {
-  user: User | null;
-  token: string | null;
-  artisanProfile: ArtisanProfile | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  isInitialized: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    token: null,
-    artisanProfile: null,
-    isAuthenticated: false,
-    isLoading: true,
-    isInitialized: false,
-  });
-
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [socketConnected, setSocketConnected] = useState(false);
-
-  const navigate = useNavigate();
-  const location = useLocation();
-  const socketRef = useRef<Socket | null>(null);
-
-  const hasInitialized = useRef(false);
-  const isLoggingIn = useRef(false);
-  const oauthInProgress = useRef(false);
-
-  const API_URL = import.meta.env.VITE_API_URL || "https://trustedhands.onrender.com/api";
-  const SOCKET_URL = API_URL.replace("/api", "");
-
-
-  const getToken = useCallback((): string | null => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('token') || sessionStorage.getItem('token');
-  }, []);
-
-  const storeToken = useCallback((token: string, rememberMe: boolean = true): void => {
-    if (typeof window === 'undefined') return;
-
-    if (rememberMe) {
-      localStorage.setItem('token', token);
-      localStorage.setItem('rememberMe', 'true');
-    } else {
-      sessionStorage.setItem('token', token);
-      localStorage.removeItem('rememberMe');
-    }
-  }, []);
-
-  const clearTokens = useCallback((): void => {
-    if (typeof window === 'undefined') return;
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('rememberMe');
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('refreshToken');
-    sessionStorage.removeItem('user');
-  }, []);
-
-
-  const disconnectSocket = useCallback(() => {
-    if (socketRef.current) {
-      socketRef.current.removeAllListeners();
-      socketRef.current.disconnect();
-      socketRef.current = null;
-      setSocket(null);
-      setSocketConnected(false);
-    }
-  }, []);
-
-  const connectSocket = useCallback((userId: string, currentToken: string) => {
-    if (socketRef.current?.connected) return;
-    disconnectSocket();
-
-    addLog(`[Socket] Connecting to: ${SOCKET_URL}`);
-    addLog(`[Socket] Token present: ${!!currentToken}`);
-
-    const socketInstance = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      auth: { 
-        userId,
-        token: currentToken
-      },
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 10000,
-      timeout: 30000,
-      forceNew: true,
-      autoConnect: true,
-    });
-
-    socketInstance.on("connect", () => {
-      addLog('[Socket] Connected successfully');
-      setSocketConnected(true);
-      socketInstance.emit("join_personal", { userId });
-    });
-
-    socketInstance.on("disconnect", (reason) => {
-      addLog(`[Socket] Disconnected: ${reason}`);
-      setSocketConnected(false);
-
-      if (reason === 'io server disconnect') {
-        addLog('[Socket] Server disconnected, will reconnect...');
-        setTimeout(() => socketInstance.connect(), 2000);
-      }
-    });
-
-    socketInstance.on("connect_error", (err) => {
-      addLog(`[Socket] Connection error: ${err.message}`);
-
-      if (err.message.includes('jwt expired') || 
-          err.message.includes('AUTH_TOKEN_REQUIRED') ||
-          err.message.includes('invalid token')) {
-        addLog('[Socket] Token invalid/expired - logging out');
-        disconnectSocket();
-        clearTokens();
-        setState({
-          user: null,
-          token: null,
-          artisanProfile: null,
-          isAuthenticated: false,
-          isLoading: false,
-          isInitialized: true,
-        });
-        navigate('/login');
-        toast.error('Session expired. Please log in again.');
-      }
-    });
-
-    socketInstance.on("error", (err: any) => {
-      addLog(`[Socket] Server error: ${err.message || err}`);
-    });
-
-    socketInstance.io.on("reconnect", (attempt) => {
-      addLog(`[Socket] Reconnected after ${attempt} attempts`);
-      setSocketConnected(true);
-      socketInstance.emit("join_personal", { userId });
-    });
-
-    socketInstance.io.on("reconnect_attempt", (attempt) => {
-      addLog(`[Socket] Reconnect attempt ${attempt}`);
-    });
-
-    socketInstance.io.on("reconnect_error", (err) => {
-      addLog(`[Socket] Reconnect error: ${err.message}`);
-    });
-
-    socketRef.current = socketInstance;
-    setSocket(socketInstance);
-  }, [disconnectSocket, SOCKET_URL, navigate, clearTokens]);
-
-
-  const extractArtisanFromResponse = useCallback((response: any): ArtisanProfile | null => {
-    if (!response?.data?.data) {
-      addLog('[ExtractArtisan] No data in response');
-      return null;
-    }
-    
-    const data = response.data.data;
-    
-    if (data.artisanProfile) {
-      addLog('[ExtractArtisan] Found artisanProfile in getMe response');
-      return data.artisanProfile as ArtisanProfile;
-    }
-    
-    if (data.artisan) {
-      addLog('[ExtractArtisan] Found artisan in data.artisan');
-      return data.artisan as ArtisanProfile;
-    }
-    
-    if (data.userId || data.profession !== undefined || data.skills || data.bio !== undefined) {
-      addLog('[ExtractArtisan] Found artisan directly in data');
-      return data as ArtisanProfile;
-    }
-    
-    addLog(`[ExtractArtisan] Could not find artisan. Keys: ${Object.keys(data).join(', ')}`);
-    return null;
-  }, []);
-
-
-  // ==========================================
-  // INIT AUTH — Skips if OAuth is in progress
-  // ==========================================
-  useEffect(() => {
-    if (hasInitialized.current) {
-      addLog('[Init] Already initialized, skipping');
-      return;
-    }
-    if (oauthInProgress.current) {
-      addLog('[Init] OAuth in progress, deferring init');
-      return;
-    }
-    hasInitialized.current = true;
-
-    const initAuth = async () => {
-      if (isLoggingIn.current || oauthInProgress.current) {
-        addLog('[Init] Login/OAuth in progress, skipping init');
-        return;
-      }
-
-      try {
-        addLog('[Init] === STARTING AUTH INITIALIZATION ===');
-        setState((prev) => ({ ...prev, isLoading: true }));
-
-        const token = getToken();
-        addLog(`[Init] Token from storage: ${token ? 'EXISTS (' + token.substring(0, 20) + '...)' : 'NULL'}`);
-
-        if (!token) {
-          addLog('[Init] No token, setting unauthenticated');
-          setState({
-            user: null,
-            token: null,
-            artisanProfile: null,
-            isAuthenticated: false,
-            isLoading: false,
-            isInitialized: true,
-          });
-          return;
-        }
-
-        addLog('[Init] Calling userApi.getMe()...');
-        const response = await userApi.getMe();
-
-        addLog(`[Init] SUCCESS! Response: ${JSON.stringify(response.data).substring(0, 100)}...`);
-        const res = response.data as ApiResponse<AuthResponseData>;
-        const { user, artisanProfile, hasProfile } = res.data;
-
-        addLog(`[Init] User: ${user.email}, Role: ${user.role}, hasProfile: ${hasProfile}`);
-
-        // If artisan with no profile, they're still authenticated — just need setup
-        if (user.role === 'artisan' && hasProfile === false) {
-          addLog('[Init] Artisan authenticated but needs profile setup');
-          
-          setState({
-            user,
-            token,
-            artisanProfile: null,
-            isAuthenticated: true,
-            isLoading: false,
-            isInitialized: true,
-          });
-
-          connectSocket(user._id, token);
-          
-          if (location.pathname !== '/setup-profile' && !location.pathname.includes('/setup')) {
-            addLog('[Init] Redirecting to profile setup');
-            navigate('/setup-profile', { replace: true });
-          } else {
-            addLog('[Init] Already on setup page, no redirect needed');
-          }
-          
-          addLog('[Init] === AUTH INITIALIZATION COMPLETE (needs profile) ===');
-          return;
-        }
-
-        // Normal flow: user has profile or is a client
-        let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-        
-        if (user.role === 'artisan' && !finalArtisanProfile) {
-          addLog('[Init] User is artisan but no profile in /users/me, fetching /artisans/me...');
-          try {
-            const artisanRes = await artisanApi.getMyProfile();
-            finalArtisanProfile = extractArtisanFromResponse(artisanRes);
-            
-            if (finalArtisanProfile) {
-              addLog('[Init] Artisan profile loaded successfully');
-            }
-          } catch (err: any) {
-            if (err.response?.status === 404) {
-              addLog('[Init] Artisan profile not found (404) — needs setup, continuing auth');
-            } else if (err.response?.status === 400 && err.response?.data?.error?.field === 'profession') {
-              addLog('[Init] Artisan profile needs setup (400 profession required) — continuing auth');
-            } else {
-              addLog(`[Init] Failed to load artisan profile: ${err.message}`);
-            }
-            finalArtisanProfile = null;
-          }
-        }
-
-        setState({
-          user,
-          token,
-          artisanProfile: finalArtisanProfile,
-          isAuthenticated: true,
-          isLoading: false,
-          isInitialized: true,
-        });
-
-        connectSocket(user._id, token);
-        addLog('[Init] === AUTH INITIALIZATION COMPLETE ===');
-
-      } catch (error: any) {
-        // CRITICAL FIX: Don't fail auth on 400 "Profession is required"
-        const isProfileMissingError = 
-          error.response?.status === 400 &&
-          error.response?.data?.error?.code === 'VALIDATION_ERROR' &&
-          error.response?.data?.error?.field === 'profession';
-
-        if (isProfileMissingError && error.response?.data?.data?.user) {
-          const user = error.response.data.data.user;
-          const token = getToken();
-          
-          addLog('[Init] Profile missing but user authenticated, redirecting to setup');
-          
-          setState({
-            user,
-            token,
-            artisanProfile: null,
-            isAuthenticated: true,
-            isLoading: false,
-            isInitialized: true,
-          });
-
-          if (token) connectSocket(user._id, token);
-          
-          if (location.pathname !== '/setup-profile' && !location.pathname.includes('/setup')) {
-            navigate('/setup-profile', { replace: true });
-          }
-          
-          addLog('[Init] === AUTH INITIALIZATION COMPLETE (needs profile) ===');
-          return;
-        }
-
-        // Real auth errors (401/403)
-        addLog(`[Init] FAILED: ${error.message}`);
-        addLog(`[Init] Status: ${error.response?.status}`);
-        addLog(`[Init] Error data: ${JSON.stringify(error.response?.data)}`);
-
-        if (error.response?.status === 401 || 
-            error.message?.includes('jwt expired')) {
-          addLog('[Init] Clearing token (401/expired)');
-          clearTokens();
-        }
-
-        setState({
-          user: null,
-          token: null,
-          artisanProfile: null,
-          isAuthenticated: false,
-          isLoading: false,
-          isInitialized: true,
-        });
-
-        addLog('[Init] === AUTH INITIALIZATION FAILED ===');
-      }
-    };
-
-    const timer = setTimeout(initAuth, 100);
-
-    return () => {
-      clearTimeout(timer);
-      disconnectSocket();
-    };
-  }, [connectSocket, disconnectSocket, getToken, clearTokens, extractArtisanFromResponse, navigate, location.pathname]);
-
-
-  const extractErrorMessage = useCallback((err: any): string => {
-    addLog(`[extractErrorMessage] Extracting from error: ${JSON.stringify({
-      message: err?.message,
-      status: err?.response?.status,
-      code: err?.response?.data?.error?.code,
-      serverMessage: err?.response?.data?.error?.message,
-    })}`);
-
-    if (err?.response?.data?.error?.message) {
-      addLog(`[extractErrorMessage] Found server message: "${err.response.data.error.message}"`);
-      return err.response.data.error.message;
-    }
-
-    if (err?.response?.data?.error?.code) {
-      const code = err.response.data.error.code;
-      const codeMap: Record<string, string> = {
-        'AUTH_INVALID_CREDENTIALS': 'Email or password is incorrect',
-        'AUTH_USER_NOT_FOUND': 'No account found with this email',
-        'AUTH_ACCOUNT_LOCKED': 'Account temporarily locked. Try again later',
-        'AUTH_EMAIL_NOT_VERIFIED': 'Please verify your email before logging in',
-        'AUTH_TOO_MANY_ATTEMPTS': 'Too many attempts. Please try again later',
-        'AUTH_TOKEN_EXPIRED': 'Session expired. Please log in again.',
-        'AUTH_UNAUTHORIZED': 'Access denied. Please log in again.',
-      };
-      const mapped = codeMap[code];
-      if (mapped) {
-        addLog(`[extractErrorMessage] Mapped code "${code}" to: "${mapped}"`);
-        return mapped;
-      }
-    }
-
-    if (err?.response?.status === 401) {
-      addLog(`[extractErrorMessage] Generic 401 - suggesting credentials issue`);
-      return 'Email or password is incorrect';
-    }
-
-    if (err?.message && !err.message.toLowerCase().includes('refresh token')) {
-      addLog(`[extractErrorMessage] Using error.message: "${err.message}"`);
-      return err.message;
-    }
-
-    if (err?.response?.statusText) {
-      addLog(`[extractErrorMessage] Using statusText: "${err.response.statusText}"`);
-      return `Error ${err.response.status}: ${err.response.statusText}`;
-    }
-
-    addLog(`[extractErrorMessage] Fallback message`);
-    return 'Login failed. Please try again.';
-  }, []);
-
-
-  // ==========================================
-  // LOGIN
-  // ==========================================
-  const login = useCallback(
-    async (email: string, password: string, rememberMe: boolean = true) => {
-      try {
-        isLoggingIn.current = true;
-        setState((prev) => ({ ...prev, isLoading: true }));
-
-        addLog(`[Login] Starting login for: ${email} (rememberMe: ${rememberMe})`);
-
-        const response = await authApi.login({ email, password });
-        const res = response.data as ApiResponse<AuthResponseData>;
-
-        const { user, artisanProfile, dashboardRoute, accessToken } = res.data;
-
-        addLog(`[Login] Success! Token: ${!!accessToken}`);
-        if (accessToken) {
-          addLog(`[Login] Token length: ${accessToken.length}`);
-        }
-
-        if (!accessToken) {
-          throw new Error('No access token received from server');
-        }
-
-        storeToken(accessToken, rememberMe);
-
-        const savedToken = getToken();
-        addLog(`[Login] Token saved to storage: ${!!savedToken}`);
-        addLog(`[Login] Saved token matches: ${savedToken === accessToken}`);
-
-        let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-        let needsProfileSetup = false;
-
-        if (user.role === 'artisan' && !finalArtisanProfile) {
-          addLog('[Login] User is artisan but no profile in login response, fetching /artisans/me...');
-          try {
-            const artisanRes = await artisanApi.getMyProfile();
-            finalArtisanProfile = extractArtisanFromResponse(artisanRes);
-            
-            if (finalArtisanProfile) {
-              addLog('[Login] Artisan profile loaded successfully');
-            }
-          } catch (err: any) {
-            if (err.response?.status === 404) {
-              addLog('[Login] Artisan profile not found (404) — needs setup');
-              needsProfileSetup = true;
-            } else if (err.response?.status === 400 && err.response?.data?.error?.field === 'profession') {
-              addLog('[Login] Artisan profile needs setup (400 profession required) — needs setup');
-              needsProfileSetup = true;
-            } else {
-              addLog(`[Login] Failed to load artisan profile: ${err.message}`);
-            }
-            finalArtisanProfile = null;
-          }
-        }
-
-        setState({
-          user,
-          token: accessToken,
-          artisanProfile: finalArtisanProfile,
-          isAuthenticated: true,
-          isLoading: false,
-          isInitialized: true,
-        });
-
-        connectSocket(user._id, accessToken);
-        toast.success(`Welcome ${user.fullName}`);
-
-        await new Promise(r => setTimeout(r, 500));
-
-        addLog('[Login] Navigating now...');
-        isLoggingIn.current = false;
-
-        if (needsProfileSetup) {
-          addLog('[Login] Redirecting to profile setup');
-          navigate('/setup-profile', { replace: true });
-        } else {
-          const destination = location.state?.from?.pathname || dashboardRoute || '/';
-          addLog(`[Login] Destination: ${destination}`);
-          navigate(destination, { replace: true });
-        }
-
-      } catch (err: any) {
-        const message = extractErrorMessage(err);
-
-        addLog(`[Login] FAILED: ${message}`);
-        addLog(`[Login] Raw error message: ${err?.message || 'N/A'}`);
-        addLog(`[Login] Error response status: ${err?.response?.status || 'N/A'}`);
-        addLog(`[Login] Error response data: ${JSON.stringify(err?.response?.data || {})}`);
-
-        isLoggingIn.current = false;
-        setState((prev) => ({ ...prev, isLoading: false }));
-
-        toast.error(message);
-        throw new Error(message);
-      }
-    },
-    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage, extractArtisanFromResponse]
-  );
-
-
-  const register = useCallback(
-    async (data: RegisterData, rememberMe: boolean = true) => {
-      try {
-        isLoggingIn.current = true;
-        setState((prev) => ({ ...prev, isLoading: true }));
-
-        addLog(`[Register] Starting for: ${data.email} (rememberMe: ${rememberMe})`);
-
-        const response = await authApi.register(data);
-        const res = response.data as ApiResponse<AuthResponseData>;
-
-        const { user, artisanProfile, dashboardRoute, accessToken } = res.data;
-
-        addLog(`[Register] Success! Token: ${!!accessToken}`);
-
-        if (!accessToken) {
-          throw new Error('No access token received from server');
-        }
-
-        storeToken(accessToken, rememberMe);
-        addLog('[Register] Token saved');
-
-        setState({
-          user,
-          token: accessToken,
-          artisanProfile: artisanProfile || null,
-          isAuthenticated: true,
-          isLoading: false,
-          isInitialized: true,
-        });
-
-        connectSocket(user._id, accessToken);
-        toast.success("Registration successful");
-
-        const destination = dashboardRoute || '/';
-
-        await new Promise(r => setTimeout(r, 500));
-
-        isLoggingIn.current = false;
-        navigate(destination, { replace: true });
-
-      } catch (err: any) {
-        const message = extractErrorMessage(err);
-
-        addLog(`[Register] FAILED: ${message}`);
-        addLog(`[Register] Raw error: ${err.message}`);
-        addLog(`[Register] Error response: ${JSON.stringify(err.response?.data)}`);
-
-        isLoggingIn.current = false;
-        setState((prev) => ({ ...prev, isLoading: false }));
-
-        toast.error(message);
-        throw new Error(message);
-      }
-    },
-    [connectSocket, navigate, storeToken, extractErrorMessage]
-  );
-
-
-  const logout = useCallback(async () => {
-    try {
-      await authApi.logout();
-    } catch (err) {
-      console.log('Logout API failed:', err);
-    }
-
-    disconnectSocket();
-
-    addLog('[Logout] Clearing all tokens');
-    clearTokens();
-
-    setState({
-      user: null,
-      token: null,
-      artisanProfile: null,
-      isAuthenticated: false,
-      isLoading: false,
-      isInitialized: true,
-    });
-
-    navigate("/login", { replace: true });
-    toast.success("Logged out successfully");
-  }, [disconnectSocket, navigate, clearTokens]);
-
-
-  // ==========================================
-  // FIX: updateUserFromOAuth — Async, blocks initAuth, stores token first
-  // ==========================================
-  const updateUserFromOAuth = useCallback(async (user: User, token: string) => {
-    addLog(`[OAuth] Updating user from OAuth: ${user.email}`);
-
-    // CRITICAL: Block initAuth from running while OAuth is in progress
-    oauthInProgress.current = true;
-    isLoggingIn.current = true;
-
-    // Store token BEFORE anything else
-    localStorage.setItem('token', token);
-    localStorage.setItem('rememberMe', 'true');
-    addLog('[OAuth] Token stored in localStorage');
-
-    // Set state immediately
-    setState({
-      user,
-      token,
-      artisanProfile: null,
-      isAuthenticated: true,
-      isLoading: false,
-      isInitialized: true,
-    });
-
-    connectSocket(user._id, token);
-    addLog('[OAuth] User updated and socket connected');
-
-    // Check if artisan needs profile setup
-    if (user.role === 'artisan') {
-      addLog('[OAuth] Checking if artisan needs profile setup...');
-      try {
-        const res = await userApi.getMe();
-        addLog(`[OAuth] getMe response: hasProfile=${res.data?.data?.hasProfile}`);
-        
-        if (res.data?.data?.hasProfile === false) {
-          addLog('[OAuth] Artisan needs profile setup, redirecting...');
-          if (location.pathname !== '/setup-profile') {
-            navigate('/setup-profile', { replace: true });
-          }
-        }
-      } catch (err: any) {
-        addLog(`[OAuth] getMe error: ${err.response?.status} ${err.response?.data?.error?.field}`);
-        if (err.response?.status === 400 && err.response?.data?.error?.field === 'profession') {
-          addLog('[OAuth] No artisan profile found, redirecting to setup...');
-          if (location.pathname !== '/setup-profile') {
-            navigate('/setup-profile', { replace: true });
-          }
-        }
-      }
-    }
-
-    // Release locks
-    oauthInProgress.current = false;
-    isLoggingIn.current = false;
-    addLog('[OAuth] OAuth processing complete');
-  }, [connectSocket, navigate, location.pathname]);
-
-  // ==========================================
-  // REFRESH USER
-  // ==========================================
-  const refreshUser = useCallback(async () => {
-    try {
-      addLog('[RefreshUser] Refreshing...');
-      const response = await userApi.getMe();
-      const res = response.data as ApiResponse<AuthResponseData>;
-      const { user, artisanProfile, hasProfile } = res.data;
-
-      let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
-        
-      if (user.role === 'artisan' && !finalArtisanProfile && hasProfile !== false) {
-        addLog('[RefreshUser] User is artisan but no profile in /users/me, fetching /artisans/me...');
-        try {
-          const artisanRes = await artisanApi.getMyProfile();
-          addLog(`[RefreshUser] /artisans/me response: ${JSON.stringify(artisanRes.data).substring(0, 150)}...`);
-          
-          finalArtisanProfile = extractArtisanFromResponse(artisanRes);
-          
-          if (finalArtisanProfile) {
-            addLog('[RefreshUser] Artisan profile loaded successfully');
-          } else {
-            addLog('[RefreshUser] Artisan profile response had no usable data');
-          }
-        } catch (err: any) {
-          if (err.response?.status === 404) {
-            addLog('[RefreshUser] Artisan profile not found (404) — profile not created yet');
-          } else if (err.response?.status === 400 && err.response?.data?.error?.field === 'profession') {
-            addLog('[RefreshUser] Artisan profile needs setup (400) — profile not created yet');
-          } else {
-            addLog(`[RefreshUser] Failed to load artisan profile: ${err.message}`);
-          }
-          finalArtisanProfile = null;
-        }
-      }
-
-      setState((prev) => ({
-        ...prev,
-        user,
-        artisanProfile: finalArtisanProfile,
-        isAuthenticated: true,
-      }));
-      addLog('[RefreshUser] Success');
-    } catch (error: any) {
-      addLog(`[RefreshUser] Failed: ${error.message}`);
-      if (error.response?.status === 401) {
-        clearTokens();
-        setState({
-          user: null,
-          token: null,
-          artisanProfile: null,
-          isAuthenticated: false,
-          isLoading: false,
-          isInitialized: true,
-        });
-        navigate('/login');
-      }
-    }
-  }, [navigate, clearTokens, extractArtisanFromResponse]);
-
-
-  const updateUser = useCallback((data: Partial<User>) => {
-    setState((prev) => ({
-      ...prev,
-      user: prev.user ? { ...prev.user, ...data } : null,
-    }));
-  }, []);
-
-  const updateArtisanProfile = useCallback(
-    (data: Partial<ArtisanProfile>) => {
-      setState((prev) => ({
-        ...prev,
-        artisanProfile: prev.artisanProfile
-          ? { ...prev.artisanProfile, ...data }
-          : null,
-      }));
-    },
-    []
-  );
-
-
-  const value: AuthContextType = {
-    ...state,
-    login,
-    register,
-    logout,
-    updateUser,
-    updateArtisanProfile,
-    refreshUser,
-    updateUserFromOAuth,
-    socket,
-    socketConnected,
+const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => {
+  const getInitials = (name?: string): string => {
+    if (!name || name === 'Unknown Artisan') return '??';
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const hasProfileImage = !!artisan.profileImage && 
+    artisan.profileImage !== '/default-avatar.png' && 
+    artisan.profileImage !== '' &&
+    !artisan.profileImage.includes('default');
+
+  const isNew = artisan.createdAt 
+    ? (Date.now() - new Date(artisan.createdAt).getTime()) < (30 * 24 * 60 * 60 * 1000) 
+    : false;
+
+  const locationText = artisan.location?.city && artisan.location?.state 
+    ? `${artisan.location.city}, ${artisan.location.state}`
+    : artisan.location?.city || artisan.location?.state || 'Location not set';
+
+  const displayName = artisan.fullName || artisan.name || 'Unknown Artisan';
+  const rateAmount = artisan.rate?.amount || artisan.hourlyRate || 0;
+  const ratePeriod = artisan.rate?.period || artisan.ratePeriod || 'job';
+  const rateDisplay = rateAmount > 0 
+    ? `₦${Number(rateAmount).toLocaleString()}/${ratePeriod}` 
+    : null;
+  const rating = artisan.averageRating || artisan.rating || 0;
+  const reviews = artisan.totalReviews || artisan.reviewCount || 0;
+  const artisanId = artisan._id || artisan.id || '';
+
+  return (
+    <div className="artisan-card">
+      <div className="card-top">
+        {isNew && (
+          <div className="new-badge">
+            <Star size={10} fill="#fbbf24" color="#fbbf24" />
+            <span>New</span>
+          </div>
+        )}
+
+        <div className="profile-image-wrapper">
+          {hasProfileImage && (
+            <img 
+              src={artisan.profileImage} 
+              alt={displayName}
+              className="profile-image"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                img.style.display = 'none';
+                const fallback = img.nextElementSibling as HTMLElement | null;
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+          )}
+          <div 
+            className="avatar-fallback" 
+            style={{ display: hasProfileImage ? 'none' : 'flex' }}
+          >
+            {getInitials(displayName)}
+          </div>
+        </div>
+      </div>
+
+      <div className="card-body">
+        <h3 className="artisan-name">
+          {displayName}
+          {(artisan.isVerified || artisan.isCertified) && (
+            <BadgeCheck size={16} className="verified-badge" />
+          )}
+        </h3>
+
+        <p className="profession-text">
+          {artisan.profession || artisan.skills?.[0] || 'General Artisan'}
+        </p>
+
+        <div className="info-row">
+          <MapPin size={14} className="info-icon" />
+          <span className="info-text">{locationText}</span>
+        </div>
+
+        {isNew && (
+          <div className="info-row">
+            <Building2 size={14} className="info-icon" />
+            <span className="info-text">New on TrustedHand</span>
+          </div>
+        )}
+
+        {isNew && (
+          <div className="new-tag">
+            <Star size={10} fill="#fbbf24" color="#fbbf24" />
+            <span>New</span>
+          </div>
+        )}
+
+        {rating > 0 && (
+          <div className="rating-row">
+            <Star size={12} fill="#fbbf24" color="#fbbf24" />
+            <span className="rating-text">{rating.toFixed(1)}</span>
+            <span className="rating-count">({reviews} reviews)</span>
+          </div>
+        )}
+      </div>
+
+      <div className="card-footer">
+        {rateDisplay && (
+          <span className="rate-text">From <strong>{rateDisplay}</strong></span>
+        )}
+        <button 
+          className="view-profile-btn"
+          onClick={() => onViewProfile(artisanId)}
+        >
+          View Profile
+          <ArrowRight size={16} />
+        </button>
+      </div>
+
+      <style>{`
+        .artisan-card {
+          background: linear-gradient(180deg, #1a2e1a 0%, #0f1f0f 100%);
+          border-radius: 16px;
+          overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          display: flex;
+          flex-direction: column;
+          min-height: 360px;
+        }
+
+        .artisan-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+          border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .card-top {
+          position: relative;
+          height: 140px;
+          background: linear-gradient(135deg, #1a2e1a 0%, #0d2818 50%, #1a2e1a 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .new-badge {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(8px);
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #fbbf24;
+          border: 1px solid rgba(251, 191, 36, 0.3);
+        }
+
+        .profile-image-wrapper {
+          width: 72px;
+          height: 72px;
+          border-radius: 50%;
+          overflow: hidden;
+          border: 3px solid rgba(16, 185, 129, 0.3);
+          background: #1a3a2a;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .profile-image {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .avatar-fallback {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          font-weight: 700;
+          color: #10b981;
+          background: linear-gradient(135deg, #1a3a2a 0%, #0d2818 100%);
+        }
+
+        .card-body {
+          padding: 16px 20px 12px;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .artisan-name {
+          font-size: 15px;
+          font-weight: 700;
+          color: #ffffff;
+          margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .verified-badge {
+          color: #10b981;
+          flex-shrink: 0;
+        }
+
+        .profession-text {
+          font-size: 13px;
+          color: #10b981;
+          font-weight: 500;
+          margin: 0;
+        }
+
+        .info-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .info-icon {
+          color: #6b7280;
+          flex-shrink: 0;
+        }
+
+        .info-text {
+          font-size: 13px;
+          color: #9ca3af;
+        }
+
+        .new-tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: rgba(251, 191, 36, 0.1);
+          padding: 3px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #fbbf24;
+          border: 1px solid rgba(251, 191, 36, 0.2);
+          width: fit-content;
+          margin-top: 2px;
+        }
+
+        .rating-row {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          margin-top: 4px;
+        }
+
+        .rating-text {
+          font-size: 12px;
+          font-weight: 600;
+          color: #fbbf24;
+        }
+
+        .rating-count {
+          font-size: 12px;
+          color: #6b7280;
+        }
+
+        .card-footer {
+          padding: 12px 20px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .rate-text {
+          font-size: 13px;
+          color: #9ca3af;
+        }
+
+        .rate-text strong {
+          color: #ffffff;
+          font-weight: 600;
+        }
+
+        .view-profile-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 12px 20px;
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: #ffffff;
+          font-size: 14px;
+          font-weight: 600;
+          border: none;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .view-profile-btn:hover {
+          background: linear-gradient(135deg, #059669 0%, #047857 100%);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+        }
+
+        .view-profile-btn:active {
+          transform: translateY(0);
+        }
+      `}</style>
+    </div>
+  );
 };
 
-
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used inside AuthProvider");
-  return context;
-};
-
-export default AuthContext;
+export default ArtisanCard;
