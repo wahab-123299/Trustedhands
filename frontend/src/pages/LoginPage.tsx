@@ -7,8 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { API_URL } from '@/services/api'; // Import the stripped API_URL
 
 const LoginPage = () => {
   const { login } = useAuth();
@@ -101,13 +100,12 @@ const LoginPage = () => {
   };
 
   // ==========================================
-  // FIXED: Direct redirect to backend OAuth
+  // FIXED: OAuth redirects use imported API_URL (already stripped of /api)
   // ==========================================
   const handleGoogleLogin = () => {
     setApiError('');
     setOauthProviderLoading('google');
     setOauthStatus('Redirecting to Google...');
-    // Direct browser redirect — no API call needed
     window.location.href = `${API_URL}/api/auth/google`;
   };
 
@@ -115,7 +113,6 @@ const LoginPage = () => {
     setApiError('');
     setOauthProviderLoading('facebook');
     setOauthStatus('Redirecting to Facebook...');
-    // Direct browser redirect — no API call needed
     window.location.href = `${API_URL}/api/auth/facebook`;
   };
 

@@ -20,10 +20,10 @@ if (typeof window !== 'undefined') {
 
 // ==========================================
 // FIXED: Normalize API URL - strip trailing /api if present
+// Export API_URL so other files can use the same stripped URL
 // ==========================================
 const RAW_API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
-// Remove trailing /api or /api/ to get the base domain
-const API_URL = RAW_API_URL.replace(/\/api\/?$/, '');
+export const API_URL = RAW_API_URL.replace(/\/api\/?$/, '');
 
 addLog(`[API Config] RAW URL: ${RAW_API_URL}`);
 addLog(`[API Config] Cleaned BASE URL: ${API_URL}`);
@@ -363,7 +363,14 @@ export const loginWithFacebook = (): void => {
   window.location.href = redirectUrl;
 };
 
-export const handleOAuthCallback = async (accessToken: string, refreshToken: string, rememberMe = false): Promise<{ user: any }> => {
+// ==========================================
+// FIXED: handleOAuthCallback — refreshToken is optional (comes from HTTP-only cookie)
+// ==========================================
+export const handleOAuthCallback = async (
+  accessToken: string, 
+  refreshToken?: string, 
+  rememberMe = false
+): Promise<{ user: any }> => {
   storeTokens(accessToken, refreshToken, rememberMe);
   addLog(`[OAuth] Tokens stored (rememberMe: ${rememberMe})`);
 
