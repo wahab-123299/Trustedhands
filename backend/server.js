@@ -76,7 +76,7 @@ const startServer = async () => {
       chatSocket(io);
       console.log('✅ Socket.io initialized');
 
-      const PORT = process.env.PORT || 5000;
+      const PORT = process.env.PORT || 10000;
       server.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);
         console.log(`📡 API URL: ${process.env.API_URL || `http://localhost:${PORT}`}`);
@@ -87,7 +87,7 @@ const startServer = async () => {
         // START KEEP-ALIVE (Prevents Render from sleeping)
         // ==========================================
         const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-        
+        const keepAliveUrl = process.env.API_URL || `http://localhost:${PORT}`;
         if (isProduction) {
           startKeepAlive();
           console.log('📡 Keep-alive started — server will stay awake');
@@ -104,6 +104,10 @@ const startServer = async () => {
         console.log('   GET  /api/auth/me');
         console.log('   POST /api/auth/logout');
         console.log('   POST /api/auth/refresh');
+        console.log('   GET  /api/auth/google     — Google OAuth');
+        console.log('   GET  /api/auth/google/callback — Google OAuth callback');
+        console.log('   GET  /api/auth/facebook   — Facebook OAuth');
+        console.log('   GET  /api/auth/facebook/callback — Facebook OAuth callback');
       });
     } catch (socketError) {
       console.warn('⚠️  Socket.io initialization failed:', socketError.message);
