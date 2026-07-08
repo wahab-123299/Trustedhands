@@ -3,71 +3,84 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const FacebookStrategy = require('passport-facebook').Strategy;
 
 // ==========================================
+// PASSPORT SERIALIZATION
+// ==========================================
+passport.serializeUser((user, done) => {
+  done(null, user);
+});
+
+passport.deserializeUser((user, done) => {
+  done(null, user);
+});
+
+// ==========================================
 // GOOGLE STRATEGY
 // ==========================================
-
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: `${process.env.API_URL}/api/auth/google/callback`,
-    proxy: true
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || 'https://trustedhands.onrender.com/api/auth/google/callback',
+      scope: ['profile', 'email'],
+      state: true,
+    },
+    (accessToken, refreshToken, profile, done) => {
       const email = profile.emails?.[0]?.value;
+      const displayName = profile.displayName;
+      const photos = profile.photos;
+      const googleId = profile.id;
 
       if (!email) {
-        return done(null, false, { message: 'No email found in Google profile' });
+        return done(new Error('No email found in Google profile'), null);
       }
 
-      return done(null, {
+      const oauthUser = {
         provider: 'google',
-        googleId: profile.id,
-        email: email,
-        displayName: profile.displayName,
-        name: profile.name,
-        photos: profile.photos
-      });
-    } catch (error) {
-      return done(error, false);
+        email: email.toLowerCase(),
+        displayName: displayName || 'Google User',
+        photos: photos,
+        googleId: googleId,
+      };
+
+      return done(null, oauthUser);
     }
-  }
-));
+  )
+);
 
 // ==========================================
 // FACEBOOK STRATEGY
 // ==========================================
-
-passport.use(new FacebookStrategy({
-    clientID: process.env.FACEBOOK_APP_ID,
-    clientSecret: process.env.FACEBOOK_APP_SECRET,
-    callbackURL: `${process.env.API_URL}/api/auth/facebook/callback`,
-    profileFields: ['id', 'displayName', 'photos', 'email'],
-    proxy: true
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.FACEBOOK_APP_ID,
+      clientSecret: process.env.FACEBOOK_APP_SECRET,
+      callbackURL: process.env.FACEBOOK_CALLBACK_URL || 'https://trustedhands.onrender.com/api/auth/facebook/callback',
+      profileFields: ['id', 'displayName', 'photos', 'email'],
+      state: true,
+    },
+    (accessToken, refreshToken, profile, done) => {
       const email = profile.emails?.[0]?.value;
+      const displayName = profile.displayName;
+      const photos = profile.photos;
+      const facebookId = profile.id;
 
       if (!email) {
-        return done(null, false, { message: 'No email found in Facebook profile' });
+        return done(new Error('No email found in Facebook profile'), null);
       }
 
-      return done(null, {
+      const oauthUser = {
         provider: 'facebook',
-        facebookId: profile.id,
-        email: email,
-        displayName: profile.displayName,
-        name: profile.name,
-        photos: profile.photos
-      });
-    } catch (error) {
-      return done(error, false);
-    }
-  }
-));
+        email: email.toLowerCase(),
+        displayName: displayName || 'Facebook User',
+        photos: photos,
+        facebookId: facebookId,
+      };
 
-passport.serializeUser((user, done) => done(null, user));
-passport.deserializeUser((obj, done) => done(null, obj));
+      return done(null, oauthUser);
+    }
+  )
+);
 
 module.exports = passport;

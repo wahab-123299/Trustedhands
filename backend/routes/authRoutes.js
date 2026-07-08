@@ -7,54 +7,62 @@ const { authenticate } = require('../middleware/authMiddleware');
 // ==========================================
 // LOCAL AUTH
 // ==========================================
-
 router.post('/register', authController.register);
 router.post('/login', authController.login);
-router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);
+router.post('/logout', authenticate, authController.logout);
 router.post('/refresh', authController.refresh);
 
-// Email verification
-router.get('/verify-email/:token', authController.verifyEmail);
-router.post('/resend-verification', authenticate, authController.resendVerification);
+// ==========================================
+// EMAIL VERIFICATION
+// ==========================================
+router.post('/verify-email/:token', authController.verifyEmail);
+router.post('/resend-verification', authController.resendVerification);
 
-// Password reset
+// ==========================================
+// PASSWORD RESET
+// ==========================================
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password/:token', authController.resetPassword);
 
 // ==========================================
 // GOOGLE OAUTH
 // ==========================================
+router.get(
+  '/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
 
-router.get('/google', passport.authenticate('google', {
-  scope: ['profile', 'email'],
-  session: false
-}));
-
-router.get('/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/api/auth/failure' }),
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { 
+    failureRedirect: '/api/auth/oauth-failure',
+    session: false 
+  }),
   authController.oauthCallback
 );
 
 // ==========================================
 // FACEBOOK OAUTH
 // ==========================================
+router.get(
+  '/facebook',
+  passport.authenticate('facebook', { scope: ['email'] })
+);
 
-router.get('/facebook', passport.authenticate('facebook', {
-  scope: ['email', 'public_profile'],
-  session: false
-}));
-
-router.get('/facebook/callback',
-  passport.authenticate('facebook', { session: false, failureRedirect: '/api/auth/failure' }),
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', { 
+    failureRedirect: '/api/auth/oauth-failure',
+    session: false 
+  }),
   authController.oauthCallback
 );
 
 // ==========================================
-// OAUTH HANDLERS
+// OAUTH STATUS ENDPOINTS
 // ==========================================
-
-router.get('/success', authController.oauthSuccess);
-router.get('/failure', authController.oauthFailure);
+router.get('/oauth-success', authController.oauthSuccess);
+router.get('/oauth-failure', authController.oauthFailure);
 
 module.exports = router;

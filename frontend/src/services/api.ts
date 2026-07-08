@@ -19,18 +19,17 @@ if (typeof window !== 'undefined') {
 }
 
 // ==========================================
-// FIXED: Remove trailing /api from API_URL
-// The axios baseURL should be the ROOT URL
-// All endpoint paths will include /api/ prefix
+// FIXED: Normalize API URL - strip trailing /api if present
 // ==========================================
 const RAW_API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
-const API_URL = RAW_API_URL.replace(/\/api\/?$/, ''); // Strip trailing /api
+// Remove trailing /api or /api/ to get the base domain
+const API_URL = RAW_API_URL.replace(/\/api\/?$/, '');
 
 addLog(`[API Config] RAW URL: ${RAW_API_URL}`);
-addLog(`[API Config] Cleaned URL: ${API_URL}`);
+addLog(`[API Config] Cleaned BASE URL: ${API_URL}`);
 
 const api = axios.create({
-  baseURL: `${API_URL}/api`, // Now endpoints are /api/auth/login etc.
+  baseURL: `${API_URL}/api`, // All API calls go to /api/...
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -326,7 +325,7 @@ api.interceptors.response.use(
 );
 
 // ==========================================
-// FIXED: OAuth URLs now use API_URL directly (no .replace needed)
+// FIXED: OAuth login functions - no more double /api/
 // ==========================================
 export const wakeUpServer = async (): Promise<boolean> => {
   try {
@@ -339,11 +338,11 @@ export const wakeUpServer = async (): Promise<boolean> => {
     return true;
   } catch (error: any) {
     try {
-      await axios.get(API_URL, { 
+      await axios.get(`${API_URL}/api/health`, { 
         timeout: 10000,
         withCredentials: true 
       });
-      addLog('[WakeUp] Server responded (root)');
+      addLog('[WakeUp] Server responded via /api/health');
       return true;
     } catch {
       addLog('[WakeUp] Server ping failed');
@@ -353,11 +352,15 @@ export const wakeUpServer = async (): Promise<boolean> => {
 };
 
 export const loginWithGoogle = (): void => {
-  window.location.href = `${API_URL}/api/auth/google`;
+  const redirectUrl = `${API_URL}/api/auth/google`;
+  addLog(`[OAuth] Redirecting to Google: ${redirectUrl}`);
+  window.location.href = redirectUrl;
 };
 
 export const loginWithFacebook = (): void => {
-  window.location.href = `${API_URL}/api/auth/facebook`;
+  const redirectUrl = `${API_URL}/api/auth/facebook`;
+  addLog(`[OAuth] Redirecting to Facebook: ${redirectUrl}`);
+  window.location.href = redirectUrl;
 };
 
 export const handleOAuthCallback = async (accessToken: string, refreshToken: string, rememberMe = false): Promise<{ user: any }> => {
@@ -753,12 +756,12 @@ export const applicationsApi = {
 
 export const walletApi = {
   getBalance: () => api.get('/payments/wallet'),
-  
+
   initializeDeposit: (amount: number) => 
     api.post('/payments/wallet/deposit/initialize', { amount }),
-  
+
   withdraw: (amount: number) => api.post('/payments/withdraw', { amount }),
-  
+
   getTransactions: (params?: { page?: number; limit?: number }) => 
     api.get('/payments/history', { params }),
 };

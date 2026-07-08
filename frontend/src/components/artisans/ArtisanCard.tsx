@@ -37,6 +37,7 @@ interface ArtisanCardProps {
 }
 
 const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => {
+  // Get initials for avatar fallback
   const getInitials = (name?: string): string => {
     if (!name || name === 'Unknown Artisan') return '??';
     return name
@@ -47,32 +48,43 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
       .slice(0, 2);
   };
 
+  // Determine if artisan has a custom profile image (not default avatar)
   const hasProfileImage = !!artisan.profileImage && 
     artisan.profileImage !== '/default-avatar.png' && 
     artisan.profileImage !== '' &&
     !artisan.profileImage.includes('default');
 
+  // Check if artisan is new (joined within last 30 days)
   const isNew = artisan.createdAt 
     ? (Date.now() - new Date(artisan.createdAt).getTime()) < (30 * 24 * 60 * 60 * 1000) 
     : false;
 
+  // Format location
   const locationText = artisan.location?.city && artisan.location?.state 
     ? `${artisan.location.city}, ${artisan.location.state}`
     : artisan.location?.city || artisan.location?.state || 'Location not set';
 
+  // Get display name
   const displayName = artisan.fullName || artisan.name || 'Unknown Artisan';
+
+  // Format rate
   const rateAmount = artisan.rate?.amount || artisan.hourlyRate || 0;
   const ratePeriod = artisan.rate?.period || artisan.ratePeriod || 'job';
   const rateDisplay = rateAmount > 0 
     ? `₦${Number(rateAmount).toLocaleString()}/${ratePeriod}` 
     : null;
+
+  // Rating
   const rating = artisan.averageRating || artisan.rating || 0;
   const reviews = artisan.totalReviews || artisan.reviewCount || 0;
+
   const artisanId = artisan._id || artisan.id || '';
 
   return (
     <div className="artisan-card">
+      {/* Top Section with Background & Profile Image */}
       <div className="card-top">
+        {/* New Badge - Top Right */}
         {isNew && (
           <div className="new-badge">
             <Star size={10} fill="#fbbf24" color="#fbbf24" />
@@ -80,6 +92,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           </div>
         )}
 
+        {/* Profile Image / Avatar */}
         <div className="profile-image-wrapper">
           {hasProfileImage && (
             <img 
@@ -103,7 +116,9 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
         </div>
       </div>
 
+      {/* Artisan Info */}
       <div className="card-body">
+        {/* Name with Verification Badge */}
         <h3 className="artisan-name">
           {displayName}
           {(artisan.isVerified || artisan.isCertified) && (
@@ -111,15 +126,18 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           )}
         </h3>
 
+        {/* Profession */}
         <p className="profession-text">
           {artisan.profession || artisan.skills?.[0] || 'General Artisan'}
         </p>
 
+        {/* Location */}
         <div className="info-row">
           <MapPin size={14} className="info-icon" />
           <span className="info-text">{locationText}</span>
         </div>
 
+        {/* "New on TrustedHand" label */}
         {isNew && (
           <div className="info-row">
             <Building2 size={14} className="info-icon" />
@@ -127,6 +145,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           </div>
         )}
 
+        {/* Secondary New Tag */}
         {isNew && (
           <div className="new-tag">
             <Star size={10} fill="#fbbf24" color="#fbbf24" />
@@ -134,6 +153,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           </div>
         )}
 
+        {/* Rating */}
         {rating > 0 && (
           <div className="rating-row">
             <Star size={12} fill="#fbbf24" color="#fbbf24" />
@@ -143,6 +163,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
         )}
       </div>
 
+      {/* Bottom Section with Rate & Button */}
       <div className="card-footer">
         {rateDisplay && (
           <span className="rate-text">From <strong>{rateDisplay}</strong></span>
@@ -156,6 +177,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
         </button>
       </div>
 
+      {/* Styles */}
       <style>{`
         .artisan-card {
           background: linear-gradient(180deg, #1a2e1a 0%, #0f1f0f 100%);
@@ -174,6 +196,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           border-color: rgba(16, 185, 129, 0.2);
         }
 
+        /* Top Section */
         .card-top {
           position: relative;
           height: 140px;
@@ -183,6 +206,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           justify-content: center;
         }
 
+        /* New Badge - Top Right */
         .new-badge {
           position: absolute;
           top: 12px;
@@ -200,6 +224,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           border: 1px solid rgba(251, 191, 36, 0.3);
         }
 
+        /* Profile Image */
         .profile-image-wrapper {
           width: 72px;
           height: 72px;
@@ -230,6 +255,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           background: linear-gradient(135deg, #1a3a2a 0%, #0d2818 100%);
         }
 
+        /* Card Body */
         .card-body {
           padding: 16px 20px 12px;
           flex: 1;
@@ -309,6 +335,7 @@ const ArtisanCard: React.FC<ArtisanCardProps> = ({ artisan, onViewProfile }) => 
           color: #6b7280;
         }
 
+        /* Card Footer */
         .card-footer {
           padding: 12px 20px 20px;
           display: flex;

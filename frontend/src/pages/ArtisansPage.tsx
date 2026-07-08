@@ -108,7 +108,7 @@ const ArtisansPage = () => {
       }
 
       let rawArtisans: any[] = [];
-      
+
       if (response.data && typeof response.data === 'object') {
         if (response.data.data && typeof response.data.data === 'object') {
           if (Array.isArray(response.data.data.artisans)) {
@@ -134,7 +134,7 @@ const ArtisansPage = () => {
         }));
 
       setArtisans(validArtisans);
-      
+
       const responsePagination = response.data?.data?.pagination || response.data?.pagination;
       setPagination(responsePagination || { 
         page: 1, 
@@ -157,7 +157,7 @@ const ArtisansPage = () => {
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPagination((prev) => ({ ...prev, page: 1 }));
-    
+
     const newParams = new URLSearchParams(searchParams);
     if (value && value !== 'all' && value !== 'All States' && value !== 'All Skills') {
       newParams.set(key, value);
@@ -188,7 +188,7 @@ const ArtisansPage = () => {
 
   const filteredArtisans = useMemo(() => {
     if (!filters.q) return artisans;
-    
+
     const query = filters.q.toLowerCase();
     return artisans.filter((artisan) => {
       const matchesName = artisan.fullName?.toLowerCase().includes(query);
@@ -197,7 +197,7 @@ const ArtisansPage = () => {
       const matchesLocation = `${artisan.location?.city || ''} ${artisan.location?.state || ''}`
         .toLowerCase()
         .includes(query);
-      
+
       return matchesName || matchesProfession || matchesSkill || matchesLocation;
     });
   }, [artisans, filters.q]);
@@ -208,6 +208,7 @@ const ArtisansPage = () => {
 
   return (
     <div className="min-h-screen" style={{ background: '#0a0f0a' }}>
+      {/* Header Section */}
       <div style={{ 
         background: 'linear-gradient(180deg, #111827 0%, #0a0f0a 100%)',
         borderBottom: '1px solid rgba(255,255,255,0.06)' 
@@ -241,6 +242,7 @@ const ArtisansPage = () => {
               </Button>
             </div>
 
+            {/* Search Bar */}
             <div className="relative max-w-2xl">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: '#6b7280' }} />
               <Input
@@ -266,6 +268,7 @@ const ArtisansPage = () => {
               )}
             </div>
 
+            {/* Active Filters */}
             {hasActiveFilters && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm" style={{ color: '#6b7280' }}>Active filters:</span>
@@ -300,6 +303,7 @@ const ArtisansPage = () => {
             )}
           </div>
 
+          {/* Expandable Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
               <div>
@@ -363,6 +367,7 @@ const ArtisansPage = () => {
         </div>
       </div>
 
+      {/* Results Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20">
@@ -399,6 +404,7 @@ const ArtisansPage = () => {
               ))}
             </div>
 
+            {/* Pagination */}
             {pagination.pages > 1 && (
               <div className="mt-12 flex justify-center gap-2">
                 <Button
