@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,13 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { loginWithGoogle, loginWithFacebook } from '@/services/api';
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 const LoginPage = () => {
   const { login } = useAuth();
   const [searchParams] = useSearchParams();
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{ email: string; password: string; rememberMe: boolean }>({
     email: '',
     password: '',
     rememberMe: false,
@@ -22,29 +23,28 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [apiError, setApiError] = useState<string>('');
+  const [apiError, setApiError] = useState('');
 
-  // OAuth wake-up states (renamed for clarity)
-  const [oauthProviderLoading, setOauthProviderLoading] = useState<'google' | 'facebook' | null>(null);
-  const [oauthStatus, setOauthStatus] = useState('');
+  // OAuth loading state
+  const [oauthProviderLoading, setOauthProviderLoading] = useState<string | null>(null);
+  const [oauthStatus, setOauthStatus] = useState<string>('');
 
-  // Handle OAuth errors from URL query params and reset any in-progress OAuth UI
+  // Handle OAuth errors from URL query params
   useEffect(() => {
     const error = searchParams.get('error');
     const provider = searchParams.get('provider');
     if (error) {
-      const message = provider 
-        ? `${provider} login failed: ${error}` 
+      const message = provider
+        ? `${provider} login failed: ${error}`
         : `Login failed: ${error}`;
       setApiError(message);
     }
-    // Ensure any leftover OAuth loading UI is cleared when returning with an error/params
     setOauthProviderLoading(null);
     setOauthStatus('');
   }, [searchParams]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target as HTMLInputElement;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
@@ -54,14 +54,13 @@ const LoginPage = () => {
     }
   };
 
-  // Checkbox can emit boolean | "indeterminate"
-  const handleRememberMeChange = (checked: boolean | 'indeterminate') => {
+  const handleRememberMeChange = (checked: boolean) => {
     const checkedBool = checked === true;
     setFormData((prev) => ({ ...prev, rememberMe: checkedBool }));
   };
 
   const validateForm = () => {
-    const newErrors: Record<string, string> = {};
+    const newErrors: Record<'email' | 'password', string> = {} as Record<'email' | 'password', string>;
 
     if (!formData.email) {
       newErrors.email = 'Email is required';
@@ -77,7 +76,7 @@ const LoginPage = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setApiError('');
     if (!validateForm()) return;
@@ -85,10 +84,14 @@ const LoginPage = () => {
     setIsLoading(true);
     try {
       await login(formData.email, formData.password, formData.rememberMe);
-    } catch (error: any) {
-      const message = error?.message || 'Login failed. Please try again.';
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+          ? error
+          : 'Login failed. Please try again.';
       setApiError(message);
-      // Avoid leaking sensitive errors in production logs
       if (import.meta.env.MODE !== 'production') {
         console.error('Login error:', error);
       }
@@ -97,38 +100,23 @@ const LoginPage = () => {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  // ==========================================
+  // FIXED: Direct redirect to backend OAuth
+  // ==========================================
+  const handleGoogleLogin = () => {
     setApiError('');
     setOauthProviderLoading('google');
-    setOauthStatus('Checking server...');
-    try {
-      await loginWithGoogle();
-    } catch (err: any) {
-      if (import.meta.env.MODE !== 'production') {
-        console.error('Google OAuth error:', err);
-      }
-      setApiError('An error occurred while starting Google sign-in. Please try again.');
-    } finally {
-      // Always clear loading state so UI doesn't get stuck
-      setOauthProviderLoading(null);
-      // leave oauthStatus for short visibility; can be cleared here if desired
-    }
+    setOauthStatus('Redirecting to Google...');
+    // Direct browser redirect — no API call needed
+    window.location.href = `${API_URL}/api/auth/google`;
   };
 
-  const handleFacebookLogin = async () => {
+  const handleFacebookLogin = () => {
     setApiError('');
     setOauthProviderLoading('facebook');
-    setOauthStatus('Checking server...');
-    try {
-      await loginWithFacebook();
-    } catch (err: any) {
-      if (import.meta.env.MODE !== 'production') {
-        console.error('Facebook OAuth error:', err);
-      }
-      setApiError('An error occurred while starting Facebook sign-in. Please try again.');
-    } finally {
-      setOauthProviderLoading(null);
-    }
+    setOauthStatus('Redirecting to Facebook...');
+    // Direct browser redirect — no API call needed
+    window.location.href = `${API_URL}/api/auth/facebook`;
   };
 
   return (
@@ -156,7 +144,7 @@ const LoginPage = () => {
 
               {/* API Error Banner */}
               {apiError && (
-                <div role="alert" aria-live="assertive" className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
+                <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
                   <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
                   <p className="text-sm text-red-700 font-medium">{apiError}</p>
                 </div>
@@ -173,7 +161,7 @@ const LoginPage = () => {
                     type="email"
                     autoComplete="email"
                     placeholder="Enter your email"
-                    className={`pl-10 ${errors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    className={`pl-10 ${errors.email ? 'border-red-500' : ''}`}
                     value={formData.email}
                     onChange={handleChange}
                     disabled={isLoading}
@@ -195,7 +183,7 @@ const LoginPage = () => {
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     placeholder="Enter your password"
-                    className={`pl-10 pr-10 ${errors.password ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    className={`pl-10 pr-10 ${errors.password ? 'border-red-500' : ''}`}
                     value={formData.password}
                     onChange={handleChange}
                     disabled={isLoading}
@@ -205,7 +193,6 @@ const LoginPage = () => {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -267,14 +254,14 @@ const LoginPage = () => {
 
             {/* Social Login */}
             <div className="grid grid-cols-2 gap-4">
-              {/* Google OAuth */}
+              {/* Google */}
               <button
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={!!oauthProviderLoading}
                 className={`flex items-center justify-center gap-2 w-full py-2 px-4 border border-gray-300 rounded-lg transition-colors text-sm font-medium text-gray-700 ${
-                  oauthProviderLoading === 'google' 
-                    ? 'bg-gray-100 cursor-wait' 
+                  oauthProviderLoading === 'google'
+                    ? 'bg-gray-100 cursor-wait'
                     : 'hover:bg-gray-50'
                 } ${oauthProviderLoading && oauthProviderLoading !== 'google' ? 'opacity-50' : ''}`}
               >
@@ -291,14 +278,14 @@ const LoginPage = () => {
                 {oauthProviderLoading === 'google' ? 'Connecting...' : 'Google'}
               </button>
 
-              {/* Facebook OAuth */}
+              {/* Facebook */}
               <button
                 type="button"
                 onClick={handleFacebookLogin}
                 disabled={!!oauthProviderLoading}
                 className={`flex items-center justify-center gap-2 w-full py-2 px-4 border border-gray-300 rounded-lg transition-colors text-sm font-medium text-gray-700 ${
-                  oauthProviderLoading === 'facebook' 
-                    ? 'bg-gray-100 cursor-wait' 
+                  oauthProviderLoading === 'facebook'
+                    ? 'bg-gray-100 cursor-wait'
                     : 'hover:bg-gray-50'
                 } ${oauthProviderLoading && oauthProviderLoading !== 'facebook' ? 'opacity-50' : ''}`}
               >
@@ -313,9 +300,9 @@ const LoginPage = () => {
               </button>
             </div>
 
-            {/* OAuth Status Message */}
+            {/* OAuth Status */}
             {oauthProviderLoading && oauthStatus && (
-              <div role="status" aria-live="polite" className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 animate-in fade-in">
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                 <p className="text-sm text-blue-700">{oauthStatus}</p>
               </div>

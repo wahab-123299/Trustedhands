@@ -280,7 +280,6 @@ exports.register = [
         });
         await sendWelcomeEmail(user.email, user.fullName);
         
-        // FIXED: Pass full user object, not userId
         await NotificationService.send({
           user: user,
           type: 'welcome',
@@ -330,7 +329,7 @@ exports.register = [
 ];
 
 // ==========================================
-// LOGIN - WITH DEBUG LOGGING
+// LOGIN
 // ==========================================
 
 exports.login = async (req, res, next) => {
@@ -399,7 +398,6 @@ exports.login = async (req, res, next) => {
       const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
       const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
       
-      // FIXED: Pass full user object, not userId
       await NotificationService.send({
         user: user,
         type: 'login_alert',
@@ -433,7 +431,7 @@ exports.login = async (req, res, next) => {
 };
 
 // ==========================================
-// GET ME — Returns current user
+// GET ME
 // ==========================================
 
 exports.getMe = async (req, res, next) => {
@@ -588,43 +586,6 @@ exports.refresh = async (req, res, next) => {
 };
 
 // ==========================================
-// OAUTH CALLBACK — Handles Google & Facebook
-// ==========================================
-
-exports.oauthCallback = async (req, res, next) => {
-  try {
-    const user = req.user;
-    
-    if (!user) {
-      console.error('[OAuth Callback] No user from passport');
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
-    }
-
-    log('[OAuth Callback] User:', user.email, '| isNew:', user.isNewUser);
-
-    const { accessToken, refreshToken } = generateTokens(user._id || user.id);
-    
-    if (user.addRefreshToken) {
-      await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth');
-    }
-
-    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
-
-    const dashboardRoute = user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard';
-    const redirectPath = user.isNewUser ? '/setup-profile' : dashboardRoute;
-
-    const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(redirectPath)}`;
-    
-    log('[OAuth Callback] Redirecting to:', redirectUrl);
-    res.redirect(redirectUrl);
-  } catch (error) {
-    console.error('[OAuth Callback] Error:', error.message);
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_error`);
-  }
-};
-
-// ==========================================
 // EMAIL VERIFICATION
 // ==========================================
 
@@ -653,7 +614,6 @@ exports.verifyEmail = async (req, res, next) => {
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    // Email verified notification
     try {
       await NotificationService.send({
         user: user,
@@ -833,7 +793,6 @@ exports.resetPassword = async (req, res, next) => {
     user.refreshTokens = [];
     await user.save();
 
-    // Notify user of password change
     try {
       await NotificationService.send({
         user: user,
@@ -854,6 +813,83 @@ exports.resetPassword = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+// ==========================================
+// OAUTH CALLBACK — Single handler for Google & Facebook
+// ==========================================
+
+exports.oauthCallback = async (req, res) => {
+  try {
+    const oauthUser = req.user;
+
+    if (!oauthUser) {
+      console.error('[OAuth Callback] No user from passport');
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+    }
+
+    log('[OAuth Callback] Provider:', oauthUser.provider, 'Email:', oauthUser.email);
+
+    let user = await User.findOne({ email: oauthUser.email.toLowerCase() });
+    let isNewUser = false;
+
+    if (user) {
+      // Existing user — link OAuth if not already linked
+      if (!user.authProvider || user.authProvider === 'local') {
+        user.authProvider = oauthUser.provider;
+        if (oauthUser.provider === 'google') user.googleId = oauthUser.googleId;
+        if (oauthUser.provider === 'facebook') user.facebookId = oauthUser.facebookId;
+        await user.save();
+      }
+    } else {
+      // New user — create from OAuth data
+      isNewUser = true;
+      user = await User.create({
+        fullName: oauthUser.displayName || 'OAuth User',
+        email: oauthUser.email.toLowerCase(),
+        profileImage: oauthUser.photos?.[0]?.value || '/default-avatar.png',
+        authProvider: oauthUser.provider,
+        googleId: oauthUser.provider === 'google' ? oauthUser.googleId : null,
+        facebookId: oauthUser.provider === 'facebook' ? oauthUser.facebookId : null,
+        role: 'customer',
+        isVerified: true,
+        isEmailVerified: true,
+        password: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12)
+      });
+    }
+
+    // Generate tokens using shared helper
+    const { accessToken, refreshToken } = generateTokens(user._id);
+    await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth');
+
+    // Set cookies
+    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+    // Determine redirect path
+    const dashboardRoute = user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard';
+    const redirectPath = isNewUser ? '/setup-profile' : dashboardRoute;
+
+    const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&redirect=${encodeURIComponent(redirectPath)}`;
+    
+    log('[OAuth Callback] Redirecting to:', redirectPath);
+    res.redirect(redirectUrl);
+
+  } catch (error) {
+    console.error('[OAuth Callback] Error:', error.message);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_error`);
+  }
+};
+
+exports.oauthSuccess = (req, res) => {
+  res.json({ success: true, message: 'OAuth authentication successful' });
+};
+
+exports.oauthFailure = (req, res) => {
+  res.status(401).json({
+    success: false,
+    error: { code: 'OAUTH_FAILED', message: 'OAuth authentication failed' }
+  });
 };
 
 exports.generateTokens = generateTokens;
