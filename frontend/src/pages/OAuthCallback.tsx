@@ -16,6 +16,7 @@ const OAuthCallbackPage = () => {
     const processOAuth = async () => {
       try {
         const token = searchParams.get('token');
+        const refreshToken = searchParams.get('refreshToken'); // ✅ Added
         const redirect = searchParams.get('redirect');
         const error = searchParams.get('error');
 
@@ -33,8 +34,8 @@ const OAuthCallbackPage = () => {
           return;
         }
 
-        // Call the API service to store token and fetch user
-        const { user } = await handleOAuthCallback(token, undefined, true);
+        // ✅ Pass refreshToken if available
+        const { user } = await handleOAuthCallback(token, refreshToken || undefined, true);
 
         // Update auth context
         updateUserFromOAuth(user, token);
