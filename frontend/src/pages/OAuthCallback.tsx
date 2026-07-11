@@ -37,6 +37,12 @@ const OAuthCallbackPage = () => {
         // ✅ Pass refreshToken if available
         const { user } = await handleOAuthCallback(token, refreshToken || undefined, true);
 
+        localStorage.setItem('token', token);
+
+        if (refreshToken) {
+          localStorage.setItem('refreshToken', refreshToken);
+        }
+
         // Update auth context
         updateUserFromOAuth(user, token);
 
@@ -76,7 +82,6 @@ const OAuthCallbackPage = () => {
             <p className="text-gray-600">{message}</p>
           </>
         )}
-
         {status === 'error' && (
           <>
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
