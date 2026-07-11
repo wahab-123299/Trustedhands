@@ -1,68 +1,62 @@
 const express = require('express');
 const router = express.Router();
-const passport = require('passport');
-const authController = require('../controllers/authController');
+
+// Local auth controllers
+const {
+  register,
+  login,
+  getMe,
+  logout,
+  refresh,
+  verifyEmail,
+  resendVerification,
+  forgotPassword,
+  resetPassword
+} = require('../controllers/authController');
+
+// OAuth controllers - use the SEPARATE oauthController file
+const {
+  googleAuth,
+  googleCallback,
+  facebookAuth,
+  facebookCallback
+} = require('../controllers/oauthController');
+
+// Middleware
 const { authenticate } = require('../middleware/authMiddleware');
 
 // ==========================================
-// LOCAL AUTH
+// LOCAL AUTH ROUTES
 // ==========================================
-router.post('/register', authController.register);
-router.post('/login', authController.login);
-router.get('/me', authenticate, authController.getMe);
-router.post('/logout', authenticate, authController.logout);
-router.post('/refresh', authController.refresh);
+
+router.post('/register', register);
+router.post('/login', login);
+router.get('/me', authenticate, getMe);
+router.post('/logout', authenticate, logout);
+router.post('/refresh', refresh);
+router.get('/verify-email/:token', verifyEmail);
+router.post('/resend-verification', resendVerification);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password/:token', resetPassword);
 
 // ==========================================
-// EMAIL VERIFICATION
+// GOOGLE OAUTH ROUTES
 // ==========================================
-router.post('/verify-email/:token', authController.verifyEmail);
-router.post('/resend-verification', authController.resendVerification);
+
+// Step 1: Redirect to Google
+router.get('/google', googleAuth);
+
+// Step 2: Google redirects back here
+router.get('/google/callback', ...googleCallback);
 
 // ==========================================
-// PASSWORD RESET
+// FACEBOOK OAUTH ROUTES
 // ==========================================
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password/:token', authController.resetPassword);
 
-// ==========================================
-// GOOGLE OAUTH
-// ==========================================
-router.get(
-  '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+// Step 1: Redirect to Facebook
+router.get('/facebook', facebookAuth);
 
-router.get(
-  '/google/callback',
-  passport.authenticate('google', { 
-    failureRedirect: '/api/auth/oauth-failure',
-    session: false 
-  }),
-  authController.oauthCallback
-);
-
-// ==========================================
-// FACEBOOK OAUTH
-// ==========================================
-router.get(
-  '/facebook',
-  passport.authenticate('facebook', { scope: ['email'] })
-);
-
-router.get(
-  '/facebook/callback',
-  passport.authenticate('facebook', { 
-    failureRedirect: '/api/auth/oauth-failure',
-    session: false 
-  }),
-  authController.oauthCallback
-);
-
-// ==========================================
-// OAUTH STATUS ENDPOINTS
-// ==========================================
-router.get('/oauth-success', authController.oauthSuccess);
-router.get('/oauth-failure', authController.oauthFailure);
+// Step 2: Facebook redirects back here
+router.get('/facebook/callback', ...facebookCallback);
 
 module.exports = router;

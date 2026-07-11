@@ -1,16 +1,16 @@
 // backend/middleware/authMiddleware.js
 const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
 const { User } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 
 const tokenBlacklist = new Set();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 // ==========================================
-// AUTHENTICATE
+// AUTHENTICATE (was called 'protect' in old code)
 // ==========================================
 
 exports.authenticate = async (req, res, next) => {
@@ -25,17 +25,11 @@ exports.authenticate = async (req, res, next) => {
     }
 
     if (!token) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required. Please log in.', 401));
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required. Please log in.'));
     }
 
     if (tokenBlacklist.has(token)) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please log in again.', 401));
-    }
-
-    // Check MongoDB is connected BEFORE querying
-    if (mongoose.connection.readyState !== 1) {
-      console.error('[Auth] MongoDB not connected (state:', mongoose.connection.readyState + ')');
-      return next(new AppError('SERVICE_UNAVAILABLE', 'Database connection lost. Please retry.', 503));
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please log in again.'));
     }
 
     let decoded;
@@ -46,27 +40,25 @@ exports.authenticate = async (req, res, next) => {
       });
     } catch (jwtError) {
       if (jwtError.name === 'TokenExpiredError') {
-        return next(new AppError('AUTH_TOKEN_EXPIRED', 'Your session has expired. Please log in again.', 401));
+        return next(new AppError('AUTH_TOKEN_EXPIRED', 'Your session has expired. Please log in again.'));
       }
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Invalid token. Please log in again.', 401));
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Invalid token. Please log in again.'));
     }
 
-    // Query user with timeout to prevent hanging
-    const user = await User.findById(decoded.userId)
-      .select('-password')
-      .maxTimeMS(5000);
+    const user = await User.findById(decoded.userId).select('-password');
 
     if (!user) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'User not found. Please log in again.', 401));
+      return next(new AppError('AUTH_UNAUTHORIZED', 'User not found. Please log in again.'));
     }
 
     if (!user.isActive) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.', 403));
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.'));
     }
 
     req.user = {
       _id: user._id.toString(),
       id: user._id.toString(),
+      userId: user._id.toString(),
       email: user.email,
       role: user.role,
       fullName: user.fullName,
@@ -76,23 +68,22 @@ exports.authenticate = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('[Auth Middleware] Unexpected error:', error.message);
-    next(new AppError('AUTH_UNAUTHORIZED', 'Authentication failed. Please try again.', 403));
+    next(new AppError('AUTH_UNAUTHORIZED', 'Authentication failed. Please try again.'));
   }
 };
 
 // ==========================================
-// AUTHORIZE
+// AUTHORIZE (Role-based)
 // ==========================================
 
 exports.authorize = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required.', 401));
+      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required.'));
     }
 
     if (!allowedRoles.includes(req.user.role)) {
-      return next(new AppError('AUTH_FORBIDDEN', `Access denied. Required: ${allowedRoles.join(' or ')}`, 403));
+      return next(new AppError('AUTH_FORBIDDEN', `Access denied. Required role: ${allowedRoles.join(' or ')}`));
     }
 
     next();
@@ -100,10 +91,10 @@ exports.authorize = (...allowedRoles) => {
 };
 
 // ==========================================
-// BACKWARD COMPATIBILITY
+// BACKWARD COMPATIBILITY ALIASES
 // ==========================================
 
-exports.protect = exports.authenticate;
+exports.protect = exports.authenticate;  // ← OLD ROUTE FILES USE THIS
 
 // ==========================================
 // TOKEN HELPERS
@@ -118,7 +109,7 @@ exports.generateTokens = (userId) => {
 
   const refreshToken = jwt.sign(
     { userId: userId.toString() },
-    JWT_SECRET,
+    JWT_REFRESH_SECRET,  // FIXED: use refresh secret, not JWT_SECRET
     { expiresIn: JWT_REFRESH_EXPIRES_IN, audience: 'trustedhand-client', issuer: 'trustedhand-api' }
   );
 
@@ -154,6 +145,7 @@ exports.socketAuth = async (socket, next) => {
     socket.user = {
       _id: user._id.toString(),
       id: user._id.toString(),
+      userId: user._id.toString(),
       email: user.email,
       role: user.role,
       fullName: user.fullName

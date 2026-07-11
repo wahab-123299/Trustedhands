@@ -8,27 +8,25 @@ import { SocketProvider } from '@/contexts/SocketContext';
 // Layouts
 import MainLayout from '@/components/layout/MainLayout';
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import SetupProfile from '@/pages/SetupProfile';
 
-// Public Pages (eager loaded)
+// Public Pages
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
-import AuthSuccessPage from '@/pages/AuthSuccesspage';  // <-- FIXED: lowercase 'p'
-import OAuthCallback from '@/pages/OAuthCallback';
+import AuthSuccessPage from './pages/AuthSuccesspage';
+import OAuthCallback from './pages/OAuthCallback';
 import BookArtisan from '@/pages/BookArtisan';
-import ScrollToTop from '@/components/ScrollToTop';
+import ScrollToTop from "@/components/ScrollToTop";
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import ArtisansPage from '@/pages/ArtisansPage';
 import ArtisanProfilePage from '@/pages/ArtisanProfilePage';
 import JobsPage from '@/pages/JobsPage';
 import JobDetailsPage from '@/pages/JobDetailsPage';
-import SetupProfile from '@/pages/SetupProfile';
-import PaymentCallbackPage from '@/pages/PaymentCallbackPage';
-import NotFoundPage from '@/pages/NotFoundPage';
 
-// Static Pages
+// NEW STATIC PAGES
 import AboutUs from '@/pages/AboutUs';
 import HowItWorks from '@/pages/HowItWorks';
 import Careers from '@/pages/Careers';
@@ -65,6 +63,8 @@ const AdminVerifications = lazy(() => import('@/pages/admin/AdminVerifications')
 
 // Shared Pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
+import PaymentCallbackPage from '@/pages/PaymentCallbackPage';
+import NotFoundPage from '@/pages/NotFoundPage';
 
 // Auth Components
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -85,13 +85,28 @@ const PageLoader = () => (
 );
 
 // ==========================================
+// ADMIN ROUTE PROTECTOR
+// ==========================================
+
+const AdminRoute = ({ children }) => {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+
+  return <>{children}</>;
+};
+
+// ==========================================
 // REDIRECT HELPERS
 // ==========================================
 
 function NavigateToMessages() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'artisan'
+
+  return user.role === 'artisan' 
     ? <Navigate to="/artisan/messages" replace />
     : <Navigate to="/customer/messages" replace />;
 }
@@ -99,7 +114,7 @@ function NavigateToMessages() {
 function NavigateToDashboard() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'artisan'
+  return user.role === 'artisan' 
     ? <Navigate to="/artisan/dashboard" replace />
     : <Navigate to="/customer/dashboard" replace />;
 }
@@ -107,7 +122,7 @@ function NavigateToDashboard() {
 function NavigateToProfile() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'artisan'
+  return user.role === 'artisan' 
     ? <Navigate to="/artisan/profile" replace />
     : <Navigate to="/customer/profile" replace />;
 }
@@ -143,14 +158,15 @@ function App() {
 
             <Routes>
               {/* ==========================================
-                  PUBLIC ROUTES (MainLayout)
+                  PUBLIC ROUTES
                   ========================================== */}
               <Route element={<MainLayout />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/auth/success" element={<AuthSuccessPage />} />
-                <Route path="/oauth/callback" element={<OAuthCallback />} />
+                <Route path="/auth-callback" element={<OAuthCallback />} />
+                <Route path="/oauth-callback" element={<OAuthCallback />} />
                 <Route path="/book/:artisanId" element={<BookArtisan />} />
                 <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -160,7 +176,7 @@ function App() {
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:id" element={<JobDetailsPage />} />
 
-                {/* Static Pages */}
+                {/* NEW STATIC PAGES */}
                 <Route path="/about" element={<AboutUs />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/careers" element={<Careers />} />
@@ -220,7 +236,6 @@ function App() {
                 <Route element={<RoleRoute allowedRoles={['admin']} />}>
                   <Route element={<DashboardLayout />}>
                     <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                    <Route path="/admin/stats" element={<AdminStats />} />
                     <Route path="/admin/users" element={<AdminUsers />} />
                     <Route path="/admin/verifications" element={<AdminVerifications />} />
                   </Route>
