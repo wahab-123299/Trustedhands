@@ -370,7 +370,7 @@ exports.getVerificationStatus = async (req, res, next) => {
 // ==========================================
 
 // Placeholder for YouVerify API call
-async function callYouVerifyAPI(type, number, userId) {
+async function callYouVerifyAPI(type, number) {
   // In production, implement actual API call:
   /*
   const response = await fetch('https://api.youverify.co/v1/identity/verify', {
@@ -381,17 +381,22 @@ async function callYouVerifyAPI(type, number, userId) {
     },
     body: JSON.stringify({
       type,
-      number,
-      metadata: { userId }
+      number
     })
   });
   return await response.json();
   */
   
+  const maskedNumber = typeof number === 'string'
+    ? number.replace(/.(?=.{4})/g, '*')
+    : undefined;
+
   // Mock response for development
   return {
     verified: true,
-    reference: `YV-${Date.now()}`,
+    type,
+    reference: `YV-${type}-${Date.now()}`,
+    maskedNumber,
     fullName: 'Test User',
     // Don't return sensitive data
   };

@@ -1,65 +1,23 @@
-// backend/controllers/pressController.js
 const PressArticle = require('../models/PressArticle');
-const { AppError } = require('../utils/errorHandler');
-
-// ==========================================
-// PUBLIC ENDPOINTS
-// ==========================================
 
 exports.getAllArticles = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, category, search, featured } = req.query;
-    
-    const query = { isPublished: true };
-    
-    if (category) query.category = category;
-    if (featured === 'true') query.featured = true;
-    if (search) {
-      query.$text = { $search: search };
-    }
+    const { category, page = 1, limit = 10 } = req.query;
+    const query = { published: true };
+    if (category && category !== 'all') query.category = category;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [articles, total] = await Promise.all([
+      PressArticle.find(query)
+        .sort({ publishedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(parseInt(limit))
+        .select('-__v'),
+      PressArticle.countDocuments(query)
+    ]);
 
-    const articles = await PressArticle.find(query)
-      .sort({ publishedAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await PressArticle.countDocuments(query);
-
-    res.json({
+    res.status(200).json({
       success: true,
-      data: {
-        articles,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / parseInt(limit))
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-exports.getArticleBySlug = async (req, res, next) => {
-  try {
-    const { slug } = req.params;
-
-    const article = await PressArticle.findOne({ 
-      slug, 
-      isPublished: true 
-    });
-
-    if (!article) {
-      throw new AppError('NOT_FOUND', 'Article not found');
-    }
-
-    res.json({
-      success: true,
-      data: { article }
+      data: { articles, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / limit) } }
     });
   } catch (error) {
     next(error);
@@ -68,14 +26,12 @@ exports.getArticleBySlug = async (req, res, next) => {
 
 exports.getFeaturedArticles = async (req, res, next) => {
   try {
-    const articles = await PressArticle.find({ 
-      isPublished: true, 
-      featured: true 
-    })
+    const articles = await PressArticle.find({ published: true, featured: true })
       .sort({ publishedAt: -1 })
-      .limit(3);
+      .limit(3)
+      .select('-__v');
 
-    res.json({
+    res.status(200).json({
       success: true,
       data: { articles }
     });
@@ -84,19 +40,22 @@ exports.getFeaturedArticles = async (req, res, next) => {
   }
 };
 
-// ==========================================
-// ADMIN ENDPOINTS (Protected)
-// ==========================================
+exports.getArticleBySlug = async (req, res, next) => {
+  try {
+    const article = await PressArticle.findOne({ slug: req.params.slug, published: true }).select('-__v');
+    if (!article) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } });
+    }
+    res.status(200).json({ success: true, data: { article } });
+  } catch (error) {
+    next(error);
+  }
+};
 
 exports.createArticle = async (req, res, next) => {
   try {
     const article = await PressArticle.create(req.body);
-
-    res.status(201).json({
-      success: true,
-      message: 'Article created',
-      data: { article }
-    });
+    res.status(201).json({ success: true, data: { article } });
   } catch (error) {
     next(error);
   }
@@ -104,23 +63,15 @@ exports.createArticle = async (req, res, next) => {
 
 exports.updateArticle = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    const article = await PressArticle.findByIdAndUpdate(
-      id,
+    const article = await PressArticle.findOneAndUpdate(
+      { slug: req.params.slug },
       req.body,
       { new: true, runValidators: true }
     );
-
     if (!article) {
-      throw new AppError('NOT_FOUND', 'Article not found');
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } });
     }
-
-    res.json({
-      success: true,
-      message: 'Article updated',
-      data: { article }
-    });
+    res.status(200).json({ success: true, data: { article } });
   } catch (error) {
     next(error);
   }
@@ -128,47 +79,11 @@ exports.updateArticle = async (req, res, next) => {
 
 exports.deleteArticle = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    const article = await PressArticle.findByIdAndDelete(id);
-
+    const article = await PressArticle.findOneAndDelete({ slug: req.params.slug });
     if (!article) {
-      throw new AppError('NOT_FOUND', 'Article not found');
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } });
     }
-
-    res.json({
-      success: true,
-      message: 'Article deleted'
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-exports.getAllArticlesAdmin = async (req, res, next) => {
-  try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const articles = await PressArticle.find()
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await PressArticle.countDocuments();
-
-    res.json({
-      success: true,
-      data: {
-        articles,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / parseInt(limit))
-        }
-      }
-    });
+    res.status(200).json({ success: true, data: null });
   } catch (error) {
     next(error);
   }

@@ -1,10 +1,9 @@
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { User, ArtisanProfile, Wallet } = require('../models');
-const { sendEmail, sendWelcomeEmail } = require('../utils/email');
+const { sendEmail, sendWelcomeEmail } = require('../utils/emailService');
 const NotificationService = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
@@ -15,9 +14,9 @@ const log = (...args) => {
 };
 
 // ==========================================
-// TOKEN GENERATION
+// FIXED: Unified JWT env var names
+// Now matches authMiddleware.js exactly
 // ==========================================
-
 const generateTokens = (userId) => {
   log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
   log('[JWT] Refresh secret:', process.env.JWT_REFRESH_SECRET?.substring(0, 10) + '...');
@@ -26,7 +25,7 @@ const generateTokens = (userId) => {
     { userId: userId.toString() },
     process.env.JWT_SECRET,
     { 
-      expiresIn: process.env.JWT_EXPIRE || '15m',
+      expiresIn: process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRE || '15m',
       issuer: 'trustedhand-api',
       audience: 'trustedhand-client'
     }
@@ -36,7 +35,7 @@ const generateTokens = (userId) => {
     { userId: userId.toString() },
     process.env.JWT_REFRESH_SECRET,
     { 
-      expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
+      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_REFRESH_EXPIRE || '7d',
       issuer: 'trustedhand-api',
       audience: 'trustedhand-client'
     }
@@ -124,7 +123,6 @@ exports.register = [
           error: {
             code: 'VALIDATION_ERROR',
             message: 'Please check your input and try again.',
-            // FIXED: Use e.path instead of deprecated e.param
             details: errors.array().map(e => ({
               field: e.path,
               message: e.msg
@@ -217,7 +215,7 @@ exports.register = [
 
         const minRate = minRates[experienceYears] || 500;
         if (rate.amount < minRate) {
-          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is \u20A6${minRate}.`);
+          throw new AppError('VALIDATION_ERROR', `Minimum rate for ${experienceYears} experience is ₦${minRate}.`);
         }
 
         const artisanProfile = await ArtisanProfile.create({
@@ -300,7 +298,7 @@ exports.register = [
       let unreadNotifications = 0;
       try {
         unreadNotifications = await NotificationService.getUnreadCount(user._id);
-      } catch (e) {
+      } catch {
         unreadNotifications = 0;
       }
 
@@ -387,7 +385,7 @@ exports.login = async (req, res, next) => {
       if (Conversation?.getTotalUnreadCount) {
         unreadCount = await Conversation.getTotalUnreadCount(user._id);
       }
-    } catch (e) {
+    } catch {
       unreadCount = 0;
     }
 
@@ -484,10 +482,12 @@ exports.logout = async (req, res, next) => {
     const accessToken = req.token || req.cookies.accessToken;
 
     if (req.user?._id) {
+      // Remove refresh token
       await User.findByIdAndUpdate(req.user._id, {
         $pull: { refreshTokens: { token: refreshToken } }
       });
 
+      // Blacklist access token in DB
       if (accessToken) {
         await User.findByIdAndUpdate(req.user._id, {
           $push: { 
@@ -592,7 +592,7 @@ exports.refresh = async (req, res, next) => {
 
 exports.verifyEmail = async (req, res, next) => {
   try {
-    const { token } = req.params;
+    const { token } = req.body;
 
     if (!token || token.length !== 64) {
       throw new AppError('VALIDATION_ERROR', 'Invalid token format.');
@@ -726,6 +726,7 @@ exports.forgotPassword = async (req, res, next) => {
     await user.save();
 
     try {
+      // FIXED: Use path param format to match frontend route
       const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
       await sendEmail({
         to: user.email,
@@ -817,82 +818,23 @@ exports.resetPassword = async (req, res, next) => {
 };
 
 // ==========================================
-// OAUTH CALLBACK — Single handler for Google & Facebook
+// DEPRECATED: OAuth callback in authController
+// Use oauthController.js instead (mounted in authRoutes.js)
+// Kept for backward compat but should be removed after migration
 // ==========================================
-
 exports.oauthCallback = async (req, res) => {
-  try {
-    const oauthUser = req.user;
-
-    if (!oauthUser) {
-      console.error('[OAuth Callback] No user from passport');
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
-    }
-
-    log('[OAuth Callback] Provider:', oauthUser.provider, 'Email:', oauthUser.email);
-
-    let user = await User.findOne({ email: oauthUser.email.toLowerCase() });
-    let isNewUser = false;
-
-    if (user) {
-      // Existing user — link OAuth if not already linked
-      if (!user.authProvider || user.authProvider === 'local') {
-        user.authProvider = oauthUser.provider;
-        if (oauthUser.provider === 'google') user.googleId = oauthUser.googleId;
-        if (oauthUser.provider === 'facebook') user.facebookId = oauthUser.facebookId;
-        await user.save();
-      }
-    } else {
-      // New user — create from OAuth data
-      isNewUser = true;
-      // FIXED: Let User model's pre-save hook handle password hashing
-      // instead of calling bcrypt directly (avoids double-hashing)
-      user = await User.create({
-        fullName: oauthUser.displayName || 'OAuth User',
-        email: oauthUser.email.toLowerCase(),
-        profileImage: oauthUser.photos?.[0]?.value || '/default-avatar.png',
-        authProvider: oauthUser.provider,
-        googleId: oauthUser.provider === 'google' ? oauthUser.googleId : null,
-        facebookId: oauthUser.provider === 'facebook' ? oauthUser.facebookId : null,
-        role: 'customer',
-        isVerified: true,
-        isEmailVerified: true,
-        password: crypto.randomBytes(32).toString('hex') // plain string — model will hash
-      });
-    }
-
-    // Generate tokens using shared helper
-    const { accessToken, refreshToken } = generateTokens(user._id);
-    await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth');
-
-    // Set cookies
-    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
-
-    // Determine redirect path
-    const dashboardRoute = user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard';
-    const redirectPath = isNewUser ? '/setup-profile' : dashboardRoute;
-
-    const redirectUrl = `${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}&redirect=${encodeURIComponent(redirectPath)}`;
-
-    log('[OAuth Callback] Redirecting to:', redirectPath);
-    res.redirect(redirectUrl);
-
-  } catch (error) {
-    console.error('[OAuth Callback] Error:', error.message);
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_error`);
-  }
+  console.warn('[DEPRECATED] authController.oauthCallback is deprecated. Use oauthController instead.');
+  res.redirect(`${process.env.FRONTEND_URL}/login?error=deprecated_oauth`);
 };
 
 exports.oauthSuccess = (req, res) => {
-  res.json({ success: true, message: 'OAuth authentication successful' });
+  console.warn('[DEPRECATED] authController.oauthSuccess is deprecated.');
+  res.status(410).json({ success: false, error: { code: 'DEPRECATED', message: 'Use oauthController instead' } });
 };
 
 exports.oauthFailure = (req, res) => {
-  res.status(401).json({
-    success: false,
-    error: { code: 'OAUTH_FAILED', message: 'OAuth authentication failed' }
-  });
+  console.warn('[DEPRECATED] authController.oauthFailure is deprecated.');
+  res.status(410).json({ success: false, error: { code: 'DEPRECATED', message: 'Use oauthController instead' } });
 };
 
 exports.generateTokens = generateTokens;

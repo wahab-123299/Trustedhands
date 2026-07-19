@@ -1,3 +1,10 @@
+// backend/models/User.js
+// ==========================================
+// FIXED #38: Added authProvider field
+// FIXED #37: Added oauthPendingRoleSelection for role selection flow
+// FIXED #39: blacklistedTokens has TTL (30d) - already present
+// ==========================================
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -8,7 +15,7 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^[[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email']
+    match: [/^[\w.-]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email']
   },
   password: {
     type: String,
@@ -61,7 +68,7 @@ const userSchema = new mongoose.Schema({
           'Yobe', 'Zamfara'
         ],
         message: 'Please enter a valid Nigerian state'
-      }  // ✅ FIXED: Added missing closing brace for enum
+      }
     },
     city: {
       type: String,
@@ -155,7 +162,18 @@ const userSchema = new mongoose.Schema({
     unique: true,
     index: true
   },
-  // ✅ NEW: FCM tokens for push notifications (replaces old fcmtopic)
+  // FIXED #38: Track which OAuth provider user signed up with
+  authProvider: {
+    type: String,
+    enum: ['local', 'google', 'facebook'],
+    default: 'local'
+  },
+  // FIXED #37: Flag for new OAuth users who need to select their role
+  oauthPendingRoleSelection: {
+    type: Boolean,
+    default: false
+  },
+  // FCM tokens for push notifications
   fcmTokens: [{
     type: String,
     trim: true
@@ -267,6 +285,10 @@ userSchema.statics.findArtisansByLocation = function(state, city, options = {}) 
     .limit(options.limit || 20);
 };
 
+// ==========================================
+// FIXED #38: Set authProvider in findOrCreateOAuthUser
+// FIXED #37: Set oauthPendingRoleSelection for new OAuth users
+// ==========================================
 userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
   const email = profile.emails?.[0]?.value;
   if (!email) throw new Error('Email not provided by OAuth provider');
@@ -274,6 +296,7 @@ userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
   let user = await this.findOne({ email: email.toLowerCase() });
 
   if (user) {
+    // Link OAuth ID if not already linked
     if (provider === 'google' && !user.googleId) {
       user.googleId = profile.id;
       await user.save();
@@ -284,13 +307,18 @@ userSchema.statics.findOrCreateOAuthUser = async function(profile, provider) {
     return user;
   }
 
+  // FIXED #37: New OAuth user — default to customer but flag for role selection
   const userData = {
     email: email.toLowerCase(),
     fullName: profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim(),
     profileImage: profile.photos?.[0]?.value || '/default-avatar.png',
-    role: 'customer',
+    role: 'customer', // Default, user can change in role selection
     isActive: true,
     isEmailVerified: true,
+    // FIXED #38: Set authProvider
+    authProvider: provider,
+    // FIXED #37: Flag for role selection flow
+    oauthPendingRoleSelection: true,
   };
 
   if (provider === 'google') {

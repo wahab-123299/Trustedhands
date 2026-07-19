@@ -1,12 +1,135 @@
 // backend/controllers/paymentController.js
 const axios = require('axios');
 const crypto = require('crypto');
-const { User, Job, Transaction, Wallet, ArtisanProfile, Conversation } = require('../models');
+const { User, Job, Transaction, Wallet, ArtisanProfile } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const NotificationService = require('../services/notificationService');
 
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
-const PLATFORM_COMMISSION = 0.10; // 10%
+
+// ==========================================
+// FIXED: Centralized idempotent payment completion
+// Prevents duplicate processing from verifyPayment + webhook
+// ==========================================
+
+const COMPLETED_TRANSACTIONS = new Set(); // In-memory dedup (use Redis in production)
+
+/**
+ * Idempotently process a successful payment
+ * Safe to call from both verifyPayment and webhook
+ */
+async function processSuccessfulPayment(transaction, paystackData) {
+  const txId = transaction._id.toString();
+
+  // Check 1: Already processed in this process lifetime
+  if (COMPLETED_TRANSACTIONS.has(txId)) {
+    console.log(`[Payment] Already in memory cache: ${txId}`);
+    return { alreadyProcessed: true, source: 'memory' };
+  }
+
+  // Check 2: Already marked success in DB
+  if (transaction.status === 'success' || transaction.status === 'completed') {
+    console.log(`[Payment] Already marked success in DB: ${txId}`);
+    COMPLETED_TRANSACTIONS.add(txId);
+    return { alreadyProcessed: true, source: 'database' };
+  }
+
+  // Atomic update: mark as processing to prevent race conditions
+  const updatedTx = await Transaction.findOneAndUpdate(
+    { _id: transaction._id, status: { $nin: ['success', 'completed'] } },
+    {
+      status: 'success',
+      paidAt: new Date(paystackData.paid_at || Date.now()),
+      paystackTransactionId: paystackData.id,
+      paymentMethod: paystackData.channel || 'card',
+      metadata: {
+        ...transaction.metadata,
+        paystackResponse: {
+          id: paystackData.id,
+          channel: paystackData.channel,
+          card_type: paystackData.authorization?.card_type,
+          bank: paystackData.authorization?.bank,
+          last4: paystackData.authorization?.last4
+        }
+      }
+    },
+    { new: true }
+  );
+
+  if (!updatedTx) {
+    // Another process won the race
+    console.log(`[Payment] Race condition lost for: ${txId}`);
+    return { alreadyProcessed: true, source: 'race_condition' };
+  }
+
+  COMPLETED_TRANSACTIONS.add(txId);
+
+  // Update job
+  await Job.findByIdAndUpdate(transaction.jobId, {
+    paymentStatus: 'paid',
+    transactionId: transaction._id,
+    status: 'accepted',
+    acceptedAt: new Date()
+  });
+
+  // Credit artisan wallet (pending/escrow)
+  await Wallet.findOneAndUpdate(
+    { artisanId: transaction.payeeId },
+    {
+      $inc: { pendingBalance: transaction.artisanAmount },
+      $push: { transactions: transaction._id }
+    },
+    { upsert: true }
+  );
+
+  // Notifications
+  await sendPaymentNotifications(transaction);
+
+  console.log(`[Payment] Successfully processed: ${txId}`);
+  return { alreadyProcessed: false, source: 'fresh' };
+}
+
+/**
+ * Send notifications for payment received
+ */
+async function sendPaymentNotifications(transaction) {
+  try {
+    const [artisan, customer, job] = await Promise.all([
+      User.findById(transaction.payeeId),
+      User.findById(transaction.payerId),
+      Job.findById(transaction.jobId)
+    ]);
+
+    if (artisan) {
+      await NotificationService.send({
+        user: artisan,
+        type: 'payment_received',
+        channels: ['in_app', 'email'],
+        data: {
+          amount: transaction.artisanAmount,
+          jobTitle: job?.title,
+          jobId: transaction.jobId,
+          customerName: customer?.fullName
+        }
+      });
+    }
+
+    if (customer) {
+      await NotificationService.send({
+        user: customer,
+        type: 'payment_confirmed',
+        channels: ['in_app', 'email'],
+        data: {
+          amount: transaction.amount,
+          jobTitle: job?.title,
+          jobId: transaction.jobId
+        }
+      });
+    }
+  } catch (e) {
+    console.error('[Payment] Notification failed:', e.message);
+  }
+}
 
 // ==========================================
 // PAYMENT INITIALIZATION
@@ -20,18 +143,15 @@ exports.initializePayment = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'Job ID is required.');
     }
 
-    // Validate job
     const job = await Job.findById(jobId);
     if (!job) {
       throw new AppError('JOB_NOT_FOUND', 'Job not found.');
     }
 
-    // Authorization check
     if (job.customerId.toString() !== req.user._id.toString()) {
       throw new AppError('AUTH_UNAUTHORIZED', 'You are not authorized to pay for this job.');
     }
 
-    // Status check
     if (!['pending', 'accepted'].includes(job.status)) {
       throw new AppError('JOB_INVALID_STATUS', `Cannot pay for job with status: ${job.status}.`);
     }
@@ -40,7 +160,6 @@ exports.initializePayment = async (req, res, next) => {
       throw new AppError('JOB_INVALID_STATUS', 'Payment has already been processed for this job.');
     }
 
-    // Block milestone-based jobs from regular payment
     if (job.hasMilestones) {
       throw new AppError(
         'JOB_HAS_MILESTONES',
@@ -48,20 +167,18 @@ exports.initializePayment = async (req, res, next) => {
       );
     }
 
-    // Get artisan profile for rate validation
     const artisanProfile = await ArtisanProfile.findOne({ userId: job.artisanId });
     if (!artisanProfile) {
       throw new AppError('ARTISAN_NOT_FOUND', 'Artisan profile not found.');
     }
 
-    // Calculate amounts
     const amount = job.budget || artisanProfile.rate?.amount || 0;
 
     if (amount < 1000) {
       throw new AppError('VALIDATION_ERROR', 'Minimum payment amount is ₦1,000.');
     }
 
-    if (amount > 10000000) { // ₦10M max
+    if (amount > 10000000) {
       throw new AppError('VALIDATION_ERROR', 'Maximum payment amount is ₦10,000,000.');
     }
 
@@ -89,7 +206,6 @@ exports.initializePayment = async (req, res, next) => {
       });
     }
 
-    // Create transaction record
     const transaction = await Transaction.create({
       jobId,
       payerId: req.user._id,
@@ -105,12 +221,11 @@ exports.initializePayment = async (req, res, next) => {
       }
     });
 
-    // Initialize Paystack transaction
     const response = await axios.post(
       `${PAYSTACK_BASE_URL}/transaction/initialize`,
       {
         email: email || req.user.email,
-        amount: Math.round(amount * 100), // Paystack expects amount in kobo
+        amount: Math.round(amount * 100),
         reference: `TH_${transaction._id}_${Date.now()}`,
         callback_url: `${process.env.FRONTEND_URL}/payment/callback`,
         metadata: {
@@ -131,7 +246,6 @@ exports.initializePayment = async (req, res, next) => {
 
     const { data } = response.data;
 
-    // Update transaction with Paystack reference
     transaction.paystackReference = data.reference;
     await transaction.save();
 
@@ -150,7 +264,6 @@ exports.initializePayment = async (req, res, next) => {
       }
     });
   } catch (error) {
-    // Handle Paystack specific errors
     if (error.response?.data?.message) {
       return next(new AppError('PAYMENT_FAILED', error.response.data.message));
     }
@@ -170,15 +283,15 @@ exports.verifyPayment = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'Payment reference is required.');
     }
 
-    // Find transaction first
+    // Find transaction
     let transaction = await Transaction.findOne({ paystackReference: reference });
 
-    // If already processed, return cached result
-    if (transaction && transaction.status === 'success') {
+    // Already processed?
+    if (transaction && (transaction.status === 'success' || transaction.status === 'completed')) {
       return res.json({
         success: true,
         message: 'Payment already verified',
-        data: { transaction }
+        data: { transaction, alreadyProcessed: true }
       });
     }
 
@@ -186,100 +299,36 @@ exports.verifyPayment = async (req, res, next) => {
     const response = await axios.get(
       `${PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
       {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
-        },
-        timeout: 10000 // 10 second timeout
+        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+        timeout: 10000
       }
     );
 
     const { data } = response.data;
 
     if (data.status !== 'success') {
-      // Update transaction as failed
       if (transaction) {
         await transaction.markAsFailed(
           data.gateway_response || 'Payment failed',
           data.status
         );
       }
-
       throw new AppError(
         'PAYMENT_FAILED',
         data.gateway_response || `Payment verification failed with status: ${data.status}`
       );
     }
 
-    // Update transaction as successful
     if (!transaction) {
       throw new AppError('NOT_FOUND', 'Transaction not found for this reference.');
     }
 
-    await transaction.markAsSuccessful({
-      id: data.id,
-      paid_at: data.paid_at,
-      channel: data.channel,
-      amount: data.amount
-    });
-
-    // Update job payment status
-    await Job.findByIdAndUpdate(transaction.jobId, {
-      paymentStatus: 'paid',
-      transactionId: transaction._id,
-      status: 'accepted',
-      acceptedAt: new Date()
-    });
-
-    // Credit artisan wallet with pending balance (escrow)
-    const wallet = await Wallet.findOneAndUpdate(
-      { artisanId: transaction.payeeId },
-      {
-        $inc: { pendingBalance: transaction.artisanAmount },
-        $push: { transactions: transaction._id }
-      },
-      { upsert: true, new: true }
-    );
-
-    // Notify artisan via socket and create conversation if needed
-    await notifyArtisanPaymentReceived(req.app.get('io'), transaction, wallet);
-
-    // Payment received notification via NotificationService
-    try {
-      const artisan = await User.findById(transaction.payeeId);
-      const customer = await User.findById(transaction.payerId);
-      const job = await Job.findById(transaction.jobId);
-      if (artisan) {
-        await NotificationService.send({
-          user: artisan,
-          type: 'payment_received',
-          channels: ['in_app', 'email'],
-          data: {
-            amount: transaction.amount,
-            jobTitle: job?.title,
-            jobId: transaction.jobId,
-            customerName: customer?.fullName
-          }
-        });
-      }
-      if (customer) {
-        await NotificationService.send({
-          user: customer,
-          type: 'payment_confirmed',
-          channels: ['in_app', 'email'],
-          data: {
-            amount: transaction.amount,
-            jobTitle: job?.title,
-            jobId: transaction.jobId
-          }
-        });
-      }
-    } catch (e) {
-      console.error('[verifyPayment] NotificationService failed:', e.message);
-    }
+    // FIXED: Use centralized idempotent processor
+    const result = await processSuccessfulPayment(transaction, data);
 
     res.json({
       success: true,
-      message: 'Payment verified successfully',
+      message: result.alreadyProcessed ? 'Payment already verified' : 'Payment verified successfully',
       data: {
         transaction: await Transaction.findById(transaction._id)
           .populate('jobId', 'title status')
@@ -290,7 +339,8 @@ exports.verifyPayment = async (req, res, next) => {
           amount: data.amount / 100,
           channel: data.channel,
           paid_at: data.paid_at
-        }
+        },
+        alreadyProcessed: result.alreadyProcessed
       }
     });
   } catch (error) {
@@ -302,7 +352,7 @@ exports.verifyPayment = async (req, res, next) => {
 };
 
 // ==========================================
-// ESCROW RELEASE (Customer confirms job completion)
+// ESCROW RELEASE
 // ==========================================
 
 exports.releasePayment = async (req, res, next) => {
@@ -314,7 +364,6 @@ exports.releasePayment = async (req, res, next) => {
       throw new AppError('JOB_NOT_FOUND', 'Job not found.');
     }
 
-    // Only customer can release payment
     if (job.customerId.toString() !== req.user._id.toString()) {
       throw new AppError('AUTH_UNAUTHORIZED', 'Only the customer can release payment.');
     }
@@ -336,7 +385,6 @@ exports.releasePayment = async (req, res, next) => {
       throw new AppError('PAYMENT_ERROR', 'Payment was not successful.');
     }
 
-    // CRITICAL: Use wallet methods for proper balance management
     const wallet = await Wallet.findOne({ artisanId: transaction.payeeId });
     if (!wallet) {
       throw new AppError('NOT_FOUND', 'Artisan wallet not found.');
@@ -345,10 +393,9 @@ exports.releasePayment = async (req, res, next) => {
     // Release from pending to available
     await wallet.releasePendingBalance(transaction.artisanAmount);
 
-    // Update transaction status
+    // Update transaction
     await transaction.releasePayment();
 
-    // Update job
     job.paymentStatus = 'released';
     job.releasedAt = new Date();
     await job.save();
@@ -356,10 +403,13 @@ exports.releasePayment = async (req, res, next) => {
     // Notify artisan
     await notifyArtisanPaymentReleased(req.app.get('io'), transaction, wallet);
 
-    // Payment released notification via NotificationService
+    // Notifications
     try {
-      const artisan = await User.findById(transaction.payeeId);
-      const customer = await User.findById(transaction.payerId);
+      const [artisan, customer] = await Promise.all([
+        User.findById(transaction.payeeId),
+        User.findById(transaction.payerId)
+      ]);
+
       if (artisan) {
         await NotificationService.send({
           user: artisan,
@@ -387,13 +437,13 @@ exports.releasePayment = async (req, res, next) => {
         });
       }
     } catch (e) {
-      console.error('[releasePayment] NotificationService failed:', e.message);
+      console.error('[releasePayment] Notification failed:', e.message);
     }
 
     res.json({
       success: true,
       message: 'Payment released successfully. Funds are now available in artisan wallet.',
-      data: { 
+      data: {
         transaction: await Transaction.findById(transaction._id)
           .populate('jobId', 'title')
           .populate('payerId', 'fullName'),
@@ -414,7 +464,6 @@ exports.releasePayment = async (req, res, next) => {
 
 exports.webhook = async (req, res) => {
   try {
-    // Verify webhook signature
     const signature = req.headers['x-paystack-signature'];
     if (!signature) {
       console.error('Webhook: Missing signature');
@@ -437,86 +486,55 @@ exports.webhook = async (req, res) => {
     const event = req.body;
     console.log(`Webhook received: ${event.event}`, { reference: event.data?.reference });
 
-    // Handle different event types
     switch (event.event) {
       case 'charge.success':
         await handleChargeSuccess(event.data);
         break;
-
       case 'charge.failed':
         await handleChargeFailed(event.data);
         break;
-
       case 'transfer.success':
         await handleTransferSuccess(event.data);
         break;
-
       case 'transfer.failed':
         await handleTransferFailed(event.data);
         break;
-
       case 'transfer.reversed':
         await handleTransferReversed(event.data);
         break;
-
       default:
         console.log(`Unhandled webhook event: ${event.event}`);
     }
 
-    // Always return 200 to prevent retries
     res.status(200).json({ received: true });
   } catch (error) {
     console.error('Webhook processing error:', error);
-    // Still return 200 to prevent Paystack retries
     res.status(200).json({ received: true, error: 'Processing error logged' });
   }
 };
 
 // ==========================================
-// WEBHOOK HANDLER FUNCTIONS
+// FIXED: Webhook handlers use centralized processor
 // ==========================================
 
 async function handleChargeSuccess(data) {
-  const { reference, status, id, amount, paid_at, channel } = data;
+  const { reference } = data;
 
   const transaction = await Transaction.findOne({ paystackReference: reference });
   if (!transaction) {
-    console.error(`Transaction not found for reference: ${reference}`);
+    console.error(`[Webhook] Transaction not found: ${reference}`);
     return;
   }
 
-  if (transaction.status === 'success') {
-    console.log(`Transaction ${transaction._id} already marked as success`);
+  // FIXED: Use centralized idempotent processor
+  const result = await processSuccessfulPayment(transaction, data);
+
+  if (result.alreadyProcessed) {
+    console.log(`[Webhook] Payment already processed (${result.source}): ${reference}`);
     return;
   }
 
-  // Update transaction
-  await transaction.markAsSuccessful({
-    id,
-    paid_at,
-    channel,
-    amount
-  });
-
-  // Update job
-  await Job.findByIdAndUpdate(transaction.jobId, {
-    paymentStatus: 'paid',
-    transactionId: transaction._id,
-    status: 'accepted',
-    acceptedAt: new Date()
-  });
-
-  // Credit artisan wallet (pending/escrow)
-  await Wallet.findOneAndUpdate(
-    { artisanId: transaction.payeeId },
-    {
-      $inc: { pendingBalance: transaction.artisanAmount },
-      $push: { transactions: transaction._id }
-    },
-    { upsert: true }
-  );
-
-  console.log(`Payment success processed: ${reference}`);
+  console.log(`[Webhook] Payment success processed: ${reference}`);
 }
 
 async function handleChargeFailed(data) {
@@ -525,14 +543,15 @@ async function handleChargeFailed(data) {
   const transaction = await Transaction.findOne({ paystackReference: reference });
   if (!transaction) return;
 
+  if (transaction.status === 'failed') return;
+
   await transaction.markAsFailed(gateway_response || 'Payment failed', 'failed');
 
-  // Update job if needed
   await Job.findByIdAndUpdate(transaction.jobId, {
     paymentStatus: 'failed'
   });
 
-  console.log(`Payment failed processed: ${reference}`);
+  console.log(`[Webhook] Payment failed processed: ${reference}`);
 }
 
 async function handleTransferSuccess(data) {
@@ -540,29 +559,26 @@ async function handleTransferSuccess(data) {
 
   const transaction = await Transaction.findOne({ paystackTransferReference: reference });
   if (!transaction) {
-    console.error(`Withdrawal transaction not found: ${reference}`);
+    console.error(`[Webhook] Withdrawal transaction not found: ${reference}`);
     return;
   }
 
-  if (transaction.status === 'success') {
-    console.log(`Withdrawal ${transaction._id} already completed`);
+  if (transaction.status === 'success' || transaction.status === 'completed') {
+    console.log(`[Webhook] Withdrawal already completed: ${reference}`);
     return;
   }
 
-  // Update transaction
   await transaction.markWithdrawalComplete({
     id,
     amount,
     transfer_code: recipient?.transfer_code
   });
 
-  // Update wallet using reference (not index)
   const wallet = await Wallet.findOne({ artisanId: transaction.payeeId });
   if (wallet) {
     await wallet.completeWithdrawal(reference, id.toString());
   }
 
-  // Withdrawal completed notification
   try {
     const artisan = await User.findById(transaction.payeeId);
     if (artisan) {
@@ -581,7 +597,7 @@ async function handleTransferSuccess(data) {
     console.error('[handleTransferSuccess] Notification failed:', e.message);
   }
 
-  console.log(`Transfer success processed: ${reference}`);
+  console.log(`[Webhook] Transfer success processed: ${reference}`);
 }
 
 async function handleTransferFailed(data) {
@@ -592,16 +608,13 @@ async function handleTransferFailed(data) {
 
   if (transaction.status === 'failed') return;
 
-  // Update transaction
   await transaction.markAsFailed(reason, 'transfer_failed');
 
-  // Refund wallet
   const wallet = await Wallet.findOne({ artisanId: transaction.payeeId });
   if (wallet) {
     await wallet.failWithdrawal(reference, reason);
   }
 
-  // Withdrawal failed notification
   try {
     const artisan = await User.findById(transaction.payeeId);
     if (artisan) {
@@ -620,15 +633,12 @@ async function handleTransferFailed(data) {
     console.error('[handleTransferFailed] Notification failed:', e.message);
   }
 
-  console.log(`Transfer failed processed: ${reference}, reason: ${reason}`);
+  console.log(`[Webhook] Transfer failed processed: ${reference}`);
 }
 
 async function handleTransferReversed(data) {
   const { reference, reason } = data;
 
-  console.log(`Transfer reversed: ${reference}, reason: ${reason}`);
-
-  // Similar to failed - refund the wallet
   const transaction = await Transaction.findOne({ paystackTransferReference: reference });
   if (!transaction || transaction.status === 'reversed') return;
 
@@ -641,7 +651,6 @@ async function handleTransferReversed(data) {
     await wallet.failWithdrawal(reference, `Reversed: ${reason}`);
   }
 
-  // Withdrawal reversed notification
   try {
     const artisan = await User.findById(transaction.payeeId);
     if (artisan) {
@@ -662,7 +671,7 @@ async function handleTransferReversed(data) {
 }
 
 // ==========================================
-// WITHDRAWAL (Artisan)
+// WITHDRAWAL
 // ==========================================
 
 exports.requestWithdrawal = async (req, res, next) => {
@@ -670,30 +679,25 @@ exports.requestWithdrawal = async (req, res, next) => {
     const { amount } = req.body;
     const userId = req.user._id;
 
-    // Validation
     if (!amount || isNaN(amount) || amount <= 0) {
       throw new AppError('VALIDATION_ERROR', 'Valid amount is required.');
     }
 
     const withdrawalAmount = Math.round(parseFloat(amount) * 100) / 100;
 
-    // Get wallet
     const wallet = await Wallet.findOne({ artisanId: userId });
     if (!wallet) {
       throw new AppError('NOT_FOUND', 'Wallet not found.');
     }
 
-    // Check bank details
     if (!wallet.bankDetails?.accountNumber || !wallet.bankDetails?.bankCode) {
       throw new AppError('VALIDATION_ERROR', 'Please add your bank details in your profile first.');
     }
 
-    // Check minimum withdrawal (₦500)
     if (withdrawalAmount < 500) {
       throw new AppError('VALIDATION_ERROR', 'Minimum withdrawal amount is ₦500.');
     }
 
-    // Check available balance (balance - pending withdrawals)
     const availableBalance = wallet.balance - wallet.totalPendingWithdrawal;
     if (withdrawalAmount > availableBalance) {
       throw new AppError(
@@ -702,13 +706,11 @@ exports.requestWithdrawal = async (req, res, next) => {
       );
     }
 
-    // Create withdrawal request in wallet (this deducts from available balance)
-    const { withdrawal, withdrawalId } = await wallet.requestWithdrawal(withdrawalAmount);
+    const { withdrawalId } = await wallet.requestWithdrawal(withdrawalAmount);
 
-    // Create transaction record
     const transaction = await Transaction.create({
       payeeId: userId,
-      payerId: userId, // Self-transfer
+      payerId: userId,
       walletId: wallet._id,
       amount: withdrawalAmount,
       type: 'withdrawal',
@@ -721,7 +723,6 @@ exports.requestWithdrawal = async (req, res, next) => {
       }
     });
 
-    // Initiate Paystack transfer
     try {
       const transferData = await initiatePaystackTransfer(
         withdrawalAmount,
@@ -729,15 +730,12 @@ exports.requestWithdrawal = async (req, res, next) => {
         `TrustedHand Withdrawal - ${userId}`
       );
 
-      // Update transaction
       transaction.paystackTransferReference = transferData.reference;
       transaction.status = 'processing';
       await transaction.save();
 
-      // Update withdrawal in wallet
       await wallet.processWithdrawal(withdrawalId, transferData.reference);
 
-      // Withdrawal initiated notification
       try {
         const user = await User.findById(userId);
         await NotificationService.send({
@@ -774,7 +772,6 @@ exports.requestWithdrawal = async (req, res, next) => {
         }
       });
     } catch (transferError) {
-      // Rollback: Cancel withdrawal and refund
       await wallet.cancelWithdrawal(withdrawalId);
 
       await Transaction.findByIdAndUpdate(transaction._id, {
@@ -798,14 +795,12 @@ exports.requestWithdrawal = async (req, res, next) => {
 // ==========================================
 
 async function initiatePaystackTransfer(amount, bankDetails, reason) {
-  // Validate bank details
   if (!bankDetails.bankCode) {
     throw new Error('Bank code is required');
   }
 
   let recipientCode = bankDetails.paystackRecipientCode;
 
-  // Create recipient if not cached
   if (!recipientCode) {
     try {
       const recipientResponse = await axios.post(
@@ -831,10 +826,9 @@ async function initiatePaystackTransfer(amount, bankDetails, reason) {
 
       recipientCode = recipientResponse.data.data.recipient_code;
 
-      // Cache recipient code
       await Wallet.findOneAndUpdate(
         { 'bankDetails.accountNumber': bankDetails.accountNumber },
-        { 
+        {
           'bankDetails.paystackRecipientCode': recipientCode,
           'bankDetails.isVerified': true,
           'bankDetails.verifiedAt': new Date()
@@ -842,19 +836,18 @@ async function initiatePaystackTransfer(amount, bankDetails, reason) {
       );
     } catch (error) {
       console.error('Recipient creation error:', error.response?.data || error.message);
-      throw new Error('Failed to verify bank account. Please check your bank details.');
+      throw new Error('Failed to verify bank account. Please check your bank details.', { cause: error });
     }
   }
 
-  // Initiate transfer
   try {
     const transferResponse = await axios.post(
       `${PAYSTACK_BASE_URL}/transfer`,
       {
         source: 'balance',
-        amount: Math.round(amount * 100), // Convert to kobo
+        amount: Math.round(amount * 100),
         recipient: recipientCode,
-        reason: reason.substring(0, 100), // Paystack limit
+        reason: reason.substring(0, 100),
         reference: `TH_WD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       },
       {
@@ -877,60 +870,11 @@ async function initiatePaystackTransfer(amount, bankDetails, reason) {
   } catch (error) {
     console.error('Transfer initiation error:', error.response?.data || error.message);
 
-    // Check for specific Paystack errors
     if (error.response?.data?.message?.includes('insufficient')) {
-      throw new Error('Platform temporarily unable to process withdrawals. Please try again later.');
+      throw new Error('Platform temporarily unable to process withdrawals. Please try again later.', { cause: error });
     }
 
-    throw new Error(error.response?.data?.message || 'Failed to initiate bank transfer');
-  }
-}
-
-async function notifyArtisanPaymentReceived(io, transaction, wallet) {
-  try {
-    const artisan = await User.findById(transaction.payeeId);
-    if (!artisan) return;
-
-    // Socket notification
-    if (artisan.socketId && io) {
-      io.to(artisan.socketId).emit('payment_received', {
-        transactionId: transaction._id,
-        amount: transaction.artisanAmount,
-        jobId: transaction.jobId,
-        message: `New payment of ₦${transaction.artisanAmount.toLocaleString()} received (held in escrow)`
-      });
-    }
-
-    // Create or update conversation
-    const conversation = await Conversation.findOneAndUpdate(
-      {
-        participants: { $all: [transaction.payerId, transaction.payeeId] },
-        jobId: transaction.jobId
-      },
-      {
-        $set: {
-          lastMessage: {
-            content: `Payment of ₦${transaction.amount.toLocaleString()} received and held in escrow.`,
-            senderId: transaction.payerId,
-            createdAt: new Date(),
-            type: 'system'
-          }
-        },
-        $inc: { [`unreadCount.${transaction.payeeId}`]: 1 }
-      },
-      { upsert: true, new: true }
-    );
-
-    // Emit to conversation room
-    if (io) {
-      io.to(`conversation_${conversation._id}`).emit('system_message', {
-        conversationId: conversation._id,
-        message: 'Payment received and held in escrow'
-      });
-    }
-  } catch (error) {
-    console.error('Failed to notify artisan:', error);
-    // Don't throw - notification failure shouldn't break payment flow
+    throw new Error(error.response?.data?.message || 'Failed to initiate bank transfer', { cause: error });
   }
 }
 
@@ -966,6 +910,8 @@ function getPaymentMethod(channel) {
   return methodMap[channel] || 'card';
 }
 
+exports.getPaymentMethod = getPaymentMethod;
+
 // ==========================================
 // ADDITIONAL ENDPOINTS
 // ==========================================
@@ -999,7 +945,6 @@ exports.getTransactionHistory = async (req, res, next) => {
 
     const total = await Transaction.countDocuments(query);
 
-    // Calculate summary
     const summary = await Transaction.aggregate([
       {
         $match: {
@@ -1064,9 +1009,9 @@ exports.getWallet = async (req, res, next) => {
     const wallet = await Wallet.findOne({ artisanId: req.user._id })
       .populate({
         path: 'transactions',
-        options: { 
-          sort: { createdAt: -1 }, 
-          limit: 10 
+        options: {
+          sort: { createdAt: -1 },
+          limit: 10
         },
         select: 'amount type status createdAt description'
       });
@@ -1083,7 +1028,7 @@ exports.getWallet = async (req, res, next) => {
 
       return res.json({
         success: true,
-        data: { 
+        data: {
           wallet: newWallet.getSummary(),
           isNew: true
         }
@@ -1092,7 +1037,7 @@ exports.getWallet = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: { 
+      data: {
         wallet: wallet.getSummary(),
         isNew: false
       }
@@ -1107,9 +1052,7 @@ exports.getBanks = async (req, res, next) => {
     const response = await axios.get(
       `${PAYSTACK_BASE_URL}/bank?country=nigeria`,
       {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
-        },
+        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
         timeout: 10000
       }
     );
@@ -1118,15 +1061,11 @@ exports.getBanks = async (req, res, next) => {
       throw new AppError('PAYMENT_FAILED', 'Failed to fetch bank list');
     }
 
-    // Sort banks alphabetically
     const banks = response.data.data.sort((a, b) => a.name.localeCompare(b.name));
 
     res.json({
       success: true,
-      data: { 
-        banks,
-        count: banks.length
-      }
+      data: { banks, count: banks.length }
     });
   } catch (error) {
     next(error);
@@ -1141,7 +1080,6 @@ exports.verifyAccount = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'Account number and bank code are required.');
     }
 
-    // Validate account number format
     if (!/^\d{10}$/.test(accountNumber)) {
       throw new AppError('VALIDATION_ERROR', 'Account number must be exactly 10 digits.');
     }
@@ -1149,9 +1087,7 @@ exports.verifyAccount = async (req, res, next) => {
     const response = await axios.get(
       `${PAYSTACK_BASE_URL}/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
       {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
-        },
+        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
         timeout: 10000
       }
     );
@@ -1171,14 +1107,10 @@ exports.verifyAccount = async (req, res, next) => {
   } catch (error) {
     console.error('Account verification error:', error.response?.data || error.message);
 
-    if (error instanceof AppError) {
-      return next(error);
-    }
-
+    if (error instanceof AppError) return next(error);
     if (error.response?.status === 422) {
       return next(new AppError('VALIDATION_ERROR', 'Invalid account number or bank code. Please verify and try again.'));
     }
-
     return next(new AppError('VALIDATION_ERROR', 'Could not verify account. Please check your details and try again.'));
   }
 };

@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const oauthController = require('../controllers/oauthController');
+const { authenticate } = require('../middleware/authMiddleware');
 
 // Local auth controllers
 const {
@@ -19,11 +21,11 @@ const {
   googleAuth,
   googleCallback,
   facebookAuth,
-  facebookCallback
+  facebookCallback,
+  exchangeOAuthState  // NEW: state exchange endpoint
 } = require('../controllers/oauthController');
 
-// Middleware
-const { authenticate } = require('../middleware/authMiddleware');
+
 
 // ==========================================
 // LOCAL AUTH ROUTES
@@ -34,10 +36,16 @@ router.post('/login', login);
 router.get('/me', authenticate, getMe);
 router.post('/logout', authenticate, logout);
 router.post('/refresh', refresh);
-router.get('/verify-email/:token', verifyEmail);
+router.post('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerification);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password/:token', resetPassword);
+
+// ==========================================
+// OAUTH STATE EXCHANGE (NEW)
+// Frontend calls this after OAuth redirect to get user info
+// ==========================================
+router.get('/oauth-exchange', exchangeOAuthState);
 
 // ==========================================
 // GOOGLE OAUTH ROUTES
@@ -58,5 +66,7 @@ router.get('/facebook', facebookAuth);
 
 // Step 2: Facebook redirects back here
 router.get('/facebook/callback', ...facebookCallback);
+
+router.get('/oauth/exchange', oauthController.exchangeOAuthState);
 
 module.exports = router;

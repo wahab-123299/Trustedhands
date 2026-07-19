@@ -1,5 +1,4 @@
 // backend/controllers/availabilityController.js
-const { AppError } = require('../utils/errorHandler');
 const { AvailabilitySlot, RecurringPattern } = require('../models');
 
 // ==========================================

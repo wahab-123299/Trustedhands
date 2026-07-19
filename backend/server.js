@@ -3,6 +3,13 @@ const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
+// ==========================================
+// FIXED: Validate environment BEFORE importing app
+// This prevents the server from starting with broken config
+// ==========================================
+const validateEnv = require('./config/validateEnv');
+validateEnv();
+
 const app = require('./app');
 const connectDB = require('./config/database');
 const { startKeepAlive } = require('./utils/keepAlive');
@@ -10,7 +17,7 @@ const { startKeepAlive } = require('./utils/keepAlive');
 const startServer = async () => {
   try {
     // ==========================================
-    // ENV VALIDATION
+    // ENV VALIDATION (legacy checks kept for safety)
     // ==========================================
 
     if (!process.env.MONGODB_URI) {
@@ -30,6 +37,13 @@ const startServer = async () => {
     console.log('✅ JWT_SECRET present');
     console.log('✅ JWT_REFRESH_SECRET present');
 
+    // FIXED: Warn if MONGODB_URI is missing database name
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri.includes('/TrustedHands') && !mongoUri.includes('/trustedhands')) {
+      console.warn('⚠️  MONGODB_URI does not include /TrustedHands database name');
+      console.warn('   Current URI may connect to "test" database');
+    }
+
     // ==========================================
     // DATABASE CONNECTION
     // ==========================================
@@ -40,6 +54,7 @@ const startServer = async () => {
     // MongoDB connection event handlers
     mongoose.connection.on('connected', () => {
       console.log('🟢 MongoDB connected');
+      console.log(`   Database: ${mongoose.connection.name}`);
     });
 
     mongoose.connection.on('disconnected', () => {
@@ -87,7 +102,6 @@ const startServer = async () => {
         // START KEEP-ALIVE (Prevents Render from sleeping)
         // ==========================================
         const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-        const keepAliveUrl = process.env.API_URL || `http://localhost:${PORT}`;
         if (isProduction) {
           startKeepAlive();
           console.log('📡 Keep-alive started — server will stay awake');
@@ -98,20 +112,15 @@ const startServer = async () => {
         console.log('');
         console.log('📋 Available Routes:');
         console.log('   GET  /api/health          — Health check');
-        console.log('   GET  /api/health/deep     — Deep health check (with DB ping)');
         console.log('   POST /api/auth/register');
         console.log('   POST /api/auth/login');
         console.log('   GET  /api/auth/me');
         console.log('   POST /api/auth/logout');
         console.log('   POST /api/auth/refresh');
-        console.log('   GET  /api/auth/google     — Google OAuth');
-        console.log('   GET  /api/auth/google/callback — Google OAuth callback');
-        console.log('   GET  /api/auth/facebook   — Facebook OAuth');
-        console.log('   GET  /api/auth/facebook/callback — Facebook OAuth callback');
       });
     } catch (socketError) {
       console.warn('⚠️  Socket.io initialization failed:', socketError.message);
-      
+
       const PORT = process.env.PORT || 5000;
       const server = http.createServer(app);
       server.listen(PORT, () => {

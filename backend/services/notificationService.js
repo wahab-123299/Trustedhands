@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const { sendEmail, sendWelcomeEmail, sendJobNotification, sendPaymentReceipt } = require('../utils/email');
+const urls = require('../utils/frontendUrls'); // FIXED: Centralized URL builder
 const { getIO } = require('../config/socket');
 
 class NotificationService {
@@ -198,7 +199,7 @@ class NotificationService {
             title: 'New Booking Request',
             message: `${data.customerName} wants to book you for "${data.jobTitle}"`,
             actionText: 'View Booking',
-            actionUrl: `${process.env.FRONTEND_URL}/artisan/jobs/${data.jobId}`
+            actionUrl: urls.artisan.jobDetails(data.jobId)
           });
 
         case 'application_received':
@@ -207,7 +208,8 @@ class NotificationService {
             title: 'New Job Application',
             message: `${data.artisanName} applied for your job "${data.jobTitle}"`,
             actionText: 'View Applications',
-            actionUrl: `${process.env.FRONTEND_URL}/customer/jobs/${data.jobId}/applications`
+            // FIXED: No /applications sub-route; link to job detail
+            actionUrl: urls.customer.jobs(data.jobId)
           });
 
         case 'booking_declined':
@@ -216,7 +218,7 @@ class NotificationService {
             title: 'Booking Declined',
             message: `${data.artisanName} declined your booking request for "${data.jobTitle}"`,
             actionText: 'Find Other Artisans',
-            actionUrl: `${process.env.FRONTEND_URL}/artisans`
+            actionUrl: urls.public.artisans
           });
 
         case 'review_received':
@@ -225,7 +227,7 @@ class NotificationService {
             title: 'New Review Received',
             message: `You received a ${data.rating}-star review from ${data.customerName}!`,
             actionText: 'View Reviews',
-            actionUrl: `${process.env.FRONTEND_URL}/artisan/profile`
+            actionUrl: urls.artisan.profile
           });
 
         default:

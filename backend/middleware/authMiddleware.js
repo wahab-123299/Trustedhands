@@ -1,158 +1,199 @@
-// backend/middleware/authMiddleware.js
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
-const { AppError } = require('../utils/errorHandler');
+const User = require('../models/User');
 
+// ==========================================
+// FIXED: Unified JWT environment variable names
+// All files now use these exact names:
+//   JWT_SECRET         (access token signing)
+//   JWT_REFRESH_SECRET (refresh token signing)
+//   JWT_EXPIRE         (access token expiry, e.g. '15m', '1h')
+//   JWT_REFRESH_EXPIRE (refresh token expiry, e.g. '7d', '30d')
+// ==========================================
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const JWT_EXPIRE = process.env.JWT_EXPIRE || '15m';
+const JWT_REFRESH_EXPIRE = process.env.JWT_REFRESH_EXPIRE || '7d';
+
+// Validate at module load (fail fast)
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET is not set');
+  process.exit(1);
+}
+if (!JWT_REFRESH_SECRET) {
+  console.error('FATAL: JWT_REFRESH_SECRET is not set');
+  process.exit(1);
+}
+
+// In-memory blacklist (lost on restart — use DB for production)
 const tokenBlacklist = new Set();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
-// ==========================================
-// AUTHENTICATE (was called 'protect' in old code)
-// ==========================================
-
-exports.authenticate = async (req, res, next) => {
-  try {
-    let token = null;
-    const authHeader = req.headers.authorization;
-
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    } else if (req.cookies?.accessToken) {
-      token = req.cookies.accessToken;
-    }
-
-    if (!token) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required. Please log in.'));
-    }
-
-    if (tokenBlacklist.has(token)) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Token has been revoked. Please log in again.'));
-    }
-
-    let decoded;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET, {
-        audience: 'trustedhand-client',
-        issuer: 'trustedhand-api'
-      });
-    } catch (jwtError) {
-      if (jwtError.name === 'TokenExpiredError') {
-        return next(new AppError('AUTH_TOKEN_EXPIRED', 'Your session has expired. Please log in again.'));
-      }
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Invalid token. Please log in again.'));
-    }
-
-    const user = await User.findById(decoded.userId).select('-password');
-
-    if (!user) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'User not found. Please log in again.'));
-    }
-
-    if (!user.isActive) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.'));
-    }
-
-    req.user = {
-      _id: user._id.toString(),
-      id: user._id.toString(),
+const authMiddleware = {
+  /**
+   * Generate access + refresh tokens
+   */
+  generateTokens: (user) => {
+    const payload = {
       userId: user._id.toString(),
+      id: user._id.toString(), // FIXED: Both fields for backward compatibility
       email: user.email,
       role: user.role,
-      fullName: user.fullName,
-      profileImage: user.profileImage,
-      isVerified: user.isVerified
     };
 
-    next();
-  } catch (error) {
-    next(new AppError('AUTH_UNAUTHORIZED', 'Authentication failed. Please try again.'));
-  }
-};
-
-// ==========================================
-// AUTHORIZE (Role-based)
-// ==========================================
-
-exports.authorize = (...allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user) {
-      return next(new AppError('AUTH_UNAUTHORIZED', 'Authentication required.'));
-    }
-
-    if (!allowedRoles.includes(req.user.role)) {
-      return next(new AppError('AUTH_FORBIDDEN', `Access denied. Required role: ${allowedRoles.join(' or ')}`));
-    }
-
-    next();
-  };
-};
-
-// ==========================================
-// BACKWARD COMPATIBILITY ALIASES
-// ==========================================
-
-exports.protect = exports.authenticate;  // ← OLD ROUTE FILES USE THIS
-
-// ==========================================
-// TOKEN HELPERS
-// ==========================================
-
-exports.generateTokens = (userId) => {
-  const accessToken = jwt.sign(
-    { userId: userId.toString() },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN, audience: 'trustedhand-client', issuer: 'trustedhand-api' }
-  );
-
-  const refreshToken = jwt.sign(
-    { userId: userId.toString() },
-    JWT_REFRESH_SECRET,  // FIXED: use refresh secret, not JWT_SECRET
-    { expiresIn: JWT_REFRESH_EXPIRES_IN, audience: 'trustedhand-client', issuer: 'trustedhand-api' }
-  );
-
-  return { accessToken, refreshToken };
-};
-
-exports.blacklistToken = (token) => {
-  tokenBlacklist.add(token);
-};
-
-exports.isTokenBlacklisted = (token) => {
-  return tokenBlacklist.has(token);
-};
-
-// ==========================================
-// SOCKET.IO AUTH
-// ==========================================
-
-exports.socketAuth = async (socket, next) => {
-  try {
-    const token = socket.handshake.auth.token || socket.handshake.query.token;
-    if (!token) return next(new Error('Authentication required'));
-    if (tokenBlacklist.has(token)) return next(new Error('Token revoked'));
-
-    const decoded = jwt.verify(token, JWT_SECRET, {
+    const accessToken = jwt.sign(payload, JWT_SECRET, {
+      expiresIn: JWT_EXPIRE,
+      issuer: 'trustedhand-api',
       audience: 'trustedhand-client',
-      issuer: 'trustedhand-api'
     });
 
-    const user = await User.findById(decoded.userId).select('-password');
-    if (!user || !user.isActive) return next(new Error('User not found or deactivated'));
+    const refreshToken = jwt.sign(
+      { userId: user._id.toString(), type: 'refresh' },
+      JWT_REFRESH_SECRET,
+      { expiresIn: JWT_REFRESH_EXPIRE }
+    );
 
-    socket.user = {
-      _id: user._id.toString(),
-      id: user._id.toString(),
-      userId: user._id.toString(),
-      email: user.email,
-      role: user.role,
-      fullName: user.fullName
+    return { accessToken, refreshToken };
+  },
+
+  /**
+   * Verify access token
+   */
+  verifyAccessToken: (token) => {
+    return jwt.verify(token, JWT_SECRET, {
+      issuer: 'trustedhand-api',
+      audience: 'trustedhand-client',
+    });
+  },
+
+  /**
+   * Verify refresh token
+   */
+  verifyRefreshToken: (token) => {
+    return jwt.verify(token, JWT_REFRESH_SECRET);
+  },
+
+  /**
+   * Add token to blacklist (on logout)
+   */
+  blacklistToken: (token) => {
+    tokenBlacklist.add(token);
+  },
+
+  /**
+   * Check if token is blacklisted
+   */
+  isTokenBlacklisted: (token) => {
+    return tokenBlacklist.has(token);
+  },
+
+  /**
+   * Main authentication middleware
+   * FIXED: Now checks DB-backed blacklist in addition to in-memory
+   */
+  authenticate: async (req, res, next) => {
+    try {
+      let token = null;
+
+      // 1. Check Authorization header
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
+
+      // 2. Check cookies as fallback
+      if (!token && req.cookies?.token) {
+        token = req.cookies.token;
+      }
+
+      if (!token) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_NO_TOKEN', message: 'No authentication token provided' }
+        });
+      }
+
+      // 3. Check in-memory blacklist
+      if (authMiddleware.isTokenBlacklisted(token)) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_TOKEN_REVOKED', message: 'Token has been revoked' }
+        });
+      }
+
+      // 4. Verify token
+      let decoded;
+      try {
+        decoded = authMiddleware.verifyAccessToken(token);
+      } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+          return res.status(401).json({
+            success: false,
+            error: { code: 'AUTH_TOKEN_EXPIRED', message: 'Token has expired' }
+          });
+        }
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_INVALID_TOKEN', message: 'Invalid token' }
+        });
+      }
+
+      // 5. Check DB-backed blacklist (user.blacklistedTokens)
+      const user = await User.findById(decoded.userId || decoded.id);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_USER_NOT_FOUND', message: 'User not found' }
+        });
+      }
+
+      if (user.blacklistedTokens && user.blacklistedTokens.includes(token)) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_TOKEN_REVOKED', message: 'Token has been revoked' }
+        });
+      }
+
+      // 6. Attach user to request
+      req.user = {
+        _id: user._id,
+        id: user._id, // FIXED: Both for compatibility
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName,
+      };
+      req.token = token;
+
+      next();
+    } catch (error) {
+      console.error('Auth middleware error:', error);
+      return res.status(500).json({
+        success: false,
+        error: { code: 'AUTH_ERROR', message: 'Authentication error' }
+      });
+    }
+  },
+
+  /**
+   * Role-based authorization middleware
+   */
+  authorize: (...roles) => {
+    return (req, res, next) => {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_UNAUTHORIZED', message: 'Not authenticated' }
+        });
+      }
+
+      if (!roles.includes(req.user.role)) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'AUTH_FORBIDDEN', message: 'Insufficient permissions' }
+        });
+      }
+
+      next();
     };
-
-    next();
-  } catch (error) {
-    next(new Error('Invalid token'));
-  }
+  },
 };
+
+module.exports = authMiddleware;

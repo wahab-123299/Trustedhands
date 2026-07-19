@@ -22,11 +22,7 @@ const notificationSchema = new mongoose.Schema({
       'review_received',
       'application_received',
       'application_accepted',
-      'application_rejected',
-      // Auth-related notifications (added)
-      'login_alert',
-      'email_verified',
-      'password_changed'
+      'application_rejected'
     ],
     required: true
   },

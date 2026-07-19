@@ -1,5 +1,5 @@
 // migration.js - Run once to convert old format to GeoJSON
-const mongoose = require('mongoose');
+const User = require('./user');
 
 const migrateCoordinates = async () => {
   const users = await User.find({
@@ -22,3 +22,5 @@ const migrateCoordinates = async () => {
   
   console.log(`Migrated ${users.length} users`);
 };
+
+module.exports = migrateCoordinates;

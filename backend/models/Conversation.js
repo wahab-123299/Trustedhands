@@ -105,7 +105,7 @@ conversationSchema.pre('save', async function(next) {
     if (users.length !== 2) {
       return next(new Error('One or more participants not found'));
     }
-  } catch (error) {
+  } catch {
     // Continue even if check fails (will fail on message creation if user doesn't exist)
   }
 

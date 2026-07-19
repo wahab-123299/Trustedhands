@@ -80,12 +80,6 @@ function parseTime(timeStr) {
   return hours * 60 + minutes;
 }
 
-// Helper: Format minutes to "HH:MM"
-function formatTime(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-}
 
 // Method: Check if a time range overlaps with existing slots
 availabilitySlotSchema.methods.hasOverlap = function(startTime, endTime) {

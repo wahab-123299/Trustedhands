@@ -1,66 +1,79 @@
 const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 let io = null;
 
-module.exports = {
-  init: (httpServer) => {
-    io = new Server(httpServer, {
-      cors: {
-        origin: [
+const initializeSocket = (server) => {
+  io = new Server(server, {
+    cors: {
+      origin: function(origin, callback) {
+        const allowedOrigins = [
           'http://localhost:5173',
           'http://localhost:3000',
           'https://trustedhand.org',
           'https://www.trustedhand.org',
           'https://trustedhand-app.netlify.app',
           'https://trustedhands.onrender.com',
-          process.env.FRONTEND_URL
-        ].filter(Boolean),
-        credentials: true,
-        methods: ['GET', 'POST']
+          process.env.FRONTEND_URL,
+        ].filter(Boolean);
+
+        if (!origin || allowedOrigins.includes(origin) || origin.includes('netlify.app')) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
       },
-      transports: ['websocket', 'polling']
-    });
+      credentials: true,
+    },
+  });
 
-    io.on('connection', (socket) => {
-      console.log(`[Socket] Client connected: ${socket.id}`);
+  // Authentication middleware for Socket.IO
+  io.use((socket, next) => {
+    try {
+      const token = socket.handshake.auth.token || socket.handshake.query.token;
 
-      socket.on('join', (userId) => {
-        if (userId) {
-          socket.join(`user_${userId}`);
-          console.log(`[Socket] User ${userId} joined room`);
-        }
+      if (!token) {
+        return next(new Error('Authentication required'));
+      }
+
+      // FIXED: Use same verification as HTTP middleware (with issuer/audience)
+      const decoded = jwt.verify(token, JWT_SECRET, {
+        issuer: 'trustedhand-api',
+        audience: 'trustedhand-client',
       });
 
-      socket.on('leave', (userId) => {
-        if (userId) {
-          socket.leave(`user_${userId}`);
-        }
-      });
-
-      socket.on('join_conversation', (conversationId) => {
-        if (conversationId) {
-          socket.join(`conversation_${conversationId}`);
-        }
-      });
-
-      socket.on('leave_conversation', (conversationId) => {
-        if (conversationId) {
-          socket.leave(`conversation_${conversationId}`);
-        }
-      });
-
-      socket.on('disconnect', () => {
-        console.log(`[Socket] Client disconnected: ${socket.id}`);
-      });
-    });
-
-    return io;
-  },
-
-  getIO: () => {
-    if (!io) {
-      throw new Error('Socket.io not initialized! Call init() first in server.js');
+      socket.userId = decoded.userId || decoded.id;
+      socket.user = decoded;
+      next();
+    } catch {
+      next(new Error('Invalid token'));
     }
-    return io;
-  }
+  });
+
+  io.on('connection', (socket) => {
+    console.log(`[Socket] User connected: ${socket.userId}`);
+
+    // Join user-specific room for targeted notifications
+    socket.join(`user_${socket.userId}`);
+
+    socket.on('disconnect', () => {
+      console.log(`[Socket] User disconnected: ${socket.userId}`);
+    });
+  });
+
+  // Load chat-specific handlers
+  require('../socket/chatSocket')(io);
+
+  return io;
 };
+
+const getIO = () => {
+  if (!io) {
+    throw new Error('Socket.IO not initialized');
+  }
+  return io;
+};
+
+module.exports = { initializeSocket, getIO };

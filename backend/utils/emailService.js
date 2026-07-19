@@ -1,6 +1,7 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 
 const nodemailer = require('nodemailer');
+const urls = require('./frontendUrls'); // FIXED: Centralized URL builder
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -41,7 +42,6 @@ const sendEmail = async ({ to, subject, html, text }) => {
   }
 };
 
-// ... rest of templates and exports stay the same ...
 const emailTemplates = {
   welcome: (data) => ({
     subject: `Welcome to TrustedHand, ${data.name}!`,
@@ -155,15 +155,17 @@ const emailService = {
   sendEmail,
 
   sendWelcome: async (user) => {
+    const role = user.role || 'customer';
     const template = emailTemplates.welcome({
       name: user.fullName || user.name || 'there',
-      dashboardUrl: `${process.env.FRONTEND_URL || 'https://trustedhand.org'}/dashboard`,
+      dashboardUrl: role === 'artisan' ? urls.artisan.dashboard : urls.customer.dashboard,
     });
     return sendEmail({ to: user.email, ...template });
   },
 
   sendPasswordReset: async (user, resetToken) => {
-    const resetUrl = `${process.env.FRONTEND_URL || 'https://trustedhand.org'}/reset-password?token=${resetToken}`;
+    // FIXED: Path param format (matches frontend route /reset-password/:token)
+    const resetUrl = urls.auth.resetPassword(resetToken);
     const template = emailTemplates.forgotPassword({
       name: user.fullName || user.name || 'there',
       resetUrl,
@@ -180,7 +182,7 @@ const emailService = {
       location: `${job.location ? job.location.city : ''}, ${job.location ? job.location.state : ''}`,
       scheduledDate: new Date(job.scheduledDate).toLocaleDateString('en-NG'),
       description: job.description,
-      jobUrl: `${process.env.FRONTEND_URL || 'https://trustedhand.org'}/jobs/${job._id}`,
+      jobUrl: urls.customer.jobs(job._id),
     });
     return sendEmail({ to: artisan.email, ...template });
   },
@@ -195,7 +197,8 @@ const emailService = {
       jobTitle: job.title,
       proposedRate: application.proposedRate,
       coverLetter: application.coverLetter,
-      applicationUrl: `${process.env.FRONTEND_URL || 'https://trustedhand.org'}/jobs/${job._id}/applications`,
+      // FIXED: No /applications sub-route exists; link to job detail page
+      applicationUrl: urls.customer.jobs(job._id),
     });
     return sendEmail({ to: customer.email, ...template });
   },
@@ -210,7 +213,7 @@ const emailService = {
       budget: job.budget,
       artisanName: otherParty ? (otherParty.fullName || otherParty.name) : '',
       customerName: otherParty ? (otherParty.fullName || otherParty.name) : '',
-      jobUrl: `${process.env.FRONTEND_URL || 'https://trustedhand.org'}/jobs/${job._id}`,
+      jobUrl: role === 'customer' ? urls.customer.jobs(job._id) : urls.artisan.jobDetails(job._id),
     });
     return sendEmail({ to: user.email, ...template });
   },
@@ -222,17 +225,20 @@ const emailService = {
       reference: transaction.reference,
       date: new Date(transaction.createdAt).toLocaleDateString('en-NG'),
       status: transaction.status,
-      receiptUrl: `${process.env.FRONTEND_URL || 'https://trustedhand.org'}/payments/${transaction._id}`,
+      // FIXED: Link to wallet instead of non-existent /payments/:id
+      receiptUrl: user.role === 'artisan' ? urls.artisan.wallet : urls.customer.wallet,
     });
     return sendEmail({ to: user.email, ...template });
   },
 
   sendVerificationStatus: async (user, status, reason) => {
+    const role = user.role || 'customer';
     const template = emailTemplates.verificationStatus({
       name: user.fullName || user.name,
       status,
       reason,
-      profileUrl: `${process.env.FRONTEND_URL || 'https://trustedhand.org'}/profile/verification`,
+      // FIXED: Link to actual verification page
+      profileUrl: role === 'artisan' ? urls.artisan.verification : urls.customer.verification,
     });
     return sendEmail({ to: user.email, ...template });
   },

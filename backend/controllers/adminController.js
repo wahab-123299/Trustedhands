@@ -387,7 +387,7 @@ exports.getPendingVerifications = async (req, res, next) => {
         'idVerification.isVerified': false,
         $or: [
           { 'idVerification.submittedAt': { $exists: true } },
-          { 'idVerification.documentUrl': { $exists: true, $ne: null, $ne: '' } }
+          { 'idVerification.documentUrl': { $exists: true, $nin: [null, ''] } }
         ]
       })
         .sort({ 'idVerification.submittedAt': -1 })
@@ -398,7 +398,7 @@ exports.getPendingVerifications = async (req, res, next) => {
         'idVerification.isVerified': false,
         $or: [
           { 'idVerification.submittedAt': { $exists: true } },
-          { 'idVerification.documentUrl': { $exists: true, $ne: null, $ne: '' } }
+          { 'idVerification.documentUrl': { $exists: true, $nin: [null, ''] } }
         ]
       })
     ]);

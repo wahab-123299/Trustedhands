@@ -1,6 +1,5 @@
 const Job = require('../models/Job');
 const User = require('../models/User');
-const Notification = require('../models/Notification');
 const NotificationService = require('../services/notificationService');
 const Application = require('../models/Application');
 const { validationResult } = require('express-validator');

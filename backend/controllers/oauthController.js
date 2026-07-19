@@ -1,148 +1,243 @@
-const passport = require('passport');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { User } = require('../models');
-const { generateTokens } = require('./authController');
+const { AppError } = require('../utils/errorHandler');
+
+const isDev = process.env.NODE_ENV !== 'production';
+const log = (...args) => { if (isDev) console.log(...args); };
 
 // ==========================================
-// CUSTOM AUTHENTICATE WRAPPER
+// FIXED: Unified JWT env var names (matches authMiddleware.js + authController.js)
 // ==========================================
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRE || '15m';
+const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_REFRESH_EXPIRE || '7d';
 
-const authenticateOAuth = (strategy) => {
-  return (req, res, next) => {
-    passport.authenticate(strategy, { session: false }, (err, oauthProfile, info) => {
-      if (err) {
-        console.error(`[OAuth Error] ${strategy}:`, err.message);
-        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed&provider=${strategy}`);
-      }
-      if (!oauthProfile) {
-        console.error(`[OAuth Error] ${strategy}: No profile returned. Info:`, info);
-        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed&provider=${strategy}`);
-      }
+const generateTokens = (userId) => {
+  const accessToken = jwt.sign(
+    { userId: userId.toString() },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN, audience: 'trustedhand-client', issuer: 'trustedhand-api' }
+  );
 
-      // Store the OAuth profile on req for the next handler
-      req.oauthProfile = oauthProfile;
-      next();
-    })(req, res, next);
+  const refreshToken = jwt.sign(
+    { userId: userId.toString() },
+    JWT_REFRESH_SECRET,
+    { expiresIn: JWT_REFRESH_EXPIRES_IN, audience: 'trustedhand-client', issuer: 'trustedhand-api' }
+  );
+
+  return { accessToken, refreshToken };
+};
+
+const getCookieOptions = (maxAge) => {
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge,
+    path: '/',
   };
 };
 
 // ==========================================
-// GOOGLE
+// TEMPORARY STATE STORE (for OAuth flow)
+// Maps state param -> { userId, isNewUser, role }
+// Auto-expires entries after 5 minutes
+// In production, use Redis instead
+// ==========================================
+const oauthStateStore = new Map();
+
+const cleanupExpiredStates = () => {
+  const now = Date.now();
+  for (const [key, value] of oauthStateStore.entries()) {
+    if (now > value.expiresAt) {
+      oauthStateStore.delete(key);
+    }
+  }
+};
+
+// Clean up every 5 minutes
+setInterval(cleanupExpiredStates, 5 * 60 * 1000);
+
+const storeOAuthState = (userId, isNewUser, role) => {
+  const state = crypto.randomBytes(32).toString('hex');
+  oauthStateStore.set(state, {
+    userId: userId.toString(),
+    isNewUser,
+    role,
+    expiresAt: Date.now() + 5 * 60 * 1000 // 5 min expiry
+  });
+  return state;
+};
+
+const getOAuthState = (state) => {
+  const data = oauthStateStore.get(state);
+  if (data) {
+    oauthStateStore.delete(state); // one-time use
+  }
+  return data;
+};
+
+// ==========================================
+// GOOGLE OAUTH
 // ==========================================
 
-exports.googleAuth = passport.authenticate('google', {
-  scope: ['profile', 'email'],
-  prompt: 'select_account',
-  session: false
-});
+exports.googleAuth = (req, res, next) => {
+  const passport = require('passport');
+  passport.authenticate('google', {
+    scope: ['email', 'profile'],
+    accessType: 'offline',
+    prompt: 'consent'
+  })(req, res, next);
+};
 
 exports.googleCallback = [
-  authenticateOAuth('google'),
-  handleOAuthCallback
+  (req, res, next) => {
+    const passport = require('passport');
+    passport.authenticate('google', { session: false })(req, res, next);
+  },
+  async (req, res) => {
+    try {
+      // req.user is set by Passport strategy (User document from findOrCreateOAuthUser)
+      const user = req.user;
+
+      if (!user) {
+        console.error('[OAuth Google] No user from passport');
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+      }
+
+      log('[OAuth Google] User:', user.email, 'isNew:', user._isNewUser);
+
+      // Generate tokens
+      const { accessToken, refreshToken } = generateTokens(user._id);
+      await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'google-oauth');
+
+      // Set HttpOnly cookies (secure — not in URL!)
+      res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+      res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+      // Store state for frontend to pick up user info
+      const state = storeOAuthState(user._id, user._isNewUser || false, user.role);
+
+      // Determine redirect path
+      const dashboardRoute = user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard';
+      const redirectPath = (user._isNewUser && user.role === 'artisan') ? '/setup-profile' : dashboardRoute;
+
+      // FIXED: Redirect with ONLY state param (no tokens in URL!)
+      const redirectUrl = `${process.env.FRONTEND_URL}/auth-callback?state=${state}&redirect=${encodeURIComponent(redirectPath)}`;
+
+      log('[OAuth Google] Redirecting to:', redirectUrl);
+      res.redirect(redirectUrl);
+
+    } catch (error) {
+      console.error('[OAuth Google] Error:', error.message);
+      res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_error`);
+    }
+  }
 ];
 
 // ==========================================
-// FACEBOOK
+// FACEBOOK OAUTH
 // ==========================================
 
-exports.facebookAuth = passport.authenticate('facebook', {
-  scope: ['email'],
-  session: false
-});
+exports.facebookAuth = (req, res, next) => {
+  const passport = require('passport');
+  passport.authenticate('facebook', {
+    scope: ['email', 'public_profile']
+  })(req, res, next);
+};
 
 exports.facebookCallback = [
-  authenticateOAuth('facebook'),
-  handleOAuthCallback
+  (req, res, next) => {
+    const passport = require('passport');
+    passport.authenticate('facebook', { session: false })(req, res, next);
+  },
+  async (req, res) => {
+    try {
+      const user = req.user;
+
+      if (!user) {
+        console.error('[OAuth Facebook] No user from passport');
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+      }
+
+      log('[OAuth Facebook] User:', user.email, 'isNew:', user._isNewUser);
+
+      const { accessToken, refreshToken } = generateTokens(user._id);
+      await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'facebook-oauth');
+
+      res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+      res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+      const state = storeOAuthState(user._id, user._isNewUser || false, user.role);
+
+      const dashboardRoute = user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard';
+      const redirectPath = (user._isNewUser && user.role === 'artisan') ? '/setup-profile' : dashboardRoute;
+
+      // FIXED: Redirect with ONLY state param
+      const redirectUrl = `${process.env.FRONTEND_URL}/auth-callback?state=${state}&redirect=${encodeURIComponent(redirectPath)}`;
+
+      log('[OAuth Facebook] Redirecting to:', redirectUrl);
+      res.redirect(redirectUrl);
+
+    } catch (error) {
+      console.error('[OAuth Facebook] Error:', error.message);
+      res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_error`);
+    }
+  }
 ];
 
 // ==========================================
-// SHARED CALLBACK HANDLER
+// OAUTH STATE EXCHANGE (called by frontend /auth-callback)
+// Frontend exchanges state for user info via API call
 // ==========================================
 
-async function handleOAuthCallback(req, res) {
+exports.exchangeOAuthState = async (req, res, next) => {
   try {
-    const oauthProfile = req.oauthProfile;
+    const { state } = req.query;
 
-    if (!oauthProfile || !oauthProfile.email) {
-      console.error('[OAuth] No email in profile');
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_email`);
+    if (!state) {
+      throw new AppError('VALIDATION_ERROR', 'State parameter required');
     }
 
-    console.log('[OAuth] Provider:', oauthProfile.provider, 'Email:', oauthProfile.email);
+    const oauthData = getOAuthState(state);
 
-    // 1. Find or create user
-    let user = await User.findOne({ email: oauthProfile.email.toLowerCase() });
-    let isNewUser = false;
+    if (!oauthData) {
+      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid or expired state');
+    }
 
-    if (user) {
-      // Existing user — link OAuth provider if not already linked
-      if (!user.authProvider || user.authProvider === 'local') {
-        user.authProvider = oauthProfile.provider;
-        if (oauthProfile.provider === 'google') user.googleId = oauthProfile.googleId;
-        if (oauthProfile.provider === 'facebook') user.facebookId = oauthProfile.facebookId;
-        await user.save();
+    const user = await User.findById(oauthData.userId).select('-password');
+
+    if (!user) {
+      throw new AppError('USER_NOT_FOUND', 'User not found');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        user: user.toJSON(),
+        isNewUser: oauthData.isNewUser,
+        role: oauthData.role
       }
-    } else {
-      // Create new user from OAuth data
-      isNewUser = true;
-      const crypto = require('crypto');
-
-      user = await User.create({
-        fullName: oauthProfile.displayName || 'OAuth User',
-        email: oauthProfile.email.toLowerCase(),
-        profileImage: oauthProfile.photos?.[0]?.value || '/default-avatar.png',
-        authProvider: oauthProfile.provider,
-        googleId: oauthProfile.provider === 'google' ? oauthProfile.googleId : null,
-        facebookId: oauthProfile.provider === 'facebook' ? oauthProfile.facebookId : null,
-        role: 'customer',
-        isVerified: true,
-        isEmailVerified: true,
-        // Random password — user will never use it, but schema may require it
-        password: crypto.randomBytes(32).toString('hex')
-      });
-    }
-
-    // 2. Generate tokens
-    const { accessToken, refreshToken } = generateTokens(user._id);
-
-    // 3. Save refresh token to user (if addRefreshToken exists)
-    if (typeof user.addRefreshToken === 'function') {
-      await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'oauth');
-    } else {
-      // Fallback: push directly to array
-      if (!user.refreshTokens) user.refreshTokens = [];
-      user.refreshTokens.push({
-        token: refreshToken,
-        createdAt: new Date(),
-        deviceInfo: req.headers['user-agent']?.substring(0, 100) || 'oauth'
-      });
-      await user.save();
-    }
-
-    // 4. Set cookies
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      path: '/',
-    };
-
-    res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
-    res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
-
-    // 5. Determine redirect
-    const dashboardRoute = user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard';
-    const redirectPath = isNewUser ? '/setup-profile' : dashboardRoute;
-
-    // MUST match your frontend route: /auth-callback
-    const redirectUrl =
-    `${process.env.FRONTEND_URL}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&role=${user.role}`;
-
-    console.log('[OAuth] Redirecting to:', redirectUrl);
-    res.redirect(redirectUrl);
-
-  } catch (err) {
-    console.error('[OAuth Callback] Error:', err.message, err.stack);
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_error&message=${encodeURIComponent(err.message)}`);
+    });
+  } catch (error) {
+    next(error);
   }
-}
+};
+
+// ==========================================
+// BACKWARD COMPAT
+// ==========================================
+
+exports.oauthSuccess = (req, res) => {
+  res.json({ success: true, message: 'OAuth authentication successful' });
+};
+
+exports.oauthFailure = (req, res) => {
+  res.status(401).json({
+    success: false,
+    error: { code: 'OAUTH_FAILED', message: 'OAuth authentication failed' }
+  });
+};

@@ -5,9 +5,9 @@ const authMiddleware = require('./authMiddleware');
 let errorHandler;
 try {
   errorHandler = require('./errorHandler');
-} catch (e) {
+} catch {
   console.warn('[Middleware] errorHandler.js not found, using fallback');
-  errorHandler = (err, req, res, next) => {
+  errorHandler = (err, req, res) => {
     console.error('[Fallback ErrorHandler]', err);
     res.status(err.statusCode || 500).json({
       success: false,

@@ -3,29 +3,36 @@ const { Conversation, Message } = require('../models');
 
 /**
  * Initialize chat socket handlers
+ * FIXED: Uses Socket.IO namespace to avoid duplicate connection handlers
  * @param {Server} io - Socket.io server instance
  */
 const chatSocket = (io) => {
+  // Use a namespace for chat to avoid conflicts with base socket.js connection handler
+  const chatNamespace = io.of('/chat');
+
   // Middleware to authenticate socket connections
-  io.use(async (socket, next) => {
+  chatNamespace.use(async (socket, next) => {
     try {
       // Check for token in auth object (from frontend) or cookies
       const token = socket.handshake.auth?.token || socket.handshake.headers?.cookie?.match(/accessToken=([^;]+)/)?.[1];
-      
-      console.log('[Socket Auth] Token present:', !!token);
-      
+
       if (!token) {
         return next(new Error('AUTH_TOKEN_REQUIRED: Authentication token is required'));
       }
 
-      // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
+      // FIXED: Use same JWT verification as HTTP middleware (with issuer/audience)
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        issuer: 'trustedhand-api',
+        audience: 'trustedhand-client',
+      });
+
       // Attach user data to socket
-      socket.userId = decoded.userId;
+      socket.userId = decoded.userId || decoded.id;
       socket.token = token;
-      
-      console.log('[Socket Auth] User authenticated:', decoded.userId);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Socket Auth] User authenticated:', socket.userId);
+      }
       next();
     } catch (error) {
       console.error('[Socket Auth] Failed:', error.message);
@@ -33,15 +40,17 @@ const chatSocket = (io) => {
     }
   });
 
-  io.on('connection', (socket) => {
-    console.log(`[Socket] User connected: ${socket.userId}, Socket ID: ${socket.id}`);
+  chatNamespace.on('connection', (socket) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Socket] User connected: ${socket.userId}, Socket ID: ${socket.id}`);
+    }
 
     // Join personal room for direct messages
     socket.on('join_personal', ({ userId }) => {
       if (userId === socket.userId) {
         socket.join(`user_${userId}`);
         console.log(`[Socket] User ${userId} joined personal room`);
-        
+
         // Notify friends that user is online
         socket.broadcast.emit('user_online', { userId });
       }
@@ -62,9 +71,10 @@ const chatSocket = (io) => {
         }
 
         socket.join(`conversation_${conversationId}`);
-        joinedConversations.add(conversationId);
-        
-        console.log(`[Socket] User ${socket.userId} joined conversation ${conversationId}`);
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[Socket] User ${socket.userId} joined conversation ${conversationId}`);
+        }
 
         // Load recent messages
         const messages = await Message.find({ conversationId })
@@ -92,7 +102,6 @@ const chatSocket = (io) => {
     // Leave conversation
     socket.on('leave_conversation', ({ conversationId }) => {
       socket.leave(`conversation_${conversationId}`);
-      joinedConversations.delete(conversationId);
       console.log(`[Socket] User ${socket.userId} left conversation ${conversationId}`);
     });
 
@@ -139,15 +148,14 @@ const chatSocket = (io) => {
           clientMessageId
         };
 
-        io.to(`conversation_${conversationId}`).emit('receive_message', messageData);
-        
+        chatNamespace.to(`conversation_${conversationId}`).emit('receive_message', messageData);
+
         // Confirm to sender
         socket.emit('message_sent', messageData);
 
         // Send notification to receiver if offline
         const receiverSocketId = getUserSocketId(receiverId);
         if (!receiverSocketId) {
-          // User is offline, send push notification or email
           io.to(`user_${receiverId}`).emit('notification', {
             type: 'new_message',
             message: `New message from ${message.senderId.fullName}`,
@@ -215,32 +223,27 @@ const chatSocket = (io) => {
 
     // Get online status
     socket.on('get_online_status', ({ userId }, callback) => {
-      const isOnline = io.sockets.adapter.rooms.has(`user_${userId}`);
+      const isOnline = chatNamespace.adapter.rooms.has(`user_${userId}`);
       callback({ isOnline });
     });
 
     // Handle disconnection
     socket.on('disconnect', (reason) => {
-      console.log(`[Socket] User disconnected: ${socket.userId}, Reason: ${reason}`);
-      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Socket] User disconnected: ${socket.userId}, Reason: ${reason}`);
+      }
+
       // Notify that user is offline
       socket.broadcast.emit('user_offline', {
         userId: socket.userId,
         lastSeen: new Date()
       });
-
-      // Leave all conversations
-      joinedConversations.forEach(conversationId => {
-        socket.leave(`conversation_${conversationId}`);
-      });
     });
   });
 
   // Helper functions
-  const joinedConversations = new Set();
-  
   function getUserSocketId(userId) {
-    const room = io.sockets.adapter.rooms.get(`user_${userId}`);
+    const room = chatNamespace.adapter.rooms.get(`user_${userId}`);
     return room ? Array.from(room)[0] : null;
   }
 
@@ -250,8 +253,8 @@ const chatSocket = (io) => {
       receiverId: userId,
       isRead: false
     });
-    
-    io.to(`user_${userId}`).emit('unread_count', {
+
+    chatNamespace.to(`user_${userId}`).emit('unread_count', {
       count,
       conversations: { [conversationId]: count }
     });

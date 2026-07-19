@@ -24,12 +24,13 @@ require('./cron/autoRelease');
 // SESSION
 // ============================================
 app.use(session({
-  secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || 'default-secret-change-in-production',
+  secret: process.env.COOKIE_SECRET || 'default-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // FIXED: sameSite for cross-origin
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
@@ -104,7 +105,7 @@ const generalLimiter = rateLimit({
     success: false,
     error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' }
   },
-  skip: (req) => req.path === '/health' || req.path === '/api'
+  skip: (req) => req.path === '/health' || req.path === '/api' || req.path === '/api/health'
 });
 app.use('/api/', generalLimiter);
 
@@ -158,18 +159,20 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // ============================================
-// DEBUG LOGGING FOR OAUTH
+// DEBUG LOGGING FOR OAUTH (production-safe)
 // ============================================
-app.use((req, res, next) => {
-  if (req.path.includes('auth') || req.path.includes('facebook') || req.path.includes('google')) {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
-      query: req.query,
-      origin: req.headers.origin,
-      referer: req.headers.referer
-    });
-  }
-  next();
-});
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    if (req.path.includes('auth') || req.path.includes('facebook') || req.path.includes('google')) {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
+        query: req.query,
+        origin: req.headers.origin,
+        referer: req.headers.referer
+      });
+    }
+    next();
+  });
+}
 
 // ============================================
 // HEALTH CHECK ENDPOINT — keeps Render awake
@@ -230,7 +233,7 @@ app.get('/privacy', (req, res) => {
 });
 
 // ============================================
-// ROUTES
+// ROUTES — FIXED: Added pressRoutes and healthRoutes
 // ============================================
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
@@ -244,11 +247,13 @@ app.use('/api/availability', require('./routes/availabilityRoutes'));
 app.use('/api/favorites', require('./routes/favoriteRoutes'));
 app.use('/api/milestones', require('./routes/milestoneRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/press', require('./routes/pressRoutes')); // FIXED: Mounted press routes
+app.use('/api/health', require('./routes/healthRoutes')); // FIXED: Mounted health routes at /api/health
 
 // ============================================
 // ERROR HANDLING
 // ============================================
-app.use((req, res, next) => {
+app.use((req, res ) => {
   res.status(404).json({
     success: false,
     error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.originalUrl} not found` }
