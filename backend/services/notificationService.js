@@ -1,5 +1,5 @@
 const Notification = require('../models/Notification');
-const { sendEmail, sendWelcomeEmail, sendJobNotification, sendPaymentReceipt } = require('../utils/email');
+const { sendEmail, sendWelcomeEmail, sendJobNotification, sendPaymentReceipt } = require('../utils/emailService');
 const urls = require('../utils/frontendUrls'); // FIXED: Centralized URL builder
 const { getIO } = require('../config/socket');
 
