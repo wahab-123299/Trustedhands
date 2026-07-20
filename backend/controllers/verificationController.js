@@ -459,3 +459,95 @@ exports.requireTierForJob = async (req, res, next) => {
     next(error);
   }
 };
+
+// ==========================================
+// CUSTOMER IDENTITY VERIFICATION
+// ==========================================
+
+exports.verifyCustomerIdentity = async (req, res, next) => {
+  try {
+    const { nin, bvn } = req.body;
+
+    if (!nin && !bvn) {
+      return res.status(400).json({
+        success: false,
+        message: 'Provide either NIN or BVN'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (nin) {
+      user.nin = nin;
+      user.ninVerified = true;
+    }
+
+    if (bvn) {
+      user.bvn = bvn;
+      user.bvnVerified = true;
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Customer identity verified'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// ARTISAN IDENTITY VERIFICATION
+// ==========================================
+
+exports.verifyArtisanIdentity = async (req, res, next) => {
+  try {
+    const profile = await ArtisanProfile.findOne({
+      userId: req.user._id
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Artisan profile not found'
+      });
+    }
+
+    profile.verificationStatus = {
+      ...profile.verificationStatus,
+      identity: {
+        verified: true,
+        verifiedAt: new Date()
+      }
+    };
+
+    await profile.save();
+
+    res.json({
+      success: true,
+      message: 'Artisan identity verified'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+// ==========================================
+// GET TIER STATUS
+// ==========================================
+
+exports.getTierStatus = async (req, res, next) => {
+  try {
+    const result = await exports.checkUserTier(req.user._id);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    next(error);
+  }
+};

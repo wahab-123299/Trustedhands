@@ -50,8 +50,8 @@ interface ConversationWithDetails extends Conversation {
 const Messages: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, isAuthenticated, isInitialized } = useAuth();
   const { unreadCount, conversationUnread } = useSocket();
+  const { user } = useAuth();
   
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);

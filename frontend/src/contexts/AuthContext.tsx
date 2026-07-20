@@ -13,8 +13,11 @@ import { io, Socket } from "socket.io-client";
 import { authApi, userApi, artisanApi, RegisterData } from "@/services/api";
 import { User, ArtisanProfile } from "@/types";
 
+const isDev = import.meta.env.Dev;
+
 const debugLogs: string[] = [];
 const addLog = (msg: string) => {
+  if (!isDev) return;
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
   debugLogs.push(line);
   console.log(line);
@@ -23,7 +26,9 @@ const addLog = (msg: string) => {
 
 if (typeof window !== 'undefined') {
   (window as any).getAuthLogs = () => {
-    console.log('=== AUTH CONTEXT LOGS ===\n' + debugLogs.join('\n'));
+    if (isDev) {
+      console.log('=== AUTH CONTEXT LOGS ===\n' + debugLogs.join('\n'));
+    }
     return debugLogs;
   };
   (window as any).clearAuthLogs = () => {
@@ -232,7 +237,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ==========================================
-  // FIXED: initAuth — Handles flat backend response + cached user
+  // FIXED: initAuth — Handles flat backend response
   // ==========================================
   useEffect(() => {
     if (hasInitialized.current) {
@@ -267,18 +272,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
-        // FIXED: Try to use cached user for instant UI while fetching fresh data
-        let cachedUser: User | null = null;
-        try {
-          const cached = localStorage.getItem('user');
-          if (cached) {
-            cachedUser = JSON.parse(cached);
-            addLog(`[Init] Cached user found: ${cachedUser?.email}`);
-          }
-        } catch {
-          addLog('[Init] Failed to parse cached user');
-        }
-
         addLog('[Init] Calling userApi.getMe()...');
         const response = await userApi.getMe();
 
@@ -287,7 +280,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // FIXED: Handle flat backend response { user, token, ... }
         const res = response.data as any;
         const user = res.user || res.data?.user;
-        const hasProfile = res.hasProfile !== undefined ? res.hasProfile : res.data?.hasProfile;
+        const hasProfile = res.hasProfile || res.data?.hasProfile;
         let artisanProfile = res.artisanProfile || res.data?.artisanProfile;
 
         if (!user) {
@@ -435,9 +428,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.login({ email, password });
         const res = response.data;
 
-        // FIXED: Backend sends flat structure: { success, message, accessToken, refreshToken, user }
+        // FIXED: Backend sends flat structure: { success, message, token, refreshToken, user }
         const user = res.user;
-        const accessToken = res.accessToken;
+        const accessToken = res.token || res.accessToken;
         const dashboardRoute = res.dashboardRoute || '/';
 
         if (!accessToken) {
@@ -452,7 +445,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         let needsProfileSetup = false;
 
         if (user.role === 'artisan') {
-          addLog('[Login] User is artisan, fetching /artisans/me...');
+          addLog('[Login] User is artisan but no profile in login response, fetching /artisans/me...');
           try {
             const artisanRes = await artisanApi.getMyProfile();
             finalArtisanProfile = extractArtisanFromResponse(artisanRes);
@@ -505,12 +498,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(message);
       }
     },
-    // FIXED: Removed unused getToken from dependency array
-    [connectSocket, navigate, location.state, storeToken, extractErrorMessage, extractArtisanFromResponse]
+    [connectSocket, navigate, location.state, storeToken, getToken, extractErrorMessage, extractArtisanFromResponse]
   );
 
   // ==========================================
-  // FIXED: register — Handles flat backend response (defensive token read)
+  // FIXED: register — Handles flat backend response
   // ==========================================
   const register = useCallback(
     async (data: RegisterData, rememberMe: boolean = true) => {
@@ -521,9 +513,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const response = await authApi.register(data);
         const res = response.data;
 
-        // FIXED: Defensive token read — handles both "accessToken" and "token"
+        // FIXED: Backend sends flat structure: { success, message, accessToken, refreshToken, user }
         const user = res.user;
-        const accessToken = res.accessToken || res.token;
+        const accessToken = res.accessToken;
         const dashboardRoute = res.dashboardRoute || '/';
 
         if (!accessToken) {
@@ -587,7 +579,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const updateUserFromOAuth = useCallback((user: User, token: string) => {
     addLog(`[OAuth] Updating user from OAuth: ${user.email}`);
 
-    localStorage.setItem('token', token);
     localStorage.setItem('rememberMe', 'true');
     // FIXED: Store user in localStorage
     localStorage.setItem('user', JSON.stringify(user));
@@ -613,10 +604,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const response = await userApi.getMe();
       const res = response.data;
 
-      // FIXED: Handle both flat and nested response shapes
+      // FIXED: Handle flat response
       const user = res.user || res.data?.user;
       const artisanProfile = res.artisanProfile || res.data?.artisanProfile;
-      const hasProfile = res.hasProfile !== undefined ? res.hasProfile : res.data?.hasProfile;
+      const hasProfile = res.hasProfile || res.data?.hasProfile;
 
       let finalArtisanProfile: ArtisanProfile | null = artisanProfile || null;
 

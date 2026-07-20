@@ -1,8 +1,14 @@
+// ==========================================
+// FIXED #31: Added 'admin' to User.role type
+// FIXED: ArtisanProfile.profession was wrongly typed as JSX.Element
+// ==========================================
+
 // User Types
 export interface User {
   _id: string;
   email: string;
-  role: 'customer' | 'artisan';
+  // FIXED: Added 'admin' to role union
+  role: 'customer' | 'artisan' | 'admin';
   fullName: string;
   phone: string;
   isPhoneVerified: boolean;
@@ -16,6 +22,17 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   averageRating?: number;
+  // OAuth-related fields
+  authProvider?: 'local' | 'google' | 'facebook';
+  oauthPendingRoleSelection?: boolean;
+  verificationTier?: 'bronze' | 'silver' | 'gold';
+  verification?: {
+    status: string;
+    reference?: string;
+    provider?: string;
+    verifiedAt?: string;
+    method?: string;
+  };
 }
 
 export interface Location {
@@ -30,6 +47,8 @@ export interface Location {
 
 // Artisan Profile Types
 export interface ArtisanProfile {
+  // FIXED: profession was incorrectly typed as JSX.Element — changed to string
+  profession: string;
   _id: string;
   userId: string; // Can be populated with User details
   skills: string[];
@@ -55,8 +74,8 @@ export interface ArtisanProfile {
   averageRating: number;
   totalReviews: number;
   completedJobs: number;
-  rating?: number;        // Add this
-  reviewCount?: number;   // Add thi
+  rating?: number;
+  reviewCount?: number;
   responseTime?: number;
   walletId?: string;
   bankDetails?: BankDetails;
@@ -187,7 +206,7 @@ export interface Message {
   _id: string;
   conversationId: string;
   senderId: string | User;
-  receiverId: string | { _id: string };  // Allow both string and object // other fields...
+  receiverId: string | { _id: string };
   content: string;
   attachments: Attachment[];
   isRead: boolean;
@@ -197,11 +216,10 @@ export interface Message {
   replyTo?: string;
   deliveredAt?: string;
   createdAt: string;
-  isEdited?: boolean;  // Add this
+  isEdited?: boolean;
   updatedAt: string;
   deliveryStatus?: 'sent' | 'delivered' | 'read' | 'failed';
 }
-
 
 export interface Attachment {
   type: 'image' | 'file' | 'voice';
@@ -400,3 +418,4 @@ export const NIGERIAN_BANKS = [
   { name: 'Wema Bank', code: '035' },
   { name: 'Zenith Bank', code: '057' },
 ];
+

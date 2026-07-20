@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
@@ -8,7 +8,11 @@ import {
   Menu, 
   LogOut,
   Home,
-  Briefcase
+  Briefcase,
+  MessageSquare,
+  UserCircle,
+  FileText,
+  Newspaper
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -18,11 +22,16 @@ const AdminDashboard = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // FIXED: All routes now registered in App.jsx
   const menuItems = [
-    { path: '/admin', label: 'Dashboard', icon: BarChart3 },
+    { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3 },
     { path: '/admin/users', label: 'Users', icon: Users },
     { path: '/admin/verifications', label: 'Verifications', icon: ShieldCheck },
     { path: '/admin/artisans', label: 'Artisans', icon: Briefcase },
+    { path: '/admin/stats', label: 'Statistics', icon: BarChart3 },
+    { path: '/admin/messages', label: 'Messages', icon: MessageSquare },
+    { path: '/admin/profile', label: 'Profile', icon: UserCircle },
+    { path: '/admin/press/create', label: 'Create Press', icon: Newspaper },
   ];
 
   const handleLogout = async () => {
@@ -54,7 +63,9 @@ const AdminDashboard = () => {
         <nav className="p-4 space-y-1">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+            // FIXED: Proper active state matching for nested routes
+            const isActive = location.pathname === item.path || 
+                           (item.path !== '/admin/dashboard' && location.pathname.startsWith(item.path));
             return (
               <button
                 key={item.path}
@@ -120,7 +131,7 @@ const AdminDashboard = () => {
           </div>
         </header>
 
-        {/* Page Content */}
+        {/* Page Content — FIXED: Outlet renders child routes here */}
         <main className="flex-1 p-4 lg:p-8 overflow-auto">
           <Outlet />
         </main>

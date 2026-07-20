@@ -87,7 +87,7 @@ const BookArtisan = () => {
         notes: bookingData.notes,
       };
 
-      const response = await jobApi.create(jobData);
+      await jobApi.create(jobData);
       
       toast.success('Booking request sent! The artisan will confirm shortly.');
       navigate('/customer/bookings');

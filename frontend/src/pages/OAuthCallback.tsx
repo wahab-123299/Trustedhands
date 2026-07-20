@@ -1,98 +1,112 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { handleOAuthCallback } from '@/services/api';
+import { api } from '@/services/api';
+import { toast } from 'sonner';
+import { Loader2, AlertCircle } from 'lucide-react';
 
-const OAuthCallbackPage = () => {
+export default function OAuthCallbackPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { updateUserFromOAuth } = useAuth();
+  const auth = useAuth();
 
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [message, setMessage] = useState('Processing your login...');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const processOAuth = async () => {
+    const handleOAuthCallback = async () => {
       try {
-        const token = searchParams.get('token');
-        const refreshToken = searchParams.get('refreshToken'); // ✅ Added
-        const redirect = searchParams.get('redirect');
-        const error = searchParams.get('error');
+        const state = searchParams.get('state');
+        const redirect = searchParams.get('redirect') || '/customer/dashboard';
 
-        if (error) {
-          setStatus('error');
-          setMessage(`OAuth login failed: ${error}`);
-          setTimeout(() => navigate('/login', { replace: true }), 3000);
+        // ==========================================
+        // OLD BROKEN FLOW (tokens in URL):
+        // const token = searchParams.get('token');
+        // const refreshToken = searchParams.get('refreshToken');
+        // if (token) { storeTokens(token, refreshToken); ... }
+        //
+        // NEW SECURE FLOW (state-based):
+        // Tokens are in HttpOnly cookies (set by backend)
+        // We exchange state for user info
+        // ==========================================
+
+        if (!state) {
+          throw new Error('Missing state parameter. OAuth flow may have been interrupted.');
+        }
+
+        // Exchange state for user info
+        // Tokens are already in HttpOnly cookies from the backend redirect
+        const response = await api.get(`/auth/oauth-exchange?state=${state}`);
+        const { user, isNewUser } = response.data.data;
+
+        if (!user) {
+          throw new Error('Failed to retrieve user information');
+        }
+
+        // Store user in context (if context exposes setters)
+        // Try common auth context methods, fallback to noop with warning
+        try {
+          if (auth && typeof (auth as any).setUser === 'function') {
+            (auth as any).setUser(user);
+          } else if (auth && typeof (auth as any).updateUser === 'function') {
+            (auth as any).updateUser(user);
+          } else if (auth && typeof (auth as any).login === 'function') {
+            (auth as any).login(user);
+          } else {
+            console.warn('No auth setter found to store OAuth user');
+          }
+        } catch (e) {
+          console.warn('Failed to store OAuth user in auth context', e);
+        }
+
+        toast.success( `Welcome ${user.fullName}!` );
+
+        //Handle role selection for new OAuth users
+        if (isNewUser && user.oauthPendingRoleSelection) {
+          // Navigate to role selection page
+          navigate('/select-role', { replace: true });
           return;
         }
 
-        if (!token) {
-          setStatus('error');
-          setMessage('No authentication token received. Please try again.');
-          setTimeout(() => navigate('/login', { replace: true }), 3000);
-          return;
-        }
-
-        // ✅ Pass refreshToken if available
-        const { user } = await handleOAuthCallback(token, refreshToken || undefined, true);
-
-        localStorage.setItem('token', token);
-
-        if (refreshToken) {
-          localStorage.setItem('refreshToken', refreshToken);
-        }
-
-        // Update auth context
-        updateUserFromOAuth(user, token);
-
-        setStatus('success');
-        setMessage(`Welcome, ${user.fullName}! Redirecting...`);
-
-        // Redirect to the intended destination
-        const destination = redirect || (user.role === 'artisan' ? '/artisan/dashboard' : '/customer/dashboard');
-        setTimeout(() => navigate(destination, { replace: true }), 1000);
+        // Normal redirect
+        navigate(redirect, { replace: true });
 
       } catch (err: any) {
-        console.error('[OAuthCallback] Error:', err);
-        setStatus('error');
-        setMessage(err.message || 'Failed to complete login. Please try again.');
-        setTimeout(() => navigate('/login', { replace: true }), 3000);
+        console.error('OAuth Callback error:', err);
+        setError(err.message || 'Authentication failed');
+        toast.error('Authentication failed. Please try again.');
+        setTimeout(() => navigate('/login', { replace: true }), 3000); // Redirect to login after 5 seconds
       }
     };
 
-    processOAuth();
-  }, [searchParams, navigate, updateUserFromOAuth]);
+    handleOAuthCallback();
+  }, [searchParams, navigate, auth]);
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full mx-4 p-6 bg-white rounded-xl shadow-sm border text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Authentication Failed</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => navigate('/login', { replace: true })}
+            className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700"
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center max-w-md mx-auto p-6">
-        {status === 'loading' && (
-          <>
-            <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Completing Login</h2>
-            <p className="text-gray-600">{message}</p>
-          </>
-        )}
-
-        {status === 'success' && (
-          <>
-            <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Login Successful</h2>
-            <p className="text-gray-600">{message}</p>
-          </>
-        )}
-        {status === 'error' && (
-          <>
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Login Failed</h2>
-            <p className="text-gray-600">{message}</p>
-            <p className="text-sm text-gray-500 mt-2">Redirecting to login page...</p>
-          </>
-        )}
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <Loader2 className="w-12 h-12 text-emerald-600 mx-auto mb-4 animate-spin" />
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Completing Sign In...</h2>
+        <p className="text-gray-600">Please wait while we verify your account</p>
       </div>
     </div>
   );
-};
+}
 
-export default OAuthCallbackPage;

@@ -24,7 +24,8 @@ const PaymentCallbackPage = () => {
         return;
       }
 
-      await paymentApi.verifyPayment(ref);
+      // use the API's verify method (verifyPayment does not exist on paymentApi)
+      await paymentApi.verify(ref);
       setStatus('success');
       toast.success('Payment successful!');
     } catch (error) {

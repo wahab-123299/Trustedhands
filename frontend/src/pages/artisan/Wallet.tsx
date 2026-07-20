@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { walletApi, paymentApi } from "@/services/api";
-import { useAuth } from "@/contexts/AuthContext";
 import BankDetailsForm from "@/components/bank/BankDetailsForm";
 
 // ==============================
@@ -32,7 +31,6 @@ interface WalletData {
 // ==============================
 
 const Wallet = () => {
-  const { user } = useAuth();
 
   const [wallet, setWallet] = useState<WalletData>({
     balance: 0,

@@ -6,7 +6,7 @@ import {
   Mail, 
   Lock, 
   User, 
-  Phone, 
+  Phone,
   MapPin, 
   ArrowRight, 
   ArrowLeft, 

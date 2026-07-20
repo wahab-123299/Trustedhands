@@ -1,7 +1,6 @@
-// frontend/src/pages/PressPage.tsx
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import { api } from '@/services/api'; // FIXED: Use centralized api instead of raw axios
 
 interface PressArticle {
   _id: string;
@@ -32,11 +31,14 @@ const PressPage: React.FC = () => {
 
   const fetchArticles = async () => {
     try {
+      setLoading(true);
       const params = category !== 'all' ? { category } : {};
-      const res = await axios.get('/api/press', { params });
-      setArticles(res.data.data.articles);
+      // FIXED: Use api instance (absolute URL, with credentials)
+      const res = await api.get('/press', { params });
+      setArticles(res.data.data?.articles || res.data.data || []);
     } catch (err) {
       console.error('Failed to load articles:', err);
+      setArticles([]);
     } finally {
       setLoading(false);
     }
@@ -44,10 +46,12 @@ const PressPage: React.FC = () => {
 
   const fetchFeatured = async () => {
     try {
-      const res = await axios.get('/api/press/featured');
-      setFeatured(res.data.data.articles);
+      // FIXED: Use api instance
+      const res = await api.get('/press/featured');
+      setFeatured(res.data.data?.articles || res.data.data || []);
     } catch (err) {
       console.error('Failed to load featured:', err);
+      setFeatured([]);
     }
   };
 

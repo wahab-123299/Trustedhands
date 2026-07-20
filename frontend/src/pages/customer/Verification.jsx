@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTier, TIER_CONFIG } from '@/hooks/useTier';
 import { toast } from 'sonner';
 import { Camera, Upload, CheckCircle, AlertCircle, Shield, ChevronRight, ChevronLeft, Loader2, X } from 'lucide-react';
+import { api } from '@/services/api';  // FIXED: Use centralized api instead of raw fetch
 
 const STEPS = ['intro', 'identity', 'documents', 'review', 'processing', 'success'];
 
@@ -14,11 +15,11 @@ export default function CustomerVerificationPage() {
   const [searchParams] = useSearchParams();
   const returnUrl = searchParams.get('return') || '/customer/dashboard';
   const requiredAmount = parseInt(searchParams.get('amount')) || 0;
-  
+
   const [currentStep, setCurrentStep] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [verificationMethod, setVerificationMethod] = useState('nin-bvn');
-  
+
   const [formData, setFormData] = useState({
     nin: '',
     bvn: '',
@@ -74,7 +75,7 @@ export default function CustomerVerificationPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
       videoRef.current.srcObject = stream;
-      
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       const chunks = [];
@@ -102,45 +103,46 @@ export default function CustomerVerificationPage() {
   const validateNIN = (nin) => /^\d{11}$/.test(nin);
   const validateBVN = (bvn) => /^\d{11}$/.test(bvn);
 
+  // ==========================================
+  // FIXED: Use centralized api instead of raw fetch('/api/verify/identity')
+  // Backend route is /api/verification/identity
+  // ==========================================
   const handleVerifyMeCheck = async () => {
     setIsProcessing(true);
     setCurrentStep(4);
 
     try {
-      const response = await fetch('/api/verify/identity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nin: formData.nin,
-          bvn: formData.bvn,
-          idType: formData.idType,
-          userId: user.id,
-          tier: targetTier,
-        }),
+      const response = await api.post('/verification/identity', {
+        nin: formData.nin,
+        bvn: formData.bvn,
+        idType: formData.idType,
+        userId: user._id || user.id,  // FIXED: Use _id (matches User type), fallback to id
+        tier: targetTier,
       });
 
-      const result = await response.json();
+      const result = response.data;
 
-      if (result.verified) {
+      if (result.success && result.data?.verified) {
         setVerificationResult({
           success: true,
-          reference: result.reference,
+          reference: result.data.reference,
           timestamp: new Date().toISOString(),
         });
-        
+
         await updateUser({ 
           verificationTier: targetTier,
           verifiedAt: new Date().toISOString(),
-          verificationReference: result.reference,
+          verificationReference: result.data.reference,
         });
-        
+
         setCurrentStep(5);
         toast.success(`Upgraded to ${targetConfig.name}!`);
       } else {
-        throw new Error(result.message || 'Verification failed');
+        throw new Error(result.message || result.data?.message || 'Verification failed');
       }
     } catch (error) {
-      toast.error(error.message || 'Verification failed. Please try again.');
+      const message = error.response?.data?.error?.message || error.message || 'Verification failed. Please try again.';
+      toast.error(message);
       setCurrentStep(3);
     } finally {
       setIsProcessing(false);
@@ -229,7 +231,7 @@ export default function CustomerVerificationPage() {
               >
                 Start Verification Now
               </button>
-              
+
               <button
                 onClick={handleSkip}
                 className="w-full py-3 border rounded-lg hover:bg-gray-50 text-gray-600"
@@ -264,7 +266,7 @@ export default function CustomerVerificationPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="flex gap-4 mb-6">
               <button
                 onClick={() => setVerificationMethod('nin-bvn')}
@@ -276,7 +278,7 @@ export default function CustomerVerificationPage() {
                 <span className="font-medium block">NIN + BVN</span>
                 <span className="text-sm text-gray-500">Instant (2 min)</span>
               </button>
-              
+
               <button
                 onClick={() => setVerificationMethod('documents')}
                 className={`flex-1 p-4 rounded-lg border-2 text-left ${
@@ -391,7 +393,7 @@ export default function CustomerVerificationPage() {
                 muted
                 className="w-full h-full object-cover"
               />
-              
+
               {!formData.isRecording && !formData.videoSelfie && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <button
@@ -439,7 +441,7 @@ export default function CustomerVerificationPage() {
                 <span className="text-gray-600">Target Tier</span>
                 <span className="font-semibold uppercase">{targetConfig.name}</span>
               </div>
-              
+
               <div className="flex justify-between py-2 border-b">
                 <span className="text-gray-600">Verification Method</span>
                 <span className="font-semibold">
@@ -497,7 +499,7 @@ export default function CustomerVerificationPage() {
             <h2 className="text-2xl font-bold mb-2">Verification Complete!</h2>
             <p className="text-gray-600 mb-2">You're now {targetConfig.name} tier</p>
             <p className="text-sm text-gray-500 mb-6">Reference: {verificationResult?.reference}</p>
-            
+
             <div className="bg-emerald-50 p-4 rounded-lg max-w-sm mx-auto mb-6 text-left">
               <h4 className="font-medium mb-2">Your new benefits:</h4>
               <ul className="text-sm space-y-1">

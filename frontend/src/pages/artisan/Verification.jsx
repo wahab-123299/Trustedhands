@@ -8,6 +8,7 @@ import {
   ChevronRight, ChevronLeft, Loader2, X, Building2, 
   MapPin, Briefcase 
 } from 'lucide-react';
+import { api } from '@/services/api';  // FIXED: Use centralized api instead of raw fetch
 
 const ARTISAN_STEPS = ['intro', 'personal-id', 'business-verify', 'skills', 'review', 'processing', 'success'];
 
@@ -18,11 +19,11 @@ export default function ArtisanVerificationPage() {
   const [searchParams] = useSearchParams();
   const returnUrl = searchParams.get('return') || '/artisan/dashboard';
   const jobId = searchParams.get('jobId'); // If they tried to apply to a specific job
-  
+
   const [currentStep, setCurrentStep] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [businessType, setBusinessType] = useState('individual');
-  
+
   const [formData, setFormData] = useState({
     nin: '',
     bvn: '',
@@ -32,7 +33,7 @@ export default function ArtisanVerificationPage() {
     videoSelfie: null,
     videoBlob: null,
     isRecording: false,
-    
+
     hasCAC: false,
     cacNumber: '',
     cacDocument: null,
@@ -40,7 +41,7 @@ export default function ArtisanVerificationPage() {
     businessName: '',
     businessAddress: '',
     shopGPS: null,
-    
+
     primarySkill: '',
     yearsExperience: '',
     portfolioPhotos: [],
@@ -88,7 +89,7 @@ export default function ArtisanVerificationPage() {
   const handleMultipleFiles = (e) => {
     const files = Array.from(e.target.files);
     const newPhotos = [];
-    
+
     files.forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -109,7 +110,7 @@ export default function ArtisanVerificationPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
       videoRef.current.srcObject = stream;
-      
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       const chunks = [];
@@ -164,13 +165,17 @@ export default function ArtisanVerificationPage() {
   const validateBVN = (bvn) => /^\d{11}$/.test(bvn);
   const validateCAC = (cac) => /^[A-Z0-9]{5,}$/i.test(cac);
 
+  // ==========================================
+  // FIXED: Use centralized api instead of raw fetch('/api/artisan/verify')
+  // Backend route is /api/verification/artisan
+  // ==========================================
   const handleVerificationSubmit = async () => {
     setIsProcessing(true);
     setCurrentStep(5);
 
     try {
       const payload = {
-        userId: user.id,
+        userId: user._id || user.id,  // FIXED: Use _id (matches User type), fallback to id
         tier: targetTier,
         personal: {
           nin: formData.nin,
@@ -194,36 +199,32 @@ export default function ArtisanVerificationPage() {
         },
       };
 
-      const response = await fetch('/api/artisan/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const response = await api.post('/verification/artisan', payload);
+      const result = response.data;
 
-      const result = await response.json();
-
-      if (result.verified) {
+      if (result.success && result.data?.verified) {
         setVerificationResult({
           success: true,
-          reference: result.reference,
+          reference: result.data.reference,
           tier: targetTier,
         });
-        
+
         await updateUser({ 
           verificationTier: targetTier,
           verifiedAt: new Date().toISOString(),
-          verificationReference: result.reference,
+          verificationReference: result.data.reference,
           businessType,
           ...(businessType === 'registered' && { cacNumber: formData.cacNumber }),
         });
-        
+
         setCurrentStep(6);
         toast.success(`Welcome to ${targetConfig.name} tier!`);
       } else {
-        throw new Error(result.message || 'Verification failed');
+        throw new Error(result.message || result.data?.message || 'Verification failed');
       }
     } catch (error) {
-      toast.error(error.message || 'Verification failed. Please try again.');
+      const message = error.response?.data?.error?.message || error.message || 'Verification failed. Please try again.';
+      toast.error(message);
       setCurrentStep(4);
     } finally {
       setIsProcessing(false);
@@ -314,7 +315,7 @@ export default function ArtisanVerificationPage() {
               >
                 Start Verification
               </button>
-              
+
               <button
                 onClick={handleSkip}
                 className="w-full py-3 border rounded-lg hover:bg-gray-50 text-gray-600"
@@ -348,7 +349,7 @@ export default function ArtisanVerificationPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">National Identity Number (NIN) *</label>
@@ -454,7 +455,7 @@ export default function ArtisanVerificationPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="flex gap-4 mb-6">
               <button
                 onClick={() => setBusinessType('individual')}
@@ -466,7 +467,7 @@ export default function ArtisanVerificationPage() {
                 <span className="font-medium block">Individual Artisan</span>
                 <span className="text-sm text-gray-500">No CAC registration</span>
               </button>
-              
+
               <button
                 onClick={() => setBusinessType('registered')}
                 className={`flex-1 p-4 rounded-lg border-2 text-left ${
@@ -533,7 +534,7 @@ export default function ArtisanVerificationPage() {
                   <p className="text-sm text-gray-600 mb-3">
                     We verify your workshop location for customer trust.
                   </p>
-                  
+
                   <button
                     onClick={captureShopLocation}
                     className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
@@ -541,7 +542,7 @@ export default function ArtisanVerificationPage() {
                     <MapPin className="w-4 h-4" />
                     {formData.shopGPS ? 'Update Location' : 'Capture GPS Location'}
                   </button>
-                  
+
                   {formData.shopGPS && (
                     <div className="mt-3 p-3 bg-white rounded border text-sm">
                       <p className="text-green-600 flex items-center gap-1">
@@ -578,7 +579,7 @@ export default function ArtisanVerificationPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Primary Skill/Trade *</label>
@@ -639,7 +640,7 @@ export default function ArtisanVerificationPage() {
                   </label>
                   <p className="text-xs text-gray-500">Show your best work. Customers see these.</p>
                 </div>
-                
+
                 {formData.portfolioPhotos.length > 0 && (
                   <div className="grid grid-cols-3 gap-2 mt-4">
                     {formData.portfolioPhotos.map((photo, idx) => (
@@ -658,7 +659,7 @@ export default function ArtisanVerificationPage() {
                     ))}
                   </div>
                 )}
-                
+
                 <p className="text-sm text-gray-500 mt-2">
                   {formData.portfolioPhotos.length}/5 photos
                 </p>
@@ -677,7 +678,7 @@ export default function ArtisanVerificationPage() {
                 <span className="text-gray-600">Target Tier</span>
                 <span className="font-semibold uppercase">{targetConfig.name}</span>
               </div>
-              
+
               <div className="flex justify-between py-2 border-b">
                 <span className="text-gray-600">Identity</span>
                 <span className="text-green-600 flex items-center gap-1">
@@ -729,7 +730,7 @@ export default function ArtisanVerificationPage() {
             <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">You're Verified!</h2>
             <p className="text-gray-600 mb-2">Welcome to {targetConfig.name} tier</p>
-            
+
             <div className="bg-emerald-50 p-4 rounded-lg max-w-sm mx-auto mb-6 text-left">
               <h4 className="font-medium mb-2">What's next:</h4>
               <ul className="text-sm space-y-1">

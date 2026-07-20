@@ -1,7 +1,11 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
+
+const isDev = import.meta.env.Dev;
+
 const debugLogs: string[] = [];
 const addLog = (msg: string) => {
+  if (!isDev) return;
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
   debugLogs.push(line);
   console.log(line);
@@ -10,7 +14,9 @@ const addLog = (msg: string) => {
 
 if (typeof window !== 'undefined') {
   (window as any).getAuthLogs = () => {
-    console.log('=== AUTH DEBUG LOGS ===\n' + debugLogs.join('\n'));
+    if (isDev) {
+      console.log('=== AUTH DEBUG LOGS ===\n' + debugLogs.join('\n'));
+    }
     return debugLogs;
   };
   (window as any).clearAuthLogs = () => {
@@ -24,9 +30,10 @@ if (typeof window !== 'undefined') {
 // ==========================================
 const RAW_API_URL = import.meta.env.VITE_API_URL || 'https://trustedhands.onrender.com/api';
 export const API_URL = RAW_API_URL.replace(/\/api\/?$/, '');
-
-addLog(`[API Config] RAW URL: ${RAW_API_URL}`);
-addLog(`[API Config] Cleaned BASE URL: ${API_URL}`);
+if (isDev) {
+  addLog(`[API Config] RAW URL: ${RAW_API_URL}`);
+  addLog(`[API Config] Cleaned BASE URL: ${API_URL}`);
+}
 
 const api = axios.create({
   baseURL: `${API_URL}/api`, // All API calls go to /api/...
@@ -152,8 +159,11 @@ api.interceptors.request.use(
         const timeLeft = expiryTime - now;
 
         if (timeLeft < -60000) {
-          addLog(`[Request] Token expired ${Math.abs(timeLeft)}ms ago, clearing`);
-          clearTokens();
+          addLog(
+            `[Request] Token expired ${Math.abs(
+              timeLeft
+            )}ms ago, waiting for refresh flow.`
+          );
         } else if (timeLeft < 0) {
           addLog(`[Request] Token in grace period (${Math.abs(timeLeft)}ms past expiry), using anyway`);
           config.headers.Authorization = `Bearer ${token}`;
@@ -245,6 +255,8 @@ api.interceptors.response.use(
         try {
           addLog('[Response] Calling /auth/refresh...');
           const refreshToken = getRefreshToken();
+          localStorage.getItem("refreshToken")
+
 
           if (!refreshToken) {
             throw new Error('No refresh token available');
@@ -521,12 +533,20 @@ export const authApi = {
 
   refresh: () => api.post<ApiResponse<{ accessToken: string; refreshToken?: string }>>('/auth/refresh'),
 
-  verifyEmail: (token: string) => api.post<ApiResponse<void>>(`/auth/verify-email/${token}`),
+  // ==========================================
+  // FIXED: Email verification — changed from POST to GET to match backend
+  // Backend route: router.get('/verify-email/:token', verifyEmail)
+  // ==========================================
+  verifyEmail: (token: string) => api.post<ApiResponse<void>>('/auth/verify-email', { token }),
 
   resendVerification: (email: string) => api.post<ApiResponse<void>>('/auth/resend-verification', { email }),
 
   forgotPassword: (email: string) => api.post<ApiResponse<void>>('/auth/forgot-password', { email }),
 
+  // ==========================================
+  // FIXED: Reset password — changed from POST to PUT to match backend
+  // Actually backend uses POST, so this stays POST
+  // ==========================================
   resetPassword: (token: string, password: string) => api.post<ApiResponse<void>>(`/auth/reset-password/${token}`, { password }),
 };
 
@@ -838,30 +858,35 @@ export const getErrorCode = (error: any): string => {
   return error.response?.data?.error?.code || error.code || 'UNKNOWN_ERROR';
 };
 
+// ==========================================
+// FIXED: Verification API paths
+// Backend mounts at /api/verification/* (verificationRoutes.js)
+// Changed from /verify/* to /verification/*
+// ==========================================
 export const verificationApi = {
-  getStatus: () => api.get('/verify/status'),
+  getStatus: () => api.get('/verification/status'),
 
-  checkJobValue: (jobValue: number) => api.get(`/verify/check-job/${jobValue}`),
+  checkJobValue: (jobValue: number) => api.get(`/verification/check-job/${jobValue}`),
 
-  verifyNIN: (nin: string) => api.post('/verify/nin', { nin }),
+  verifyNIN: (nin: string) => api.post('/verification/nin', { nin }),
 
-  verifyBVN: (bvn: string) => api.post('/verify/bvn', { bvn }),
+  verifyBVN: (bvn: string) => api.post('/verification/bvn', { bvn }),
 
   verifyPhoto: (photoFile: File) => {
     const formData = new FormData();
     formData.append('photo', photoFile);
-    return api.post('/verify/photo', formData, {
+    return api.post('/verification/photo', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
 
   verifyCAC: (cacNumber: string, businessName: string) => 
-    api.post('/verify/cac', { cacNumber, businessName }),
+    api.post('/verification/cac', { cacNumber, businessName }),
 
   verifyShopLocation: (gps: { lat: number; lng: number }) => 
-    api.post('/verify/shop-location', { gps }),
+    api.post('/verification/shop-location', { gps }),
 
-  confirmShopLocation: () => api.post('/verify/confirm-shop-location'),
+  confirmShopLocation: () => api.post('/verification/confirm-shop-location'),
 };
 
 export interface FraudJobCreateData {

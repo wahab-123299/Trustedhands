@@ -483,6 +483,8 @@ exports.webhook = async (req, res) => {
       return res.status(400).send('Invalid signature');
     }
 
+
+
     const event = req.body;
     console.log(`Webhook received: ${event.event}`, { reference: event.data?.reference });
 

@@ -1,9 +1,28 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+# ==========================================
+# API PROXY — MUST come before SPA fallback
+# Redirects all /api/* calls to Render backend
+# ==========================================
+[[redirects]]
+  from = "/api/*"
+  to = "https://trustedhands.onrender.com/api/:splat"
+  status = 200
+  force = true
+  headers = {X-From = "Netlify-Proxy"}
+
+# SPA fallback — keep this LAST
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-[build]
-  base = "frontend"
-  publish = "dist"
-  command = "npm run build"
+[headers]
+  # Security headers
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

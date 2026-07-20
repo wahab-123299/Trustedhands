@@ -33,7 +33,7 @@ interface SocketContextType {
   typingUsers: Map<string, TypingUser[]>;
   
   // Actions
-  joinConversation: (conversationId: string) => Promise<void>;
+  joinConversation: (convenrsationId: string) => Promise<void>;
   leaveConversation: (conversationId: string) => void;
   sendMessage: (data: SendMessageData) => Promise<void>;
   sendTyping: (conversationId: string, isTyping: boolean) => void;
@@ -573,7 +573,7 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           message.deliveryStatus = status as 'sent' | 'delivered' | 'read' | 'failed';
           if (status === 'read') {
             message.isRead = true;
-            message.readAt = data?.readAt || new Date();
+            message.readAt = data?.readAt || new Date().toISOString();
           }
         }
       });

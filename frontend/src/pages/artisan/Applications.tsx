@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applicationsApi } from "@/services/api";
-import { useAuth } from "@/contexts/AuthContext";
 
 // ==============================
 // TYPES
@@ -34,7 +33,6 @@ interface Application {
 
 const ArtisanApplications = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);

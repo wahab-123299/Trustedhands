@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Search, MapPin, Filter, X, Briefcase, Calendar } from 'lucide-react';
+import { MapPin, Filter, X, Briefcase, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {

@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { Suspense, lazy } from 'react';
@@ -15,8 +14,8 @@ import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import VerifyEmailPage from '@/pages/VerifyEmailPage';
-import AuthSuccessPage from './pages/AuthSuccesspage';
-import OAuthCallback from './pages/OAuthCallback';
+import AuthSuccessPage from './pages/AuthSuccesspage.js';
+import OAuthCallback from './pages/OAuthCallback.js';
 import BookArtisan from '@/pages/BookArtisan';
 import ScrollToTop from "@/components/ScrollToTop";
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
@@ -30,11 +29,16 @@ import JobDetailsPage from '@/pages/JobDetailsPage';
 import AboutUs from '@/pages/AboutUs';
 import HowItWorks from '@/pages/HowItWorks';
 import Careers from '@/pages/Careers';
-import Press from '@/pages/Press';
+
 import HelpCenter from '@/pages/HelpCenter';
 import Safety from '@/pages/Safety';
 import TermsOfService from '@/pages/TermsOfService';
 import PrivacyPolicy from '@/pages/PrivacyPolicy';
+
+// NEW: Dynamic Press Pages (FIXED: Added lazy imports)
+const PressPage = lazy(() => import('@/pages/PressPage'));
+const PressArticlePage = lazy(() => import('@/pages/PressArticlePage'));
+const CreatePressArticle = lazy(() => import('@/pages/admin/CreatePressArticle'));
 
 // Lazy loaded pages
 const CustomerDashboard = lazy(() => import('@/pages/customer/Dashboard'));
@@ -44,7 +48,7 @@ const CustomerBookings = lazy(() => import('@/pages/customer/Bookings'));
 const CustomerMessages = lazy(() => import('@/pages/customer/Messages'));
 const CustomerProfile = lazy(() => import('@/pages/customer/Profile'));
 const PostJobPage = lazy(() => import('@/pages/customer/PostJob'));
-const CustomerVerificationPage = lazy(() => import('@/pages/customer/Verification'));
+const CustomerVerificationPage = lazy(() => import('@/pages/customer/Verification' as any));
 
 const ArtisanDashboard = lazy(() => import('@/pages/artisan/Dashboard'));
 const ArtisanJobs = lazy(() => import('@/pages/artisan/Jobs'));
@@ -53,13 +57,16 @@ const ArtisanApplications = lazy(() => import('@/pages/artisan/Applications'));
 const ArtisanMessages = lazy(() => import('@/pages/artisan/Messages'));
 const ArtisanProfile = lazy(() => import('@/pages/artisan/Profile'));
 const ArtisanWallet = lazy(() => import('@/pages/artisan/Wallet'));
-const ArtisanVerificationPage = lazy(() => import('@/pages/artisan/Verification'));
+const ArtisanVerificationPage = lazy(() => import('@/pages/artisan/Verification' as any));
 
 // Admin Pages
-const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
-const AdminStats = lazy(() => import('@/pages/admin/AdminStats'));
-const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'));
-const AdminVerifications = lazy(() => import('@/pages/admin/AdminVerifications'));
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard' as any));
+const AdminStats = lazy(() => import('@/pages/admin/AdminStats' as any));
+const AdminProfile = lazy(() => import('@/pages/admin/AdminProfile' as any));
+const AdminMessages = lazy(() => import('@/pages/admin/AdminMessages' as any));
+const AdminArtisans = lazy(() => import('@/pages/admin/AdminArtisans' as any));
+const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers' as any));
+const AdminVerifications = lazy(() => import('@/pages/admin/AdminVerifications' as any));
 
 // Shared Pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
@@ -69,6 +76,8 @@ import NotFoundPage from '@/pages/NotFoundPage';
 // Auth Components
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import RoleRoute from '@/components/auth/RoleRoute';
+// TypeScript can't find declaration for this JS module — ignore the error for now
+// @ts-ignore
 import { TierGate } from '@/components/auth/TierGate';
 
 // ==========================================
@@ -85,27 +94,13 @@ const PageLoader = () => (
 );
 
 // ==========================================
-// ADMIN ROUTE PROTECTOR
-// ==========================================
-
-const AdminRoute = ({ children }) => {
-  const { user, isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) return <PageLoader />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.role !== 'admin') return <Navigate to="/" replace />;
-
-  return <>{children}</>;
-};
-
-// ==========================================
-// REDIRECT HELPERS
+// REDIRECT HELPERS — FIXED: Added admin branch
 // ==========================================
 
 function NavigateToMessages() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-
+  if (user.role === 'admin') return <Navigate to="/admin/messages" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/messages" replace />
     : <Navigate to="/customer/messages" replace />;
@@ -114,6 +109,7 @@ function NavigateToMessages() {
 function NavigateToDashboard() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/dashboard" replace />
     : <Navigate to="/customer/dashboard" replace />;
@@ -122,6 +118,7 @@ function NavigateToDashboard() {
 function NavigateToProfile() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'admin') return <Navigate to="/admin/profile" replace />;
   return user.role === 'artisan' 
     ? <Navigate to="/artisan/profile" replace />
     : <Navigate to="/customer/profile" replace />;
@@ -130,6 +127,7 @@ function NavigateToProfile() {
 function NavigateToWallet() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
   if (user.role !== 'artisan') return <Navigate to="/customer/dashboard" replace />;
   return <Navigate to="/artisan/wallet" replace />;
 }
@@ -176,11 +174,15 @@ function App() {
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:id" element={<JobDetailsPage />} />
 
+                {/* FIXED: Dynamic press pages (replaced static Press with dynamic) */}
+                <Route path="/press" element={<PressPage />} />
+                <Route path="/press/:slug" element={<PressArticlePage />} />
+
                 {/* NEW STATIC PAGES */}
                 <Route path="/about" element={<AboutUs />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/careers" element={<Careers />} />
-                <Route path="/press" element={<Press />} />
+                {/* <Route path="/press" element={<Press />} /> */} {/* REMOVED: Replaced by dynamic PressPage */}
                 <Route path="/help" element={<HelpCenter />} />
                 <Route path="/safety" element={<Safety />} />
                 <Route path="/terms" element={<TermsOfService />} />
@@ -230,14 +232,24 @@ function App() {
               </Route>
 
               {/* ==========================================
-                  ADMIN ROUTES
+                  ADMIN ROUTES — FIXED: Nested under AdminDashboard with Outlet
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<RoleRoute allowedRoles={['admin']} />}>
-                  <Route element={<DashboardLayout />}>
-                    <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                    <Route path="/admin/users" element={<AdminUsers />} />
-                    <Route path="/admin/verifications" element={<AdminVerifications />} />
+                  {/* AdminDashboard is the layout with <Outlet /> */}
+                  <Route path="/admin" element={<AdminDashboard />}>
+                    {/* Index: /admin → redirect to /admin/dashboard */}
+                    <Route index element={<Navigate to="dashboard" replace />} />
+
+                    {/* Child routes render in AdminDashboard's <Outlet /> */}
+                    <Route path="dashboard" element={<AdminStats />} />
+                    <Route path="users" element={<AdminUsers />} />
+                    <Route path="verifications" element={<AdminVerifications />} />
+                    <Route path="artisans" element={<AdminArtisans />} />
+                    <Route path="stats" element={<AdminStats />} />
+                    <Route path="profile" element={<AdminProfile />} />
+                    <Route path="messages" element={<AdminMessages />} />
+                    <Route path="press/create" element={<CreatePressArticle />} />
                   </Route>
                 </Route>
               </Route>

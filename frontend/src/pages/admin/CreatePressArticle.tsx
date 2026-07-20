@@ -1,166 +1,231 @@
-// frontend/src/pages/admin/CreatePressArticle.tsx
-import React, { useState } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { api } from '@/services/api';
+import { ArrowLeft, Calendar, Clock, User, Share2, Twitter, Facebook, Linkedin } from 'lucide-react';
+import { toast } from 'sonner';
 
-const CreatePressArticle: React.FC = () => {
+interface PressArticle {
+  _id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  coverImage: string;
+  category: string;
+  publishedAt: string;
+  author: {
+    name: string;
+    role: string;
+  };
+  readTime: number;
+  tags: string[];
+  metaTitle?: string;
+  metaDescription?: string;
+}
+
+const PressArticlePage: React.FC = () => {
+  const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    title: '',
-    excerpt: '',
-    content: '',
-    category: 'news',
-    coverImage: '',
-    authorName: 'TrustedHand Team',
-    authorRole: 'Team',
-    tags: '',
-    readTime: 3,
-    featured: false,
-    isPublished: true
-  });
-  const [loading, setLoading] = useState(false);
+  const [article, setArticle] = useState<PressArticle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [related, setRelated] = useState<PressArticle[]>([]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    if (slug) {
+      fetchArticle();
+    }
+  }, [slug]);
 
+  const fetchArticle = async () => {
     try {
-      await axios.post('/api/press', {
-        ...form,
-        tags: form.tags.split(',').map(t => t.trim()).filter(Boolean)
-      });
-      alert('Article published!');
+      setLoading(true);
+      const res = await api.get(`/press/${slug}`);
+      const articleData = res.data.data?.article || res.data.data;
+      setArticle(articleData);
+
+      // Fetch related articles
+      if (articleData?.category) {
+        const relatedRes = await api.get('/press', { 
+          params: { category: articleData.category, limit: 3 } 
+        });
+        const allRelated = relatedRes.data.data?.articles || relatedRes.data.data || [];
+        setRelated(allRelated.filter((a: PressArticle) => a.slug !== slug).slice(0, 3));
+      }
+    } catch (err) {
+      console.error('Failed to load article:', err);
+      toast.error('Article not found');
       navigate('/press');
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || 'Failed to publish');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-900 p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-8">Create Press Article</h1>
-        
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-gray-400 mb-2">Title</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={e => setForm({...form, title: e.target.value})}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white"
-              required
-            />
-          </div>
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
 
-          <div>
-            <label className="block text-gray-400 mb-2">Excerpt (short summary)</label>
-            <textarea
-              value={form.excerpt}
-              onChange={e => setForm({...form, excerpt: e.target.value})}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white h-24"
-              required
-              maxLength={500}
-            />
-          </div>
+  const getCategoryColor = (cat: string) => {
+    const colors: Record<string, string> = {
+      news: 'bg-blue-100 text-blue-800',
+      'press-release': 'bg-green-100 text-green-800',
+      update: 'bg-yellow-100 text-yellow-800',
+      feature: 'bg-purple-100 text-purple-800',
+      partnership: 'bg-pink-100 text-pink-800'
+    };
+    return colors[cat] || 'bg-gray-100 text-gray-800';
+  };
 
-          <div>
-            <label className="block text-gray-400 mb-2">Content (HTML supported)</label>
-            <textarea
-              value={form.content}
-              onChange={e => setForm({...form, content: e.target.value})}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white h-96 font-mono text-sm"
-              required
-              placeholder="<p>Write your article here...</p>"
-            />
-          </div>
+  const handleShare = (platform: string) => {
+    const url = window.location.href;
+    const text = article?.title || 'Check out this article from TrustedHand';
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-gray-400 mb-2">Category</label>
-              <select
-                value={form.category}
-                onChange={e => setForm({...form, category: e.target.value})}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white"
-              >
-                <option value="news">News</option>
-                <option value="press-release">Press Release</option>
-                <option value="update">Update</option>
-                <option value="feature">Feature</option>
-                <option value="partnership">Partnership</option>
-              </select>
-            </div>
+    const shareUrls: Record<string, string> = {
+      twitter: `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+    };
 
-            <div>
-              <label className="block text-gray-400 mb-2">Cover Image URL</label>
-              <input
-                type="text"
-                value={form.coverImage}
-                onChange={e => setForm({...form, coverImage: e.target.value})}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white"
-                placeholder="https://..."
-              />
-            </div>
-          </div>
+    if (shareUrls[platform]) {
+      window.open(shareUrls[platform], '_blank', 'width=600,height=400');
+    }
+  };
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-gray-400 mb-2">Author Name</label>
-              <input
-                type="text"
-                value={form.authorName}
-                onChange={e => setForm({...form, authorName: e.target.value})}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+  const copyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success('Link copied to clipboard');
+  };
 
-            <div>
-              <label className="block text-gray-400 mb-2">Tags (comma separated)</label>
-              <input
-                type="text"
-                value={form.tags}
-                onChange={e => setForm({...form, tags: e.target.value})}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white"
-                placeholder="nigeria, artisans, technology"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-gray-400">
-              <input
-                type="checkbox"
-                checked={form.featured}
-                onChange={e => setForm({...form, featured: e.target.checked})}
-                className="w-5 h-5 rounded"
-              />
-              Featured Article
-            </label>
-
-            <label className="flex items-center gap-2 text-gray-400">
-              <input
-                type="checkbox"
-                checked={form.isPublished}
-                onChange={e => setForm({...form, isPublished: e.target.checked})}
-                className="w-5 h-5 rounded"
-              />
-              Publish Immediately
-            </label>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-lg transition disabled:opacity-50"
-          >
-            {loading ? 'Publishing...' : 'Publish Article'}
-          </button>
-        </form>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
       </div>
+    );
+  }
+
+  if (!article) return null;
+
+  return (
+    <div className="min-h-screen bg-gray-900">
+      {/* Back Navigation */}
+      <div className="max-w-4xl mx-auto px-4 pt-8">
+        <button
+          onClick={() => navigate('/press')}
+          className="flex items-center gap-2 text-gray-400 hover:text-white transition mb-8"
+        >
+          <ArrowLeft size={20} />
+          <span>Back to Press</span>
+        </button>
+      </div>
+
+      {/* Article Header */}
+      <article className="max-w-4xl mx-auto px-4 pb-20">
+        <div className="mb-8">
+          <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mb-4 ${getCategoryColor(article.category)}`}>
+            {article.category.replace('-', ' ')}
+          </span>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6 leading-tight">
+            {article.title}
+          </h1>
+          <div className="flex flex-wrap items-center gap-6 text-gray-400 text-sm">
+            <div className="flex items-center gap-2">
+              <User size={16} />
+              <span>{article.author.name}</span>
+              <span className="text-gray-600">•</span>
+              <span>{article.author.role}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Calendar size={16} />
+              <span>{formatDate(article.publishedAt)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock size={16} />
+              <span>{article.readTime} min read</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Cover Image */}
+        <div className="rounded-xl overflow-hidden mb-10">
+          <img 
+            src={article.coverImage} 
+            alt={article.title}
+            className="w-full h-64 md:h-96 object-cover"
+          />
+        </div>
+
+        {/* Share Buttons */}
+        <div className="flex items-center gap-3 mb-8 pb-8 border-b border-gray-800">
+          <span className="text-gray-400 text-sm">Share:</span>
+          <button onClick={() => handleShare('twitter')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition">
+            <Twitter size={18} className="text-blue-400" />
+          </button>
+          <button onClick={() => handleShare('facebook')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition">
+            <Facebook size={18} className="text-blue-600" />
+          </button>
+          <button onClick={() => handleShare('linkedin')} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition">
+            <Linkedin size={18} className="text-blue-500" />
+          </button>
+          <button onClick={copyLink} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition">
+            <Share2 size={18} className="text-gray-400" />
+          </button>
+        </div>
+
+        {/* Article Content */}
+        <div 
+          className="prose prose-invert prose-lg max-w-none text-gray-300 leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: article.content }}
+        />
+
+        {/* Tags */}
+        {article.tags && article.tags.length > 0 && (
+          <div className="mt-10 pt-8 border-t border-gray-800">
+            <div className="flex flex-wrap gap-2">
+              {article.tags.map(tag => (
+                <span key={tag} className="px-3 py-1 bg-gray-800 text-gray-400 rounded-full text-sm">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </article>
+
+      {/* Related Articles */}
+      {related.length > 0 && (
+        <div className="max-w-4xl mx-auto px-4 pb-20">
+          <h2 className="text-2xl font-bold text-white mb-6">Related Articles</h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            {related.map(item => (
+              <Link 
+                key={item._id}
+                to={`/press/${item.slug}`}
+                className="group block bg-gray-800 rounded-xl overflow-hidden hover:bg-gray-750 transition"
+              >
+                <div className="h-40 bg-gray-700 overflow-hidden">
+                  <img 
+                    src={item.coverImage} 
+                    alt={item.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                  />
+                </div>
+                <div className="p-4">
+                  <h3 className="font-semibold text-white mb-2 group-hover:text-emerald-400 transition line-clamp-2">
+                    {item.title}
+                  </h3>
+                  <p className="text-gray-400 text-sm line-clamp-2">{item.excerpt}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default CreatePressArticle;
+export default PressArticlePage;

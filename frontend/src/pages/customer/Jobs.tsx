@@ -5,9 +5,6 @@ import {
   Briefcase, 
   MapPin, 
   Calendar, 
-  Clock,
-  Filter,
-  Search,
   Loader2,
   Plus,
   XCircle,
@@ -16,7 +13,6 @@ import {
   Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -31,7 +27,6 @@ const CustomerJobs: React.FC = () => {
   const [myPostedJobs, setMyPostedJobs] = useState<Job[]>([]);
   const [myActiveJobs, setMyActiveJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('posted');
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);

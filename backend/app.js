@@ -125,6 +125,9 @@ app.use('/api/auth/forgot-password', authLimiter);
 // ============================================
 // BODY PARSING
 // ============================================
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+
+// Regular JSON and URL-encoded parsing with size limits
 app.use(express.json({ limit: '10mb', strict: true }));
 app.use(express.urlencoded({ extended: true, limit: '10mb', parameterLimit: 1000 }));
 app.use(cookieParser(process.env.COOKIE_SECRET || 'default-secret-change-in-production'));
