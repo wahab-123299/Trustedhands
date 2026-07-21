@@ -1,31 +1,42 @@
 const express = require('express');
 const router = express.Router();
-const availabilityController = require('../controllers/availabilityController');
+const {
+  setAvailability,
+  getAvailability,
+  blockDate,
+  unblockDate,
+  createRecurringPattern,
+  getRecurringPatterns,
+  deleteRecurringPattern,
+  checkAvailability,
+  bookSlot,
+  cancelBooking
+} = require('../controllers/availabilityController');
 const { protect } = require('../middleware/authMiddleware');
 
 // ==========================================
 // SPECIFIC ROUTES
 // ==========================================
-router.post('/set', protect, availabilityController.setAvailability);
-router.post('/block', protect, availabilityController.blockDate);
-router.post('/unblock', protect, availabilityController.unblockDate);
+router.post('/set', protect, setAvailability);
+router.post('/block', protect, blockDate);
+router.post('/unblock', protect, unblockDate);
 
-router.get('/patterns', protect, availabilityController.getRecurringPatterns);
-router.post('/patterns', protect, availabilityController.createRecurringPattern);
-router.delete('/patterns/:patternId', protect, availabilityController.deleteRecurringPattern);
+router.get('/patterns', protect, getRecurringPatterns);
+router.post('/patterns', protect, createRecurringPattern);
+router.delete('/patterns/:patternId', protect, deleteRecurringPattern);
 
 // ==========================================
 // PARAMETERIZED ROUTES
 // ==========================================
-router.get('/:artisanId/check', availabilityController.checkAvailability);
-router.get('/:artisanId', availabilityController.getAvailability);
+router.get('/:artisanId/check', checkAvailability);
+router.get('/:artisanId', getAvailability);
 
 // ==========================================
 // SERVICE FUNCTIONS WRAPPED AS ROUTES
 // ==========================================
 router.post('/book', protect, async (req, res, next) => {
   try {
-    const result = await availabilityController.bookSlot(
+    const result = await bookSlot(
       req.user._id,
       req.body.date,
       req.body.startTime,
@@ -40,7 +51,7 @@ router.post('/book', protect, async (req, res, next) => {
 
 router.post('/cancel', protect, async (req, res, next) => {
   try {
-    const result = await availabilityController.cancelBooking(
+    const result = await cancelBooking(
       req.user._id,
       req.body.date,
       req.body.jobId
