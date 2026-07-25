@@ -3,10 +3,6 @@ const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// ==========================================
-// FIXED: Validate environment BEFORE importing app
-// This prevents the server from starting with broken config
-// ==========================================
 const validateEnv = require('./config/validateEnv');
 validateEnv();
 
@@ -16,16 +12,12 @@ const { startKeepAlive } = require('./utils/keepAlive');
 
 const startServer = async () => {
   try {
-    // ==========================================
-    // ENV VALIDATION (legacy checks kept for safety)
-    // ==========================================
-
     if (!process.env.MONGODB_URI) {
       console.error('❌ MONGODB_URI is not defined. Check .env file');
       process.exit(1);
     }
 
-    console.log('🔧 MONGODB_URI:', process.env.MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'));
+    console.log('🔧 MONGODB_URI:', process.env.MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '/***:***@'));
 
     const requiredVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
     const missingRequired = requiredVars.filter(key => !process.env[key]);
@@ -37,24 +29,18 @@ const startServer = async () => {
     console.log('✅ JWT_SECRET present');
     console.log('✅ JWT_REFRESH_SECRET present');
 
-    // FIXED: Warn if MONGODB_URI is missing database name
     const mongoUri = process.env.MONGODB_URI;
     if (!mongoUri.includes('/TrustedHands') && !mongoUri.includes('/trustedhands')) {
       console.warn('⚠️  MONGODB_URI does not include /TrustedHands database name');
       console.warn('   Current URI may connect to "test" database');
     }
 
-    // ==========================================
-    // DATABASE CONNECTION
-    // ==========================================
-
     await connectDB();
     console.log('✅ Database connection established');
 
-    // MongoDB connection event handlers
     mongoose.connection.on('connected', () => {
       console.log('🟢 MongoDB connected');
-      console.log(`   Database: ${mongoose.connection.name}`);
+      console.log(`  Database: ${mongoose.connection.name}`);
     });
 
     mongoose.connection.on('disconnected', () => {
@@ -69,7 +55,6 @@ const startServer = async () => {
       console.log('🟢 MongoDB reconnected');
     });
 
-    // Internal heartbeat to keep MongoDB connection alive
     setInterval(() => {
       if (mongoose.connection.readyState === 1) {
         mongoose.connection.db.admin().ping()
@@ -77,16 +62,13 @@ const startServer = async () => {
       }
     }, 30000);
 
-    // ==========================================
-    // SOCKET.IO SETUP
-    // ==========================================
-
     let io;
     try {
-      const { init: initSocket } = require('./config/socket');
+      // FIXED: socket.js exports 'initializeSocket', not 'init'
+      const { initializeSocket } = require('./config/socket');
       const chatSocket = require('./socket/chatSocket');
       const server = http.createServer(app);
-      io = initSocket(server);
+      io = initializeSocket(server);
       app.set('io', io);
       chatSocket(io);
       console.log('✅ Socket.io initialized');
@@ -98,9 +80,6 @@ const startServer = async () => {
         console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'https://trustedhand.org'}`);
         console.log('');
 
-        // ==========================================
-        // START KEEP-ALIVE (Prevents Render from sleeping)
-        // ==========================================
         const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
         if (isProduction) {
           startKeepAlive();
@@ -117,6 +96,10 @@ const startServer = async () => {
         console.log('   GET  /api/auth/me');
         console.log('   POST /api/auth/logout');
         console.log('   POST /api/auth/refresh');
+        console.log('   GET  /api/auth/google     — Google OAuth');
+        console.log('   GET  /api/auth/google/callback — Google OAuth callback');
+        console.log('   GET  /api/auth/facebook   — Facebook OAuth');
+        console.log('   GET  /api/auth/facebook/callback — Facebook OAuth callback');
       });
     } catch (socketError) {
       console.warn('⚠️  Socket.io initialization failed:', socketError.message);
@@ -135,7 +118,6 @@ const startServer = async () => {
   }
 };
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Shutting down gracefully...');
   mongoose.connection.close(false, () => {

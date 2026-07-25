@@ -4,7 +4,7 @@ const { AppError } = require('../utils/errorHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 
 // ==========================================
-// HELPER: Transform artisan data to match frontend expectations
+// HELPER: Transform artisan data
 // ==========================================
 
 const transformArtisan = (artisan) => {
@@ -13,13 +13,14 @@ const transformArtisan = (artisan) => {
     return null;
   }
 
-  // Handle both populated and unpopulated userId
-  const userData = typeof artisan.userId === 'object' && artisan.userId !== null 
-    ? artisan.userId 
-    : null;
+  // Handle both .populate('userId') and aggregation $lookup 'userData'
+  const userData = artisan.userData ||
+    (typeof artisan.userId === 'object' && artisan.userId !== null && artisan.userId.fullName !== undefined
+      ? artisan.userId
+      : null);
 
-  const userId = userData 
-    ? userData._id?.toString() 
+  const userId = userData
+    ? userData._id?.toString()
     : (artisan.userId?.toString ? artisan.userId.toString() : artisan.userId);
 
   if (!userData) {
@@ -70,7 +71,7 @@ const transformArtisan = (artisan) => {
 };
 
 // ==========================================
-// GET MY PROFILE (for logged-in artisan)
+// GET MY PROFILE
 // ==========================================
 
 exports.getMyProfile = async (req, res, next) => {
@@ -105,6 +106,7 @@ exports.getMyProfile = async (req, res, next) => {
 
 // ==========================================
 // GET ALL ARTISANS (with filters)
+// FIXED: $lookup now uses 'userData' instead of 'userId' to preserve original userId
 // ==========================================
 
 exports.getArtisans = async (req, res, next) => {
@@ -164,8 +166,7 @@ exports.getArtisans = async (req, res, next) => {
     const totalInDb = await ArtisanProfile.countDocuments();
     console.log('Total ArtisanProfile documents in DB:', totalInDb);
 
-    // CRITICAL FIX: Use aggregation pipeline to filter by user location BEFORE pagination
-    // This way limit/skip work correctly
+    // FIXED: Use 'userData' as lookup output so original 'userId' is preserved
     const pipeline = [
       { $match: query },
       {
@@ -173,19 +174,19 @@ exports.getArtisans = async (req, res, next) => {
           from: 'users',
           localField: 'userId',
           foreignField: '_id',
-          as: 'userId'
+          as: 'userData'
         }
       },
-      { $unwind: { path: '$userId', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$userData', preserveNullAndEmptyArrays: true } },
       // Filter by state/city if provided
       ...(state && state !== 'All States' ? [{
         $match: {
-          'userId.location.state': { $regex: new RegExp(state, 'i') }
+          'userData.location.state': { $regex: new RegExp(state, 'i') }
         }
       }] : []),
       ...(city ? [{
         $match: {
-          'userId.location.city': { $regex: new RegExp(city, 'i') }
+          'userData.location.city': { $regex: new RegExp(city, 'i') }
         }
       }] : []),
       { $sort: sort },
@@ -211,8 +212,34 @@ exports.getArtisans = async (req, res, next) => {
 
     if (artisans.length > 0) {
       console.log('First artisan userId:', artisans[0].userId ? 'EXISTS' : 'NULL/UNDEFINED');
-      console.log('First artisan userId type:', typeof artisans[0].userId);
+      console.log('First artisan userData:', artisans[0].userData ? 'EXISTS' : 'NULL/UNDEFINED');
       console.log('First artisan ID:', artisans[0]._id);
+    }
+
+    // Fallback: if some artisans are missing userData, try to fetch users separately
+    const missingUserIds = artisans
+      .filter(a => !a.userData && a.userId)
+      .map(a => {
+        try { return new mongoose.Types.ObjectId(a.userId); } catch { return null; }
+      })
+      .filter(id => id !== null);
+
+    if (missingUserIds.length > 0) {
+      console.log(`[getArtisans] Fetching ${missingUserIds.length} missing users separately`);
+      const users = await User.find({ _id: { $in: missingUserIds } })
+        .select('fullName email phone profileImage location isVerified')
+        .lean();
+
+      const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
+      artisans.forEach(artisan => {
+        if (!artisan.userData && artisan.userId) {
+          const uid = artisan.userId.toString ? artisan.userId.toString() : String(artisan.userId);
+          if (userMap.has(uid)) {
+            artisan.userData = userMap.get(uid);
+          }
+        }
+      });
     }
 
     const formattedArtisans = artisans
@@ -283,7 +310,6 @@ exports.searchArtisans = async (req, res, next) => {
       searchConditions.push({ _id: { $in: exactSkillMatch } });
     }
 
-    // FIX: Added ArtisanProfile before .find()
     const artisans = await ArtisanProfile.find({
       $or: searchConditions,
       'availability.status': { $ne: 'unavailable' }
@@ -359,7 +385,6 @@ exports.getNearbyArtisans = async (req, res, next) => {
     const userIds = nearbyUsers.map(u => u._id);
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // FIX: Added ArtisanProfile before .find()
     const artisans = await ArtisanProfile.find({
       userId: { $in: userIds },
       'availability.status': 'available'
@@ -436,9 +461,9 @@ exports.getArtisanById = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: { 
-        artisan: formattedArtisan, 
-        reviews: formattedReviews 
+      data: {
+        artisan: formattedArtisan,
+        reviews: formattedReviews
       }
     });
   } catch (error) {
@@ -479,12 +504,12 @@ exports.getArtisanReviews = async (req, res, next) => {
     });
 
     const ratingStats = await Job.aggregate([
-      { 
-        $match: { 
-          artisanId: new mongoose.Types.ObjectId(id), 
-          status: 'completed', 
-          'review.rating': { $exists: true } 
-        } 
+      {
+        $match: {
+          artisanId: new mongoose.Types.ObjectId(id),
+          status: 'completed',
+          'review.rating': { $exists: true }
+        }
       },
       { $group: { _id: '$review.rating', count: { $sum: 1 } } },
       { $sort: { _id: -1 } }
@@ -543,9 +568,9 @@ exports.updateProfile = async (req, res, next) => {
     if (bio !== undefined) artisan.bio = bio;
     if (workRadius) artisan.workRadius = workRadius;
     if (availability) {
-      artisan.availability = { 
-        ...artisan.availability.toObject(), 
-        ...availability 
+      artisan.availability = {
+        ...artisan.availability.toObject(),
+        ...availability
       };
     }
 
@@ -597,7 +622,7 @@ exports.updateAvailability = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Availability updated successfully',
-      data: { 
+      data: {
         availability: {
           status: artisan.availability.status,
           nextAvailableDate: artisan.availability.nextAvailableDate,
@@ -683,12 +708,12 @@ exports.uploadPortfolioImages = async (req, res, next) => {
 
     if (currentImages.length + newImagesCount > maxImages) {
       throw new AppError(
-        'VALIDATION_ERROR', 
+        'VALIDATION_ERROR',
         `Maximum ${maxImages} portfolio images allowed. You can upload ${maxImages - currentImages.length} more.`
       );
     }
 
-    const uploadPromises = req.files.map(file => 
+    const uploadPromises = req.files.map(file =>
       uploadToCloudinary(file.buffer, 'portfolio-images')
     );
 
