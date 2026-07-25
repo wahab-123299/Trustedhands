@@ -1,18 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const availabilityController = require('../controllers/availabilityController');
-const { protect } = require('../middleware/authMiddleware');
+const { authenticate } = require('../middleware/authMiddleware');
 
 // ==========================================
 // SPECIFIC ROUTES
 // ==========================================
-router.post('/set', protect, availabilityController.setAvailability);
-router.post('/block', protect, availabilityController.blockDate);
-router.post('/unblock', protect, availabilityController.unblockDate);
+router.post('/set', authenticate, availabilityController.setAvailability);
+router.post('/block', authenticate, availabilityController.blockDate);
+router.post('/unblock', authenticate, availabilityController.unblockDate);
 
-router.get('/patterns', protect, availabilityController.getRecurringPatterns);
-router.post('/patterns', protect, availabilityController.createRecurringPattern);
-router.delete('/patterns/:patternId', protect, availabilityController.deleteRecurringPattern);
+router.get('/patterns', authenticate, availabilityController.getRecurringPatterns);
+router.post('/patterns', authenticate, availabilityController.createRecurringPattern);
+router.delete('/patterns/:patternId', authenticate, availabilityController.deleteRecurringPattern);
 
 // ==========================================
 // PARAMETERIZED ROUTES
@@ -23,7 +23,7 @@ router.get('/:artisanId', availabilityController.getAvailability);
 // ==========================================
 // SERVICE FUNCTIONS WRAPPED AS ROUTES
 // ==========================================
-router.post('/book', protect, async (req, res, next) => {
+router.post('/book', authenticate, async (req, res, next) => {
   try {
     const result = await availabilityController.bookSlot(
       req.user._id,
@@ -38,7 +38,7 @@ router.post('/book', protect, async (req, res, next) => {
   }
 });
 
-router.post('/cancel', protect, async (req, res, next) => {
+router.post('/cancel', authenticate, async (req, res, next) => {
   try {
     const result = await availabilityController.cancelBooking(
       req.user._id,
