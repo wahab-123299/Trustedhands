@@ -2,18 +2,18 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-const { protect } = require('../middleware/authMiddleware');
+const { authenticate } = require('../middleware/authMiddleware');
 
 // GET /api/conversations - Get all conversations for user
-router.get('/', protect, async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
     const conversations = await Conversation.find({
       participants: req.user.id,
       isActive: true
     })
-    .populate('participants', 'fullName email avatar role isOnline')
-    .populate('jobId', 'title status')
-    .sort({ 'lastMessage.createdAt': -1 });
+      .populate('participants', 'fullName email avatar role isOnline')
+      .populate('jobId', 'title status')
+      .sort({ 'lastMessage.createdAt': -1 });
 
     res.json({
       success: true,
@@ -30,7 +30,7 @@ router.get('/', protect, async (req, res) => {
 });
 
 // GET /api/conversations/:id - Get single conversation
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.id)
       .populate('participants', 'fullName email avatar role')
@@ -54,7 +54,6 @@ router.get('/:id', protect, async (req, res) => {
       .populate('sender', 'fullName avatar')
       .sort({ createdAt: 1 });
 
-    // Reset unread count
     await conversation.resetUnread(req.user.id);
 
     res.json({
@@ -68,7 +67,7 @@ router.get('/:id', protect, async (req, res) => {
 });
 
 // POST /api/conversations - Create new conversation
-router.post('/', protect, async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   try {
     const { participantId, jobId, initialMessage } = req.body;
 
@@ -79,7 +78,6 @@ router.post('/', protect, async (req, res) => {
       });
     }
 
-    // Use your model's findOrCreate method
     const conversation = await Conversation.findOrCreate(
       [req.user.id, participantId],
       jobId,
@@ -112,7 +110,7 @@ router.post('/', protect, async (req, res) => {
 });
 
 // POST /api/conversations/:id/messages - Send message
-router.post('/:id/messages', protect, async (req, res) => {
+router.post('/:id/messages', authenticate, async (req, res) => {
   try {
     const { content } = req.body;
     const conversation = await Conversation.findById(req.params.id);
@@ -137,10 +135,8 @@ router.post('/:id/messages', protect, async (req, res) => {
       content: content.trim()
     });
 
-    // Update last message
     await conversation.updateLastMessage(content.trim(), req.user.id);
 
-    // Increment unread for other participants
     for (const participant of conversation.participants) {
       if (participant.toString() !== req.user.id) {
         await conversation.incrementUnread(participant);
@@ -160,7 +156,7 @@ router.post('/:id/messages', protect, async (req, res) => {
 });
 
 // PUT /api/conversations/:id/read - Mark as read
-router.put('/:id/read', protect, async (req, res) => {
+router.put('/:id/read', authenticate, async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.id);
 

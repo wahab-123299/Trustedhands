@@ -3,9 +3,6 @@ const router = express.Router();
 const availabilityController = require('../controllers/availabilityController');
 const { authenticate } = require('../middleware/authMiddleware');
 
-// ==========================================
-// SPECIFIC ROUTES
-// ==========================================
 router.post('/set', authenticate, availabilityController.setAvailability);
 router.post('/block', authenticate, availabilityController.blockDate);
 router.post('/unblock', authenticate, availabilityController.unblockDate);
@@ -14,15 +11,9 @@ router.get('/patterns', authenticate, availabilityController.getRecurringPattern
 router.post('/patterns', authenticate, availabilityController.createRecurringPattern);
 router.delete('/patterns/:patternId', authenticate, availabilityController.deleteRecurringPattern);
 
-// ==========================================
-// PARAMETERIZED ROUTES
-// ==========================================
 router.get('/:artisanId/check', availabilityController.checkAvailability);
 router.get('/:artisanId', availabilityController.getAvailability);
 
-// ==========================================
-// SERVICE FUNCTIONS WRAPPED AS ROUTES
-// ==========================================
 router.post('/book', authenticate, async (req, res, next) => {
   try {
     const result = await availabilityController.bookSlot(
