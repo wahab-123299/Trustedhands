@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const oauthController = require('../controllers/oauthController');
 const { authenticate } = require('../middleware/authMiddleware');
 
 // Local auth controllers
@@ -16,16 +15,26 @@ const {
   resetPassword
 } = require('../controllers/authController');
 
-// OAuth controllers - use the SEPARATE oauthController file
+// OAuth controllers
 const {
   googleAuth,
   googleCallback,
   facebookAuth,
   facebookCallback,
-  exchangeOAuthState  // NEW: state exchange endpoint
+  exchangeOAuthState
 } = require('../controllers/oauthController');
 
-
+// ==========================================
+// BLOCK FACEBOOK CRAWLER from consuming auth codes
+// ==========================================
+const blockFacebookCrawler = (req, res, next) => {
+  const ua = req.headers['user-agent'] || '';
+  if (ua.includes('facebookexternalhit') || ua.includes('Facebot')) {
+    console.log('[Facebook] Blocked crawler from consuming auth code');
+    return res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_crawler`);
+  }
+  next();
+};
 
 // ==========================================
 // LOCAL AUTH ROUTES
@@ -42,8 +51,7 @@ router.post('/forgot-password', forgotPassword);
 router.post('/reset-password/:token', resetPassword);
 
 // ==========================================
-// OAUTH STATE EXCHANGE (NEW)
-// Frontend calls this after OAuth redirect to get user info
+// OAUTH STATE EXCHANGE
 // ==========================================
 router.get('/oauth-exchange', exchangeOAuthState);
 
@@ -51,22 +59,15 @@ router.get('/oauth-exchange', exchangeOAuthState);
 // GOOGLE OAUTH ROUTES
 // ==========================================
 
-// Step 1: Redirect to Google
 router.get('/google', googleAuth);
-
-// Step 2: Google redirects back here
 router.get('/google/callback', ...googleCallback);
 
 // ==========================================
 // FACEBOOK OAUTH ROUTES
 // ==========================================
 
-// Step 1: Redirect to Facebook
+
 router.get('/facebook', facebookAuth);
-
-// Step 2: Facebook redirects back here
-router.get('/facebook/callback', ...facebookCallback);
-
-router.get('/oauth/exchange', oauthController.exchangeOAuthState);
+router.get('/facebook/callback', blockFacebookCrawler, ...facebookCallback);
 
 module.exports = router;
