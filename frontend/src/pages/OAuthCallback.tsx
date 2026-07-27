@@ -8,7 +8,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 export default function OAuthCallbackPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const auth = useAuth();
+  const { setUser } = useAuth();
 
   const [error, setError] = useState<string | null>(null);
 
@@ -18,68 +18,38 @@ export default function OAuthCallbackPage() {
         const state = searchParams.get('state');
         const redirect = searchParams.get('redirect') || '/customer/dashboard';
 
-        // ==========================================
-        // OLD BROKEN FLOW (tokens in URL):
-        // const token = searchParams.get('token');
-        // const refreshToken = searchParams.get('refreshToken');
-        // if (token) { storeTokens(token, refreshToken); ... }
-        //
-        // NEW SECURE FLOW (state-based):
-        // Tokens are in HttpOnly cookies (set by backend)
-        // We exchange state for user info
-        // ==========================================
-
         if (!state) {
-          throw new Error('Missing state parameter. OAuth flow may have been interrupted.');
+          throw new Error('Missing state parameter');
         }
 
-        // Exchange state for user info
-        // Tokens are already in HttpOnly cookies from the backend redirect
         const response = await api.get(`/auth/oauth-exchange?state=${state}`);
-        const { user, isNewUser } = response.data.data;
+        const { user, isNewUser, role } = response.data.data;
 
         if (!user) {
           throw new Error('Failed to retrieve user information');
         }
 
-        // Store user in context (if context exposes setters)
-        // Try common auth context methods, fallback to noop with warning
-        try {
-          if (auth && typeof (auth as any).setUser === 'function') {
-            (auth as any).setUser(user);
-          } else if (auth && typeof (auth as any).updateUser === 'function') {
-            (auth as any).updateUser(user);
-          } else if (auth && typeof (auth as any).login === 'function') {
-            (auth as any).login(user);
-          } else {
-            console.warn('No auth setter found to store OAuth user');
-          }
-        } catch (e) {
-          console.warn('Failed to store OAuth user in auth context', e);
-        }
+        setUser(user);
 
-        toast.success( `Welcome ${user.fullName}!` );
+        toast.success(`Welcome ${user.fullName}!`);
 
-        //Handle role selection for new OAuth users
-        if (isNewUser && user.oauthPendingRoleSelection) {
-          // Navigate to role selection page
-          navigate('/select-role', { replace: true });
+        if (isNewUser && role === 'artisan') {
+          navigate('/setup-profile', { replace: true });
           return;
         }
 
-        // Normal redirect
         navigate(redirect, { replace: true });
 
       } catch (err: any) {
         console.error('OAuth Callback error:', err);
-        setError(err.message || 'Authentication failed');
-        toast.error('Authentication failed. Please try again.');
-        setTimeout(() => navigate('/login', { replace: true }), 3000); // Redirect to login after 5 seconds
+        setError(err.response?.data?.error?.message || err.message || 'Authentication failed');
+        toast.error('Authentication failed');
+        setTimeout(() => navigate('/login', { replace: true }), 3000);
       }
     };
 
     handleOAuthCallback();
-  }, [searchParams, navigate, auth]);
+  }, [searchParams, navigate, setUser]);
 
   if (error) {
     return (
@@ -109,4 +79,3 @@ export default function OAuthCallbackPage() {
     </div>
   );
 }
-
