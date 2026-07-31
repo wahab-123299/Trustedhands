@@ -15,7 +15,6 @@ const log = (...args) => {
 
 // ==========================================
 // FIXED: Unified JWT env var names
-// Now matches authMiddleware.js exactly
 // ==========================================
 const generateTokens = (userId) => {
   log('[JWT] Using secret:', process.env.JWT_SECRET?.substring(0, 10) + '...');
@@ -149,10 +148,8 @@ exports.register = [
         bankDetails
       } = req.body;
 
-      // Normalize phone number
       const normalizedPhone = phone.replace(/^\+234/, '0').replace(/\s/g, '');
 
-      // Check if user exists
       const existingUser = await User.findOne({
         $or: [
           { email: email.toLowerCase() },
@@ -167,7 +164,6 @@ exports.register = [
         throw new AppError('USER_PHONE_EXISTS', 'This phone number is already registered.');
       }
 
-      // Convert coordinates to GeoJSON
       let locationData = {
         state: location.state,
         city: location.city,
@@ -184,7 +180,6 @@ exports.register = [
         };
       }
 
-      // Create user
       const user = await User.create({
         email: email.toLowerCase(),
         password,
@@ -195,7 +190,6 @@ exports.register = [
         profileImage: profileImage || '/default-avatar.png'
       });
 
-      // Create artisan profile
       if (role === 'artisan') {
         if (!skills || !Array.isArray(skills) || skills.length === 0) {
           throw new AppError('VALIDATION_ERROR', 'At least one skill is required for artisans.');
@@ -234,7 +228,6 @@ exports.register = [
           bankDetails: bankDetails || {}
         });
 
-        // Create wallet
         const wallet = await Wallet.create({
           artisanId: user._id,
           bankDetails: bankDetails || {}
@@ -244,7 +237,6 @@ exports.register = [
         await artisanProfile.save();
       }
 
-      // Generate verification token
       const verificationToken = crypto.randomBytes(32).toString('hex');
       const hashedVerificationToken = crypto
         .createHash('sha256')
@@ -255,7 +247,6 @@ exports.register = [
       user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
       await user.save();
 
-      // Send email
       try {
         const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
         await sendEmail({
@@ -291,7 +282,6 @@ exports.register = [
         console.error('Failed to send verification email:', emailError);
       }
 
-      // Generate tokens
       const { accessToken, refreshToken } = generateTokens(user._id);
       await user.addRefreshToken(refreshToken, req.headers['user-agent']?.substring(0, 100) || 'unknown');
 
@@ -302,7 +292,6 @@ exports.register = [
         unreadNotifications = 0;
       }
 
-      // Set cookies
       res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
       res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
@@ -328,49 +317,56 @@ exports.register = [
 ];
 
 // ==========================================
-// LOGIN
+// LOGIN — FIXED: Uses console.log for production visibility
 // ==========================================
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    log('=== LOGIN DEBUG ===');
-    log('Email received:', email);
-    log('Password length:', password?.length);
-    log('Database connected:', mongoose.connection.readyState === 1);
-    log('Database name:', mongoose.connection.name);
+    // FORCE production logging for login diagnostics
+    console.log('=== LOGIN DEBUG ===');
+    console.log('Email received:', email);
+    console.log('Password length:', password?.length);
+    console.log('Database connected:', mongoose.connection.readyState === 1);
+    console.log('Database name:', mongoose.connection.name);
 
     if (!email || !password) {
+      console.log('LOGIN REJECTED: Missing email or password');
       throw new AppError('VALIDATION_ERROR', 'Please provide email and password.');
     }
 
     const user = await User.findByEmailWithPassword(email.toLowerCase());
 
-    log('User found:', !!user);
+    console.log('User found:', !!user);
 
     if (!user) {
-      log('User not found in database for email:', email.toLowerCase());
-      log('Total users in DB:', await User.countDocuments());
+      console.log('LOGIN REJECTED: User not found for email:', email.toLowerCase());
+      console.log('Total users in DB:', await User.countDocuments());
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
 
-    log('User ID:', user._id);
-    log('User email:', user.email);
-    log('User role:', user.role);
-    log('Stored password exists:', !!user.password);
-    log('Stored password type:', typeof user.password);
-    log('Stored password length:', user.password?.length);
+    console.log('User ID:', user._id.toString());
+    console.log('User email:', user.email);
+    console.log('User role:', user.role);
+    console.log('User authProvider:', user.authProvider);
+    console.log('Has googleId:', !!user.googleId);
+    console.log('Has facebookId:', !!user.facebookId);
+    console.log('Stored password exists:', !!user.password);
+    console.log('Stored password type:', typeof user.password);
+    console.log('Stored password length:', user.password?.length);
+    console.log('Password is bcrypt hash:', user.password?.startsWith('$2'));
 
     if (!user.isActive) {
+      console.log('LOGIN REJECTED: Account deactivated');
       throw new AppError('AUTH_UNAUTHORIZED', 'Your account has been deactivated.');
     }
 
     const isPasswordValid = await user.comparePassword(password);
-    log('Password validation result:', isPasswordValid);
+    console.log('Password validation result:', isPasswordValid);
 
     if (!isPasswordValid) {
-      log('Password mismatch - rejecting login');
+      console.log('LOGIN REJECTED: Password mismatch');
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
 
@@ -392,25 +388,7 @@ exports.login = async (req, res, next) => {
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
-    // Login notification (security alert)
-    try {
-      const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-      const device = req.headers['user-agent']?.substring(0, 100) || 'unknown device';
-
-      await NotificationService.send({
-        user: user,
-        type: 'login_alert',
-        title: 'New Login Detected',
-        message: `A new login was detected from ${device} at ${ip}. If this wasn't you, change your password immediately.`,
-        data: { ip, device, time: new Date() },
-        channels: ['in_app'],
-      });
-    } catch (e) {
-      console.error('[login] Login notification failed:', e.message);
-    }
-
-    log('[Login] SUCCESS for user:', user.email);
-    log('===================');
+    console.log('LOGIN SUCCESS for user:', user.email);
 
     res.json({
       success: true,
@@ -424,7 +402,7 @@ exports.login = async (req, res, next) => {
       }
     });
   } catch (error) {
-    log('===================');
+    console.log('LOGIN ERROR:', error.message);
     next(error);
   }
 };
@@ -482,12 +460,10 @@ exports.logout = async (req, res, next) => {
     const accessToken = req.token || req.cookies.accessToken;
 
     if (req.user?._id) {
-      // Remove refresh token
       await User.findByIdAndUpdate(req.user._id, {
         $pull: { refreshTokens: { token: refreshToken } }
       });
 
-      // Blacklist access token in DB
       if (accessToken) {
         await User.findByIdAndUpdate(req.user._id, {
           $push: { 
@@ -726,7 +702,6 @@ exports.forgotPassword = async (req, res, next) => {
     await user.save();
 
     try {
-      // FIXED: Use path param format to match frontend route
       const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
       await sendEmail({
         to: user.email,
@@ -818,12 +793,10 @@ exports.resetPassword = async (req, res, next) => {
 };
 
 // ==========================================
-// DEPRECATED: OAuth callback in authController
-// Use oauthController.js instead (mounted in authRoutes.js)
-// Kept for backward compat but should be removed after migration
+// DEPRECATED
 // ==========================================
 exports.oauthCallback = async (req, res) => {
-  console.warn('[DEPRECATED] authController.oauthCallback is deprecated. Use oauthController instead.');
+  console.warn('[DEPRECATED] authController.oauthCallback is deprecated.');
   res.redirect(`${process.env.FRONTEND_URL}/login?error=deprecated_oauth`);
 };
 

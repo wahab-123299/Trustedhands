@@ -60,7 +60,7 @@ router.get('/oauth-exchange', exchangeOAuthState);
 // ==========================================
 
 router.get('/google', googleAuth);
-router.get('/google/callback', ...googleCallback);
+router.get('/google/callback', googleCallback);
 
 // ==========================================
 // FACEBOOK OAUTH ROUTES
@@ -68,6 +68,6 @@ router.get('/google/callback', ...googleCallback);
 
 
 router.get('/facebook', facebookAuth);
-router.get('/facebook/callback', blockFacebookCrawler, ...facebookCallback);
+router.get('/facebook/callback', blockFacebookCrawler, facebookCallback);
 
 module.exports = router;

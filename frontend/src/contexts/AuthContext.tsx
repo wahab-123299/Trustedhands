@@ -183,10 +183,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return null;
   }, []);
 
-  // ==========================================
-  // FIXED: initAuth — Always try /auth/me even without stored token
-  // HttpOnly cookie may be present even if localStorage is empty
-  // ==========================================
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
@@ -201,7 +197,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const token = getToken();
         addLog(`[Init] Stored token: ${token ? 'YES' : 'NO'}`);
 
-        // FIXED: Always try /auth/me — the HttpOnly cookie might be valid
         addLog('[Init] Calling /auth/me...');
         const response = await userApi.getMe();
 
@@ -276,6 +271,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return err?.message || 'Login failed. Please try again.';
   }, []);
 
+  // ==========================================
+  // FIXED: login — reads response.data.data || response.data
+  // ==========================================
   const login = useCallback(async (email: string, password: string, rememberMe: boolean = true) => {
     try {
       isLoggingIn.current = true;
@@ -283,9 +281,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       addLog(`[Login] ${email}`);
 
       const response = await authApi.login({ email, password });
-      const res = response.data;
+      const res = response.data.data || response.data;
       const user = res.user;
-      const accessToken = res.token || res.accessToken;
+      const accessToken = res.accessToken || (res as any).token;
       const dashboardRoute = res.dashboardRoute || '/';
 
       if (!accessToken) throw new Error('No access token received');
@@ -324,15 +322,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [connectSocket, navigate, location.state, storeToken, extractErrorMessage, extractArtisanFromResponse]);
 
+  // ==========================================
+  // FIXED: register — reads response.data.data || response.data
+  // ==========================================
   const register = useCallback(async (data: RegisterData, rememberMe: boolean = true) => {
     try {
       isLoggingIn.current = true;
       setState((prev) => ({ ...prev, isLoading: true }));
 
       const response = await authApi.register(data);
-      const res = response.data;
+      const res = response.data.data || response.data;
       const user = res.user;
-      const accessToken = res.accessToken;
+      const accessToken = res.accessToken || (res as any).token;
       const dashboardRoute = res.dashboardRoute || '/';
 
       if (!accessToken) throw new Error('No access token received');
@@ -363,9 +364,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     toast.success("Logged out successfully");
   }, [disconnectSocket, navigate, clearTokens]);
 
-  // ==========================================
-  // NEW: setUser — for OAuth cookie-based auth
-  // ==========================================
   const setUser = useCallback((user: User) => {
     addLog(`[Auth] setUser: ${user.email}`);
     localStorage.setItem('user', JSON.stringify(user));

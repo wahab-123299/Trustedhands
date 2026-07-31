@@ -100,9 +100,13 @@ const authMiddleware = {
       }
 
       // 2. Check cookies as fallback
-      if (!token && req.cookies?.token) {
-        token = req.cookies.token;
+      if (!token) {
+        token = req.cookies?.accessToken || req.cookies?.token || req.cookies?.auth_token;
       }
+
+      console.log('[AUTH] Cookie names found:', req.cookies ? Object.keys(req.cookies) : 'none');
+      console.log('[AUTH] Token resolved:', !!token);
+
 
       if (!token) {
         return res.status(401).json({
