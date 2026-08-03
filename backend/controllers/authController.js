@@ -317,7 +317,7 @@ exports.register = [
 ];
 
 // ==========================================
-// LOGIN — FIXED: Uses console.log for production visibility
+// LOGIN — FIXED: Better diagnostics + OAuth detection
 // ==========================================
 
 exports.login = async (req, res, next) => {
@@ -336,15 +336,34 @@ exports.login = async (req, res, next) => {
       throw new AppError('VALIDATION_ERROR', 'Please provide email and password.');
     }
 
-    const user = await User.findByEmailWithPassword(email.toLowerCase());
+    // FIXED: Also check if user exists WITHOUT password to detect OAuth users
+    const userWithPassword = await User.findByEmailWithPassword(email.toLowerCase());
+    const userNoPassword = await User.findOne({ email: email.toLowerCase() });
 
-    console.log('User found:', !!user);
+    console.log('User found (with password query):', !!userWithPassword);
+    console.log('User found (any):', !!userNoPassword);
 
-    if (!user) {
+    if (!userWithPassword && !userNoPassword) {
       console.log('LOGIN REJECTED: User not found for email:', email.toLowerCase());
       console.log('Total users in DB:', await User.countDocuments());
+      
+      // DEBUG: List first 10 emails in DB to verify DB connection
+      const allUsers = await User.find({}, 'email authProvider').limit(10).lean();
+      console.log('All emails in current DB:', allUsers.map(u => `${u.email} (${u.authProvider})`));
+      
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email or password is incorrect.');
     }
+
+    // FIXED: If user exists but has no password, they signed up via OAuth
+    if (!userWithPassword && userNoPassword) {
+      console.log('LOGIN REJECTED: OAuth user trying password login. Provider:', userNoPassword.authProvider);
+      throw new AppError(
+        'AUTH_OAUTH_USER', 
+        `This account was created with ${userNoPassword.authProvider}. Please use ${userNoPassword.authProvider} to log in, or use "Forgot Password" to set a password.`
+      );
+    }
+
+    const user = userWithPassword;
 
     console.log('User ID:', user._id.toString());
     console.log('User email:', user.email);
@@ -416,7 +435,11 @@ exports.getMe = async (req, res, next) => {
     log('=== [AUTH /ME] START ===');
     log('req.user:', req.user);
 
-    const userId = req.user._id || req.user.userId || req.user.id;
+    const userId = req.user?._id || req.user?.userId || req.user?.id;
+    if (!userId) {
+      throw new AppError('AUTH_UNAUTHORIZED', 'Invalid token payload');
+    }
+    
     log('[AUTH /ME] Looking up user:', userId);
 
     const user = await User.findById(userId).select('-password');
