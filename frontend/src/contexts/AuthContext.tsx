@@ -271,9 +271,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return err?.message || 'Login failed. Please try again.';
   }, []);
 
-  // ==========================================
-  // FIXED: login — reads response.data.data || response.data
-  // ==========================================
   const login = useCallback(async (email: string, password: string, rememberMe: boolean = true) => {
     try {
       isLoggingIn.current = true;
@@ -322,9 +319,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [connectSocket, navigate, location.state, storeToken, extractErrorMessage, extractArtisanFromResponse]);
 
-  // ==========================================
-  // FIXED: register — reads response.data.data || response.data
-  // ==========================================
   const register = useCallback(async (data: RegisterData, rememberMe: boolean = true) => {
     try {
       isLoggingIn.current = true;
@@ -378,13 +372,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     connectSocket(user._id, '');
   }, [connectSocket]);
 
+  // FIXED: now calls storeToken so the access token is persisted to
+  // localStorage/sessionStorage — previously it only lived in React
+  // state, so api.ts's request interceptor (which reads exclusively
+  // from storage) never found it, and every request right after an
+  // OAuth login went out with no Authorization header and got a 401.
   const updateUserFromOAuth = useCallback((user: User, token: string) => {
     addLog(`[OAuth] updateUserFromOAuth: ${user.email}`);
+    storeToken(token, true);
     localStorage.setItem('rememberMe', 'true');
     localStorage.setItem('user', JSON.stringify(user));
     setState({ user, token, artisanProfile: null, isAuthenticated: true, isLoading: false, isInitialized: true });
     connectSocket(user._id, token);
-  }, [connectSocket]);
+  }, [connectSocket, storeToken]);
 
   const refreshUser = useCallback(async () => {
     try {
