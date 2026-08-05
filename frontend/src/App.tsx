@@ -35,7 +35,7 @@ import Safety from '@/pages/Safety';
 import TermsOfService from '@/pages/TermsOfService';
 import PrivacyPolicy from '@/pages/PrivacyPolicy';
 
-// NEW: Dynamic Press Pages (FIXED: Added lazy imports)
+// NEW: Dynamic Press Pages
 const PressPage = lazy(() => import('@/pages/PressPage'));
 const PressArticlePage = lazy(() => import('@/pages/PressArticlePage'));
 const CreatePressArticle = lazy(() => import('@/pages/admin/CreatePressArticle'));
@@ -76,7 +76,6 @@ import NotFoundPage from '@/pages/NotFoundPage';
 // Auth Components
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import RoleRoute from '@/components/auth/RoleRoute';
-// TypeScript can't find declaration for this JS module — ignore the error for now
 // @ts-ignore
 import { TierGate } from '@/components/auth/TierGate';
 
@@ -94,14 +93,14 @@ const PageLoader = () => (
 );
 
 // ==========================================
-// REDIRECT HELPERS — FIXED: Added admin branch
+// REDIRECT HELPERS
 // ==========================================
 
 function NavigateToMessages() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'admin') return <Navigate to="/admin/messages" replace />;
-  return user.role === 'artisan' 
+  return user.role === 'artisan'
     ? <Navigate to="/artisan/messages" replace />
     : <Navigate to="/customer/messages" replace />;
 }
@@ -110,7 +109,7 @@ function NavigateToDashboard() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
-  return user.role === 'artisan' 
+  return user.role === 'artisan'
     ? <Navigate to="/artisan/dashboard" replace />
     : <Navigate to="/customer/dashboard" replace />;
 }
@@ -119,7 +118,7 @@ function NavigateToProfile() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'admin') return <Navigate to="/admin/profile" replace />;
-  return user.role === 'artisan' 
+  return user.role === 'artisan'
     ? <Navigate to="/artisan/profile" replace />
     : <Navigate to="/customer/profile" replace />;
 }
@@ -163,8 +162,15 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/auth/success" element={<AuthSuccessPage />} />
+
+                {/* FIXED: backend redirects OAuth users to /auth/callback —
+                    that exact path was missing before, causing OAuth
+                    logins to silently fall through to the 404 page.
+                    Aliases kept in case other links use them. */}
+                <Route path="/auth/callback" element={<OAuthCallback />} />
                 <Route path="/auth-callback" element={<OAuthCallback />} />
                 <Route path="/oauth-callback" element={<OAuthCallback />} />
+
                 <Route path="/book/:artisanId" element={<BookArtisan />} />
                 <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -174,15 +180,12 @@ function App() {
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:id" element={<JobDetailsPage />} />
 
-                {/* FIXED: Dynamic press pages (replaced static Press with dynamic) */}
                 <Route path="/press" element={<PressPage />} />
                 <Route path="/press/:slug" element={<PressArticlePage />} />
 
-                {/* NEW STATIC PAGES */}
                 <Route path="/about" element={<AboutUs />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/careers" element={<Careers />} />
-                {/* <Route path="/press" element={<Press />} /> */} {/* REMOVED: Replaced by dynamic PressPage */}
                 <Route path="/help" element={<HelpCenter />} />
                 <Route path="/safety" element={<Safety />} />
                 <Route path="/terms" element={<TermsOfService />} />
@@ -232,16 +235,12 @@ function App() {
               </Route>
 
               {/* ==========================================
-                  ADMIN ROUTES — FIXED: Nested under AdminDashboard with Outlet
+                  ADMIN ROUTES
                   ========================================== */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<RoleRoute allowedRoles={['admin']} />}>
-                  {/* AdminDashboard is the layout with <Outlet /> */}
                   <Route path="/admin" element={<AdminDashboard />}>
-                    {/* Index: /admin → redirect to /admin/dashboard */}
                     <Route index element={<Navigate to="dashboard" replace />} />
-
-                    {/* Child routes render in AdminDashboard's <Outlet /> */}
                     <Route path="dashboard" element={<AdminStats />} />
                     <Route path="users" element={<AdminUsers />} />
                     <Route path="verifications" element={<AdminVerifications />} />

@@ -5,51 +5,55 @@ import { api } from '@/services/api';
 import { toast } from 'sonner';
 import { Loader2, AlertCircle } from 'lucide-react';
 
-export default function OAuthCallbackPage() {
+export default function OAuthCallback() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { setUser } = useAuth();
+  const { updateUserFromOAuth } = useAuth();
 
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
       try {
         const state = searchParams.get('state');
-        const redirect = searchParams.get('redirect') || '/customer/dashboard';
 
         if (!state) {
           throw new Error('Missing state parameter');
         }
 
         const response = await api.get(`/auth/oauth-exchange?state=${state}`);
-        const { user, isNewUser, role } = response.data.data;
+        // Backend returns: { user, accessToken, refreshToken, unreadMessageCount, dashboardRoute }
+        const { user, accessToken, dashboardRoute } = response.data.data;
 
-        if (!user) {
+        if (!user || !accessToken) {
           throw new Error('Failed to retrieve user information');
         }
 
-        setUser(user);
+        // Stores the token and connects the socket — setUser alone does not.
+        updateUserFromOAuth(user, accessToken);
 
         toast.success(`Welcome ${user.fullName}!`);
 
-        if (isNewUser && role === 'artisan') {
+        if (user.oauthPendingRoleSelection || (user.role === 'artisan' && !user.hasProfile)) {
           navigate('/setup-profile', { replace: true });
           return;
         }
 
-        navigate(redirect, { replace: true });
+        navigate(dashboardRoute || '/', { replace: true });
 
-      } catch (err: any) {
+      } catch (err) {
         console.error('OAuth Callback error:', err);
-        setError(err.response?.data?.error?.message || err.message || 'Authentication failed');
+        const errorMessage = typeof err === 'object' && err !== null
+          ? (err as any)?.response?.data?.error?.message || (err as any)?.message
+          : undefined;
+        setError(errorMessage || 'Authentication failed');
         toast.error('Authentication failed');
         setTimeout(() => navigate('/login', { replace: true }), 3000);
       }
     };
 
     handleOAuthCallback();
-  }, [searchParams, navigate, setUser]);
+  }, [searchParams, navigate, updateUserFromOAuth]);
 
   if (error) {
     return (
