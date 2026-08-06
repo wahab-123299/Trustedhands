@@ -1,23 +1,35 @@
 require('dotenv').config();
 
 const nodemailer = require('nodemailer');
-const urls = require('./frontendUrls'); // FIXED: Centralized URL builder
+const urls = require('./frontendUrls');
 
+// ==========================================
+// BREVO SMTP CONFIG — Works on Render, Heroku, etc.
+// ==========================================
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
   port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_SECURE === 'true',
+  secure: process.env.SMTP_SECURE === 'true', // false for 587
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  tls: {
+    rejectUnauthorized: false, // REQUIRED for cloud servers
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 15000,
 });
 
 transporter.verify((error) => {
   if (error) {
-    console.error('[Email] Gmail SMTP connection failed:', error.message);
+    console.error('[Email] ❌ SMTP connection failed:', error.message);
+    if (error.code === 'ETIMEDOUT') {
+      console.error('[Email] 💡 TIP: Check your Brevo SMTP credentials and verify sender email.');
+    }
   } else {
-    console.log('[Email] Gmail SMTP ready');
+    console.log('[Email] ✅ Brevo SMTP ready');
   }
 });
 
@@ -27,21 +39,24 @@ const FROM_NAME = process.env.FROM_NAME || 'TrustedHand';
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
     const info = await transporter.sendMail({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
       to,
       subject,
       html,
       text: text || html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
     });
 
-    console.log(`[Email] Sent to ${to}: ${subject} (ID: ${info.messageId})`);
+    console.log(`[Email] ✅ Sent to ${to}: ${subject} (ID: ${info.messageId})`);
     return { success: true, id: info.messageId };
   } catch (err) {
-    console.error('[Email] Send failed:', err.message);
+    console.error('[Email] ❌ Send failed:', err.message);
     return { success: false, error: err.message };
   }
 };
 
+// ==========================================
+// EMAIL TEMPLATES (unchanged)
+// ==========================================
 const emailTemplates = {
   welcome: (data) => ({
     subject: `Welcome to TrustedHand, ${data.name}!`,
@@ -164,7 +179,6 @@ const emailService = {
   },
 
   sendPasswordReset: async (user, resetToken) => {
-    // FIXED: Path param format (matches frontend route /reset-password/:token)
     const resetUrl = urls.auth.resetPassword(resetToken);
     const template = emailTemplates.forgotPassword({
       name: user.fullName || user.name || 'there',
@@ -197,7 +211,6 @@ const emailService = {
       jobTitle: job.title,
       proposedRate: application.proposedRate,
       coverLetter: application.coverLetter,
-      // FIXED: No /applications sub-route exists; link to job detail page
       applicationUrl: urls.customer.jobs(job._id),
     });
     return sendEmail({ to: customer.email, ...template });
@@ -225,7 +238,6 @@ const emailService = {
       reference: transaction.reference,
       date: new Date(transaction.createdAt).toLocaleDateString('en-NG'),
       status: transaction.status,
-      // FIXED: Link to wallet instead of non-existent /payments/:id
       receiptUrl: user.role === 'artisan' ? urls.artisan.wallet : urls.customer.wallet,
     });
     return sendEmail({ to: user.email, ...template });
@@ -237,7 +249,6 @@ const emailService = {
       name: user.fullName || user.name,
       status,
       reason,
-      // FIXED: Link to actual verification page
       profileUrl: role === 'artisan' ? urls.artisan.verification : urls.customer.verification,
     });
     return sendEmail({ to: user.email, ...template });
