@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/authMiddleware');
+const emailService = require('../utils/emailService');
 
 // Local auth controllers
 const {
@@ -35,6 +36,29 @@ const blockFacebookCrawler = (req, res, next) => {
   }
   next();
 };
+
+
+// ==========================================
+// TEMPORARY: TEST EMAIL ROUTE — REMOVE AFTER CONFIRMING IT WORKS
+// ==========================================
+router.get('/test-email', async (req, res) => {
+  try {
+    const result = await emailService.sendEmail({
+      to: 'trusted100@gmail.com',
+      subject: 'TrustedHand Brevo Test',
+      html: '<h1 style="color:#10B981;">If you see this, Brevo emails are working!</h1>'
+    });
+    
+    if (result.success) {
+      res.json({ success: true, message: 'Test email sent to trusted100@gmail.com', id: result.id });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (err) {
+    console.error('[Test Email]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ==========================================
 // LOCAL AUTH ROUTES
