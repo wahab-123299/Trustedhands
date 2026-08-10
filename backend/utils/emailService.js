@@ -8,7 +8,7 @@ const urls = require('./frontendUrls');
 // ==========================================
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
+  port: parseInt(process.env.SMTP_PORT) || 2525,
   secure: process.env.SMTP_SECURE === 'true', // false for 587
   auth: {
     user: process.env.SMTP_USER,
