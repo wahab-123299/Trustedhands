@@ -14,7 +14,39 @@ import { useAuth } from '../contexts/AuthContext';
 // SOCKET CONTEXT
 // ==========================================
 
-const SocketContext = createContext(null);
+type SocketContextType = {
+  isConnected: boolean;
+  connectionError: string | null;
+  onlineUsers: Set<string>;
+  typingUsers: Map<string, Array<{
+    userId: string;
+    userName: string;
+    conversationId: string;
+    timestamp: number;
+  }>>;
+  joinConversation: (conversationId: string) => Promise<void>;
+  leaveConversation: (conversationId: string) => void;
+  sendMessage: (data: {
+    conversationId: string;
+    receiverId: string;
+    content: string;
+    attachments?: any[];
+    clientMessageId?: string;
+  }) => Promise<void>;
+  sendTyping: (conversationId: string, isTyping: boolean) => void;
+  markAsRead: (messageId: string, conversationId: string) => void;
+  markConversationRead: (conversationId: string) => void;
+  getOnlineStatus: (userId: string) => Promise<{ isOnline: boolean; lastSeen?: Date }>;
+  unreadCount: number;
+  conversationUnread: Map<string, number>;
+  messages: Map<string, any[]>;
+  setConversationMessages: (conversationId: string, newMessages: any[]) => void;
+  addMessage: (conversationId: string, message: any) => void;
+  updateMessage: (conversationId: string, messageId: string, updates: any) => void;
+  updateMessageStatus: (messageId: string, status: string, data?: any) => void;
+};
+
+const SocketContext = createContext<SocketContextType | null>(null);
 
 type SocketProviderProps = {
   children: React.ReactNode;
@@ -26,16 +58,24 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
 
   // State
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionError, setConnectionError] = useState(null);
-  const [onlineUsers, setOnlineUsers] = useState(new Set());
-  const [typingUsers, setTypingUsers] = useState(new Map());
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [typingUsers, setTypingUsers] = useState<
+    Map<string, Array<{
+      userId: string;
+      userName: string;
+      conversationId: string;
+      timestamp: number;
+    }>>
+  >(new Map());
   const [unreadCount, setUnreadCount] = useState(0);
-  const [conversationUnread, setConversationUnread] = useState(new Map());
-  const [messages, setMessages] = useState(new Map());
+  const [conversationUnread, setConversationUnread] = useState<Map<string, number>>(new Map());
+  const [messages, setMessages] = useState<Map<string, any[]>>(new Map());
 
   // Refs
   const joinedConversations = useRef(new Set());
-  const pendingMessages = useRef(new Map());
+  // pendingMessages stores promise resolvers for sent messages.
+  const pendingMessages = useRef<Map<string, (value?: any) => void>>(new Map());
   const typingTimeouts = useRef(new Map());
 
   // ==========================================
@@ -60,12 +100,12 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       });
     };
 
-    const handleDisconnect = (reason) => {
+    const handleDisconnect = (reason?: string) => {
       console.log('❌ SocketContext: Socket disconnected:', reason);
       setIsConnected(false);
     };
 
-    const handleConnectError = (error) => {
+    const handleConnectError = (error: any) => {
       console.error('SocketContext: Connection error:', error?.message);
       setIsConnected(false);
       setConnectionError(error?.message || 'Unknown error');
@@ -96,13 +136,19 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   useEffect(() => {
     if (!socket || !isAuthenticated) return;
 
-    const handleReceiveMessage = (data) => {
+    const handleReceiveMessage = (data: {
+      message: any;
+      conversationId: string;
+      clientMessageId?: string;
+    }) => {
       const { message, conversationId, clientMessageId } = data;
 
       // Resolve pending promise if exists
       if (clientMessageId && pendingMessages.current.has(clientMessageId)) {
         const resolve = pendingMessages.current.get(clientMessageId);
-        resolve();
+        if (typeof resolve === 'function') {
+          resolve();
+        }
         pendingMessages.current.delete(clientMessageId);
       }
 
@@ -137,12 +183,18 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       }
     };
 
-    const handleMessageSent = (data) => {
+    const handleMessageSent = (data: {
+      message: any;
+      conversationId: string;
+      clientMessageId?: string;
+    }) => {
       const { message, conversationId, clientMessageId } = data;
 
       if (clientMessageId && pendingMessages.current.has(clientMessageId)) {
         const resolve = pendingMessages.current.get(clientMessageId);
-        resolve();
+        if (resolve) {
+          resolve();
+        }
         pendingMessages.current.delete(clientMessageId);
       }
 
@@ -151,7 +203,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
         const conversationMessages = newMessages.get(conversationId) || [];
 
         const index = conversationMessages.findIndex(
-          (m) =>
+          (m: any) =>
             m._id === clientMessageId ||
             m._id?.toString().startsWith('temp_') ||
             (m.content === message.content &&
@@ -165,7 +217,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
             deliveryStatus: 'sent',
           };
         } else if (
-          !conversationMessages.find((m) => m._id === message._id)
+          !conversationMessages.find((m: any) => m._id === message._id)
         ) {
           conversationMessages.push(message);
         }
@@ -175,14 +227,20 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       });
     };
 
-    const handleMessageStatus = (data) => {
+    const handleMessageStatus = (data: {
+      conversationId: string;
+      messageId: string;
+      status: string;
+      readAt?: string;
+      deliveredAt?: string;
+    }) => {
       setMessages((prev) => {
         const newMessages = new Map(prev);
         const conversationMessages = newMessages.get(data.conversationId);
 
         if (conversationMessages) {
           const message = conversationMessages.find(
-            (m) => m._id === data.messageId
+            (m: any) => m._id === data.messageId
           );
           if (message) {
             message.deliveryStatus = data.status;
@@ -201,13 +259,16 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       });
     };
 
-    const handleMessagesRead = (data) => {
+    const handleMessagesRead = (data: {
+      conversationId: string;
+      readAt?: string;
+    }) => {
       setMessages((prev) => {
         const newMessages = new Map(prev);
         const conversationMessages = newMessages.get(data.conversationId);
 
         if (conversationMessages) {
-          conversationMessages.forEach((msg) => {
+          conversationMessages.forEach((msg: any) => {
             const senderId =
               typeof msg.senderId === 'string'
                 ? msg.senderId
@@ -224,13 +285,18 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       });
     };
 
-    const handleUserTyping = (data) => {
+    const handleUserTyping = (data: {
+      conversationId: string;
+      userId: string;
+      userName: string;
+      isTyping: boolean;
+    }) => {
       setTypingUsers((prev) => {
         const newTyping = new Map(prev);
         const conversationTyping = newTyping.get(data.conversationId) || [];
 
         if (data.isTyping) {
-          if (!conversationTyping.find((t) => t.userId === data.userId)) {
+          if (!conversationTyping.find((t: { userId: string; userName: string; conversationId: string; timestamp: number }) => t.userId === data.userId)) {
             conversationTyping.push({
               userId: data.userId,
               userName: data.userName,
@@ -240,7 +306,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
           }
         } else {
           const index = conversationTyping.findIndex(
-            (t) => t.userId === data.userId
+            (t: { userId: string }) => t.userId === data.userId
           );
           if (index >= 0) conversationTyping.splice(index, 1);
         }
@@ -261,7 +327,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
             const conversationTyping =
               newTyping.get(data.conversationId) || [];
             const index = conversationTyping.findIndex(
-              (t) => t.userId === data.userId
+              (t: { userId: string }) => t.userId === data.userId
             );
             if (index >= 0) {
               conversationTyping.splice(index, 1);
@@ -275,14 +341,17 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       }
     };
 
-    const handleUnreadCount = (data) => {
+    const handleUnreadCount = (data: {
+      count: number;
+      conversations?: Record<string, number>;
+    }) => {
       setUnreadCount(data.count);
       if (data.conversations) {
         setConversationUnread(new Map(Object.entries(data.conversations)));
       }
     };
 
-    const handleUserOffline = (data) => {
+    const handleUserOffline = (data: { userId: string }) => {
       setOnlineUsers((prev) => {
         const newSet = new Set(prev);
         newSet.delete(data.userId);
@@ -290,7 +359,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       });
     };
 
-    const handleUserJoined = (data) => {
+    const handleUserJoined = (data: { userId: string }) => {
       setOnlineUsers((prev) => {
         const newSet = new Set(prev);
         newSet.add(data.userId);
@@ -298,7 +367,10 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       });
     };
 
-    const handleNotification = (data) => {
+    const handleNotification = (data: {
+      type: string;
+      message?: string;
+    }) => {
       switch (data.type) {
         case 'new_message':
           break;
@@ -316,7 +388,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       }
     };
 
-    const handleError = (data) => {
+    const handleError = (data: { message?: string }) => {
       console.error('Socket error:', data);
       if (!data.message?.includes('AUTH_TOKEN_REQUIRED')) {
         toast.error(data.message || 'An error occurred');
@@ -358,14 +430,14 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   // INTERNAL HELPERS
   // ==========================================
 
-  const addMessageInternal = useCallback((conversationId, message) => {
+  const addMessageInternal = useCallback((conversationId: string, message: any) => {
     setMessages((prev) => {
       const newMessages = new Map(prev);
       const conversationMessages = newMessages.get(conversationId) || [];
 
-      if (!conversationMessages.find((m) => m._id === message._id)) {
+      if (!conversationMessages.find((m: any) => m._id === message._id)) {
         const insertIndex = conversationMessages.findIndex(
-          (m) => new Date(m.createdAt) > new Date(message.createdAt)
+          (m: any) => new Date(m.createdAt) > new Date(message.createdAt)
         );
 
         if (insertIndex === -1) {
@@ -386,12 +458,12 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   // ==========================================
 
   const joinConversation = useCallback(
-    async (conversationId) => {
+    async (conversationId: string) => {
       if (!socket || !isConnected) {
         throw new Error('Socket not connected');
       }
 
-      return new Promise((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
         if (joinedConversations.current.has(conversationId)) {
           resolve();
           return;
@@ -401,8 +473,8 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
           reject(new Error('Join conversation timeout'));
         }, 10000);
 
-        const handleJoined = (data) => {
-          if (data.conversationId === conversationId) {
+        const handleJoined = (data: any) => {
+            if (data.conversationId === conversationId) {
             clearTimeout(timeout);
             socket.off('conversation_joined', handleJoined);
             joinedConversations.current.add(conversationId);
@@ -419,7 +491,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const leaveConversation = useCallback(
-    (conversationId) => {
+    (conversationId: string) => {
       if (socket && isConnected) {
         socket.emit('leave_conversation', { conversationId });
         joinedConversations.current.delete(conversationId);
@@ -429,7 +501,13 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const sendMessage = useCallback(
-    async (data) => {
+    async (data: {
+      conversationId: string;
+      receiverId: string;
+      content: string;
+      attachments?: any[];
+      clientMessageId?: string;
+    }): Promise<void> => {
       if (!socket || !isConnected) {
         toast.error('Not connected to chat server');
         throw new Error('Socket not connected');
@@ -455,8 +533,9 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
 
       addMessageInternal(data.conversationId, optimisticMessage);
 
-      return new Promise((resolve, reject) => {
-        pendingMessages.current.set(clientMessageId, resolve);
+      return new Promise<void>((resolve, reject) => {
+        // pendingMessages stores resolvers that may accept an optional value
+        pendingMessages.current.set(clientMessageId, resolve as (value?: any) => void);
 
         const timeout = setTimeout(() => {
           if (pendingMessages.current.has(clientMessageId)) {
@@ -472,7 +551,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
         if (originalResolve) {
           pendingMessages.current.set(clientMessageId, () => {
             clearTimeout(timeout);
-            originalResolve();
+            (originalResolve as () => void)();
           });
         }
 
@@ -483,7 +562,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const sendTyping = useCallback(
-    (conversationId, isTyping) => {
+    (conversationId: string, isTyping: boolean) => {
       if (socket && isConnected) {
         socket.emit('typing', { conversationId, isTyping });
       }
@@ -492,7 +571,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const markAsRead = useCallback(
-    (messageId, conversationId) => {
+    (messageId: string, conversationId: string) => {
       if (socket && isConnected) {
         socket.emit('message_read', { messageId, conversationId });
       }
@@ -501,7 +580,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const markConversationRead = useCallback(
-    (conversationId) => {
+    (conversationId: string) => {
       if (socket && isConnected) {
         socket.emit('mark_conversation_read', { conversationId });
 
@@ -523,25 +602,29 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   );
 
   const getOnlineStatus = useCallback(
-    async (userId) => {
+    async (userId: string) => {
       if (!socket || !isConnected) {
         return { isOnline: false };
       }
 
-      return new Promise((resolve) => {
+      return new Promise<{ isOnline: boolean; lastSeen?: Date }>((resolve) => {
         const timeout = setTimeout(() => {
           resolve({ isOnline: false });
         }, 5000);
 
-        socket.emit('get_online_status', { userId }, (response) => {
-          clearTimeout(timeout);
-          resolve({
-            isOnline: response?.isOnline || false,
-            lastSeen: response?.lastSeen
-              ? new Date(response.lastSeen)
-              : undefined,
-          });
-        });
+        socket.emit(
+          'get_online_status',
+          { userId },
+          (response: { isOnline?: boolean; lastSeen?: string } | undefined) => {
+            clearTimeout(timeout);
+            resolve({
+              isOnline: response?.isOnline || false,
+              lastSeen: response?.lastSeen
+                ? new Date(response.lastSeen)
+                : undefined,
+            });
+          }
+        );
       });
     },
     [socket, isConnected]
@@ -551,7 +634,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   // MESSAGE MANAGEMENT
   // ==========================================
 
-  const setConversationMessages = useCallback((conversationId, newMessages) => {
+  const setConversationMessages = useCallback((conversationId: string, newMessages: any[]) => {
     setMessages((prev) => {
       const newMessagesMap = new Map(prev);
       newMessagesMap.set(conversationId, newMessages);
@@ -560,20 +643,20 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   }, []);
 
   const addMessage = useCallback(
-    (conversationId, message) => {
+    (conversationId: string, message: any) => {
       addMessageInternal(conversationId, message);
     },
     [addMessageInternal]
   );
 
-  const updateMessage = useCallback((conversationId, messageId, updates) => {
+  const updateMessage = useCallback((conversationId: string, messageId: string, updates: any) => {
     setMessages((prev) => {
       const newMessages = new Map(prev);
       const conversationMessages = newMessages.get(conversationId);
 
       if (conversationMessages) {
         const index = conversationMessages.findIndex(
-          (m) => m._id === messageId
+          (m: any) => m._id === messageId
         );
         if (index >= 0) {
           conversationMessages[index] = {
@@ -588,12 +671,12 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     });
   }, []);
 
-  const updateMessageStatus = useCallback((messageId, status, data) => {
+  const updateMessageStatus = useCallback((messageId: string, status: string, data?: any) => {
     setMessages((prev) => {
       const newMessages = new Map(prev);
 
       newMessages.forEach((conversationMessages) => {
-        const message = conversationMessages.find((m) => m._id === messageId);
+        const message = conversationMessages.find((m: any) => m._id === messageId);
         if (message) {
           message.deliveryStatus = status;
           if (status === 'read') {

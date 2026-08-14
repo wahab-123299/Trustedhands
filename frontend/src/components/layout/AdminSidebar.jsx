@@ -7,11 +7,12 @@ import {
   Briefcase, 
   MessageSquare, 
   User,
-  LogOut
+  LogOut,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const AdminSidebar = () => {
+const AdminSidebar = ({ onClose }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,21 +31,37 @@ const AdminSidebar = () => {
     toast.success('Logged out');
   };
 
+  const handleNavigate = (path) => {
+    navigate(path);
+    onClose?.();
+  };
+
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col">
-      <div className="p-6 border-b border-gray-200">
-        <h1 className="text-xl font-bold text-emerald-600">TrustedHand</h1>
-        <p className="text-sm text-gray-500">Admin Panel</p>
+    <aside className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col sticky top-0">
+      {/* Header */}
+      <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-emerald-600">TrustedHand</h1>
+          <p className="text-sm text-gray-500">Admin Panel</p>
+        </div>
+        {onClose && (
+          <button onClick={onClose} className="lg:hidden p-1 hover:bg-gray-100 rounded">
+            <X size={20} />
+          </button>
+        )}
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname === item.path;
+          const isActive = location.pathname === item.path || 
+            (item.path !== '/admin/dashboard' && location.pathname.startsWith(item.path));
+          
           return (
             <button
               key={item.path}
-              onClick={() => navigate(item.path)}
+              onClick={() => handleNavigate(item.path)}
               className={`
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
                 ${isActive 
@@ -60,21 +77,26 @@ const AdminSidebar = () => {
         })}
       </nav>
 
-      <div className="p-4 border-t border-gray-200">
+      {/* User Profile - Fixed at bottom */}
+      <div className="p-4 border-t border-gray-200 bg-white">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
             <span className="text-sm font-medium text-emerald-700">
               {user?.fullName?.[0] || 'A'}
             </span>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user?.fullName}</p>
-            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate leading-tight">
+              {user?.fullName || 'Admin'}
+            </p>
+            <p className="text-xs text-gray-500 truncate leading-tight">
+              {user?.email || ''}
+            </p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
         >
           <LogOut size={16} />
           Logout
