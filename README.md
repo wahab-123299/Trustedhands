@@ -84,7 +84,7 @@ trustedhand/
 │   ├── package.json      # Frontend dependencies
 │   ├── tailwind.config.js # Tailwind configuration
 │   ├── tsconfig.json     # TypeScript configuration
-│   └── vite.config.ts    # Vite configuration
+│   └── onfig.ts    # Vite configuration
 └── README.md
 ```
 

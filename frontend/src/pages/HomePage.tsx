@@ -191,7 +191,7 @@ const HomePage = () => {
               </Button>
             </Link>
           </div>
-    
+
           {isLoading ? (
             <div className="flex justify-center py-12">
               <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -226,33 +226,6 @@ const HomePage = () => {
             </div>
           )}
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredJobs.map((job) => (
-              <Card key={job._id} className="hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <Badge variant="secondary">{job.category}</Badge>
-                    <span className="text-sm text-gray-500">{formatDate(job.createdAt)}</span>
-                  </div>
-                  <h3 className="font-semibold text-lg mb-2">{job.title}</h3>
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">{job.description}</p>
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-                    <MapPin className="w-4 h-4" />
-                    {job.location.city}, {job.location.state}
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="font-bold text-emerald-600">
-                      {formatCurrency(job.budget)}
-                      <span className="text-sm font-normal text-gray-500 ml-1">{job.budgetType}</span>
-                    </div>
-                    <Link to={`/jobs/${job._id}`}>
-                      <Button variant="outline" size="sm">View Details</Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
 
           <div className="mt-6 text-center sm:hidden">
             <Link to="/jobs">
