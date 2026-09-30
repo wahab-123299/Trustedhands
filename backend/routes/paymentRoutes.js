@@ -22,7 +22,19 @@ router.post('/verify-account', paymentController.verifyAccount);
 // ==========================================
 
 // Initialize payment for a JOB (customer only)
-router.post('/initialize', authenticate, authorize('customer'), paymentController.initializePayment);
+router.post(
+  '/initialize',
+  authenticate,
+  authorize('customer'),
+  (req, res, next) => {
+    console.log('✅ PAYMENT INITIALIZE HIT');
+    console.log('User:', req.user?._id);
+    console.log('Role:', req.user?.role);
+    console.log('Body:', req.body);
+    next();
+  },
+  paymentController.initializePayment
+);
 
 // Verify payment by reference (any authenticated user)
 router.get('/verify/:reference', authenticate, paymentController.verifyPayment);
