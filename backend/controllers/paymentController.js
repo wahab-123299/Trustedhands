@@ -1,6 +1,7 @@
 // backend/controllers/paymentController.js
 const axios = require('axios');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const { User, Job, Transaction, Wallet, ArtisanProfile } = require('../models');
 const { AppError } = require('../utils/errorHandler');
 const NotificationService = require('../services/notificationService');
@@ -87,6 +88,124 @@ async function processSuccessfulPayment(transaction, paystackData) {
 
   console.log(`[Payment] Successfully processed: ${txId}`);
   return { alreadyProcessed: false, source: 'fresh' };
+}
+
+/**
+ * Idempotently process a successful wallet deposit
+ * Credits AVAILABLE balance directly (not escrow, not earnings)
+ *
+ * Safety model:
+ *  - Atomic: transaction-success flip + wallet credit run in ONE MongoDB
+ *    transaction when the deployment supports sessions (Atlas M10+ / replica set).
+ *  - Fallback: on deployments WITHOUT transaction support (Atlas M0/M2/M5),
+ *    the credit runs separately; if it fails, the transaction status is
+ *    reverted to 'pending' so a webhook retry can re-credit (at-least-once).
+ *  - No double-credit in either path: the status flip uses an atomic
+ *    findOneAndUpdate guard ({ status: { $nin: ['success','completed'] } }),
+ *    and the in-memory + DB checks short-circuit duplicate webhooks.
+ */
+async function processWalletDeposit(transaction, paystackData) {
+  const txId = transaction._id.toString();
+
+  if (COMPLETED_TRANSACTIONS.has(txId)) {
+    console.log(`[WalletDeposit] Already in memory cache: ${txId}`);
+    return { alreadyProcessed: true };
+  }
+
+  if (transaction.status === 'success' || transaction.status === 'completed') {
+    COMPLETED_TRANSACTIONS.add(txId);
+    return { alreadyProcessed: true };
+  }
+
+  // SECURITY: amount check BEFORE any state change. Never credit on mismatch.
+  const paidAmountNaira = paystackData.amount != null ? paystackData.amount / 100 : null;
+  if (paidAmountNaira === null || Math.abs(paidAmountNaira - transaction.amount) > 1) {
+    const reason = `SECURITY: Amount mismatch - Paystack paid ₦${paidAmountNaira}, expected ₦${transaction.amount}. Wallet NOT credited.`;
+    console.error(`[WalletDeposit] ${reason} Ref: ${transaction.paystackReference}`);
+    await transaction.markAsFailed(reason, 'amount_mismatch');
+    return { alreadyProcessed: false, amountMismatch: true };
+  }
+
+  const txFilter = { _id: transaction._id, status: { $nin: ['success', 'completed'] } };
+  const txUpdate = {
+    status: 'success',
+    paidAt: new Date(paystackData.paid_at || Date.now()),
+    paystackTransactionId: paystackData.id?.toString(),
+    paymentMethod: getPaymentMethod(paystackData.channel) // 'bank' -> 'bank_transfer' (valid enum)
+  };
+  const walletUpdate = {
+    $inc: { balance: transaction.amount },
+    $push: { transactions: { transaction: transaction._id, type: 'credit' } }
+  };
+
+  // ---- Path 1: atomic multi-document transaction (MongoDB replica set / Atlas M10+) ----
+  try {
+    const session = await mongoose.startSession();
+    let outcome;
+    try {
+      await session.withTransaction(async () => {
+        const updatedTx = await Transaction.findOneAndUpdate(txFilter, txUpdate, { new: true, session });
+        if (!updatedTx) {
+          outcome = { alreadyProcessed: true }; // race lost; no writes to commit
+          return;
+        }
+        await Wallet.findOneAndUpdate({ artisanId: transaction.payeeId }, walletUpdate, { upsert: true, session });
+        outcome = { alreadyProcessed: false };
+      }, {
+        readConcern: { level: 'majority' },
+        writeConcern: { w: 'majority' }
+      });
+    } finally {
+      session.endSession();
+    }
+
+    if (outcome.alreadyProcessed) {
+      console.log(`[WalletDeposit] Race condition lost for: ${txId}`);
+      return outcome;
+    }
+
+    COMPLETED_TRANSACTIONS.add(txId);
+    console.log(`[WalletDeposit] Successfully processed (atomic transaction): ${txId}`);
+    return outcome;
+  } catch (err) {
+    if (!isTransactionsUnsupportedError(err)) {
+      throw err; // genuine error (DB down, etc.) - webhook logs it, Paystack may retry
+    }
+    console.warn('[WalletDeposit] MongoDB transactions unsupported on this deployment (e.g. Atlas M0), using compensating fallback.');
+
+    // ---- Path 2: compensating fallback (no session support) ----
+    const updatedTx = await Transaction.findOneAndUpdate(txFilter, txUpdate, { new: true });
+    if (!updatedTx) {
+      console.log(`[WalletDeposit] Race condition lost for: ${txId}`);
+      return { alreadyProcessed: true };
+    }
+
+    try {
+      await Wallet.findOneAndUpdate({ artisanId: transaction.payeeId }, walletUpdate, { upsert: true });
+    } catch (walletErr) {
+      // Credit failed AFTER status flip -> revert so a retry re-credits (no silent loss)
+      await Transaction.findByIdAndUpdate(transaction._id, { status: 'pending' });
+      console.error(`[WalletDeposit] Wallet credit failed, transaction reverted to 'pending' for retry: ${walletErr.message}`);
+      throw walletErr;
+    }
+
+    COMPLETED_TRANSACTIONS.add(txId);
+    console.log(`[WalletDeposit] Successfully processed (fallback, non-atomic): ${txId}`);
+    return { alreadyProcessed: false };
+  }
+}
+
+/**
+ * Detect "transactions not supported" errors (Atlas M0/M2/M5, standalone mongod)
+ */
+function isTransactionsUnsupportedError(err) {
+  const msg = (err && err.message) || '';
+  return (
+    msg.includes('Transaction numbers are only allowed') ||
+    msg.includes('multi-document transactions are not supported') ||
+    msg.includes('transactions are not supported') ||
+    err?.codeName === 'IllegalOperation'
+  );
 }
 
 /**
@@ -272,6 +391,100 @@ exports.initializePayment = async (req, res, next) => {
 };
 
 // ==========================================
+// WALLET DEPOSIT INITIALIZATION (Artisan only)
+// Separate from job payments: no jobId, credits available balance
+// ==========================================
+
+exports.initializeWalletDeposit = async (req, res, next) => {
+  try {
+    const { amount } = req.body;
+
+    if (amount === undefined || amount === null || amount === '') {
+      throw new AppError('VALIDATION_ERROR', 'Amount is required.');
+    }
+
+    const depositAmount = Number(amount);
+    if (isNaN(depositAmount) || depositAmount <= 0) {
+      throw new AppError('VALIDATION_ERROR', 'Amount must be a positive number.');
+    }
+
+    if (depositAmount < 1000) {
+      throw new AppError('VALIDATION_ERROR', 'Minimum deposit amount is ₦1,000.');
+    }
+
+    if (depositAmount > 10000000) {
+      throw new AppError('VALIDATION_ERROR', 'Maximum deposit amount is ₦10,000,000.');
+    }
+
+    // Route runs authorize('artisan'); req.user is the authenticated artisan
+    if (!req.user.email) {
+      throw new AppError('VALIDATION_ERROR', 'User email not found.');
+    }
+
+    // Transaction record first (type 'deposit': no jobId required by schema)
+    const transaction = await Transaction.create({
+      payerId: req.user._id,
+      payeeId: req.user._id, // schema requires payeeId; depositor is both
+      amount: depositAmount,
+      type: 'deposit',
+      status: 'pending',
+      description: 'Wallet deposit via Paystack',
+      metadata: {
+        depositType: 'wallet_topup'
+      }
+    });
+
+    // Same reference convention as job payments, namespaced for deposits
+    const paystackReference = `TH_WD_${transaction._id}_${Date.now()}`;
+
+    const response = await axios.post(
+      `${PAYSTACK_BASE_URL}/transaction/initialize`,
+      {
+        email: req.user.email,
+        amount: Math.round(depositAmount * 100),
+        reference: paystackReference,
+        callback_url: `${process.env.FRONTEND_URL}/wallet`,
+        metadata: {
+          transactionId: transaction._id.toString(),
+          userId: req.user._id.toString(),
+          type: 'wallet_deposit'
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const { data } = response.data;
+
+    transaction.paystackReference = data.reference;
+    await transaction.save();
+
+    // Same response shape Wallet.tsx consumes (res.data.data.authorization_url)
+    res.json({
+      success: true,
+      data: {
+        authorization_url: data.authorization_url,
+        reference: data.reference,
+        access_code: data.access_code,
+        transactionId: transaction._id,
+        amount: {
+          total: transaction.amount
+        }
+      }
+    });
+  } catch (error) {
+    if (error.response?.data?.message) {
+      return next(new AppError('PAYMENT_FAILED', error.response.data.message));
+    }
+    next(error);
+  }
+};
+
+// ==========================================
 // PAYMENT VERIFICATION
 // ==========================================
 
@@ -323,8 +536,10 @@ exports.verifyPayment = async (req, res, next) => {
       throw new AppError('NOT_FOUND', 'Transaction not found for this reference.');
     }
 
-    // FIXED: Use centralized idempotent processor
-    const result = await processSuccessfulPayment(transaction, data);
+    // Deposit transactions use the wallet processor; job payments unchanged
+    const result = transaction.type === 'deposit'
+      ? await processWalletDeposit(transaction, data)
+      : await processSuccessfulPayment(transaction, data);
 
     res.json({
       success: true,
@@ -528,6 +743,17 @@ async function handleChargeSuccess(data) {
     return;
   }
 
+  // Wallet deposits take their own path (no job, credits available balance)
+  if (transaction.type === 'deposit') {
+    const depositResult = await processWalletDeposit(transaction, data);
+    if (depositResult.alreadyProcessed) {
+      console.log(`[Webhook] Wallet deposit already processed: ${reference}`);
+      return;
+    }
+    console.log(`[Webhook] Wallet deposit success processed: ${reference}`);
+    return;
+  }
+
   // FIXED: Use centralized idempotent processor
   const result = await processSuccessfulPayment(transaction, data);
 
@@ -549,9 +775,12 @@ async function handleChargeFailed(data) {
 
   await transaction.markAsFailed(gateway_response || 'Payment failed', 'failed');
 
-  await Job.findByIdAndUpdate(transaction.jobId, {
-    paymentStatus: 'failed'
-  });
+  // Deposits have no jobId; skip job update for non-job transactions
+  if (transaction.jobId) {
+    await Job.findByIdAndUpdate(transaction.jobId, {
+      paymentStatus: 'failed'
+    });
+  }
 
   console.log(`[Webhook] Payment failed processed: ${reference}`);
 }

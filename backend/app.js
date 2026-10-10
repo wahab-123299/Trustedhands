@@ -90,7 +90,7 @@ const corsOptions = {
   optionsSuccessStatus: 204
 };
 
-(corsOptions));
+
 app.options('*', cors(corsOptions));
 
 // ============================================
