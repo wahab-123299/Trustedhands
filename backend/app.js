@@ -75,22 +75,34 @@ const corsOptions = {
     if (process.env.NODE_ENV === 'development') {
       console.log('[CORS] Request from origin:', origin || 'undefined');
     }
+
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    if (typeof origin === 'string' && origin.includes('netlify.app')) return callback(null, true);
+
+    if (typeof origin === 'string' && origin.includes('netlify.app')) {
+      return callback(null, true);
+    }
+
     console.log('[CORS] Blocked:', origin);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin'
+  ],
   exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
   maxAge: 86400,
   preflightContinue: false,
   optionsSuccessStatus: 204
 };
 
-
+// Apply CORS to normal requests and preflight requests
+app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // ============================================

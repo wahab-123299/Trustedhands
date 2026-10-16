@@ -72,8 +72,7 @@ router.get('/wallet/transactions', authenticate, paymentController.getTransactio
 // WALLET DEPOSIT (Artisan only - separate from job payment)
 // ==========================================
 
-// FIXED: Reuse initializePayment for wallet deposits (pass isWalletDeposit flag)
-// If you need a separate wallet deposit handler later, create initializeWalletDeposit in the controller
-router.post('/wallet/deposit/initialize', authenticate, authorize('artisan'), paymentController.initializePayment);
+// FIXED: Dedicated wallet deposit handler (initializePayment requires jobId and is customer-only)
+router.post('/wallet/deposit/initialize', authenticate, authorize('artisan'), paymentController.initializeWalletDeposit);
 
 module.exports = router;
