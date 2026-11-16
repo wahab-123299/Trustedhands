@@ -1,7 +1,7 @@
 // backend/utils/keepAlive.js
 const axios = require('axios');
 
-const API_URL = process.env.API_URL || 'http://localhost:5000';
+const API_URL = process.env.API_URL || `http://127.0.0.1:${process.env.PORT || 10000}`;
 const INTERVAL_MS = 10 * 60 * 1000; // 10 minutes (Render sleeps after ~15 min)
 
 let intervalId = null;
